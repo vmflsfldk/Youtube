@@ -56,6 +56,11 @@ interface ClipCandidateResponse {
   label: string;
 }
 
+interface CorsConfig {
+  origin: string | null;
+  requestHeaders: string | null;
+}
+
 interface UserContext {
   id: number;
   email: string;
@@ -100,22 +105,32 @@ class HttpError extends Error {
   }
 }
 
-const corsHeaders = (): Headers => {
+const corsHeaders = (config: CorsConfig): Headers => {
   const headers = new Headers();
-  headers.set("Access-Control-Allow-Origin", "*");
-  headers.set("Access-Control-Allow-Headers", "Content-Type, X-User-Email, X-User-Name");
+  if (config.origin) {
+    headers.set("Access-Control-Allow-Origin", config.origin);
+    headers.set("Vary", "Origin");
+  } else {
+    headers.set("Access-Control-Allow-Origin", "*");
+  }
+  const requestedHeaders = config.requestHeaders;
+  if (requestedHeaders && requestedHeaders.trim().length > 0) {
+    headers.set("Access-Control-Allow-Headers", requestedHeaders);
+  } else {
+    headers.set("Access-Control-Allow-Headers", "Content-Type, X-User-Email, X-User-Name");
+  }
   headers.set("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
   return headers;
 };
 
-const jsonResponse = (data: unknown, status = 200): Response => {
-  const headers = corsHeaders();
+const jsonResponse = (data: unknown, status: number, cors: CorsConfig): Response => {
+  const headers = corsHeaders(cors);
   headers.set("Content-Type", "application/json");
   return new Response(JSON.stringify(data), { status, headers });
 };
 
-const emptyResponse = (status = 204): Response => {
-  return new Response(null, { status, headers: corsHeaders() });
+const emptyResponse = (status: number, cors: CorsConfig): Response => {
+  return new Response(null, { status, headers: corsHeaders(cors) });
 };
 
 const normalizePath = (pathname: string): string => {
@@ -127,8 +142,13 @@ const normalizePath = (pathname: string): string => {
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    const cors: CorsConfig = {
+      origin: request.headers.get("Origin"),
+      requestHeaders: request.headers.get("Access-Control-Request-Headers")
+    };
+
     if (request.method === "OPTIONS") {
-      return emptyResponse();
+      return emptyResponse(204, cors);
     }
 
     const url = new URL(request.url);
@@ -136,52 +156,57 @@ export default {
 
     try {
       if (request.method === "POST" && path === "/api/users/login") {
-        return await loginUser(request, env);
+        return await loginUser(request, env, cors);
       }
 
       const user = await getOrCreateUser(env, request.headers);
 
       if (request.method === "POST" && path === "/api/artists") {
-        return await createArtist(request, env, user);
+        return await createArtist(request, env, user, cors);
       }
       if (request.method === "GET" && path === "/api/artists") {
-        return await listArtists(url, env, user);
+        return await listArtists(url, env, user, cors);
       }
       if (request.method === "POST" && path === "/api/users/me/favorites") {
-        return await toggleFavorite(request, env, user);
+        return await toggleFavorite(request, env, user, cors);
       }
       if (path === "/api/videos") {
         if (request.method === "POST") {
-          return await createVideo(request, env, user);
+          return await createVideo(request, env, user, cors);
         }
         if (request.method === "GET") {
-          return await listVideos(url, env, user);
+          return await listVideos(url, env, user, cors);
         }
       }
       if (path === "/api/clips") {
         if (request.method === "POST") {
-          return await createClip(request, env, user);
+          return await createClip(request, env, user, cors);
         }
         if (request.method === "GET") {
-          return await listClips(url, env, user);
+          return await listClips(url, env, user, cors);
         }
       }
       if (request.method === "POST" && path === "/api/clips/auto-detect") {
-        return await autoDetect(request, env, user);
+        return await autoDetect(request, env, user, cors);
       }
 
-      return jsonResponse({ error: "Not Found" }, 404);
+      return jsonResponse({ error: "Not Found" }, 404, cors);
     } catch (error) {
       if (error instanceof HttpError) {
-        return jsonResponse({ error: error.message }, error.status);
+        return jsonResponse({ error: error.message }, error.status, cors);
       }
       console.error("Unexpected error", error);
-      return jsonResponse({ error: "Internal Server Error" }, 500);
+      return jsonResponse({ error: "Internal Server Error" }, 500, cors);
     }
   }
 };
 
-async function createArtist(request: Request, env: Env, user: UserContext): Promise<Response> {
+async function createArtist(
+  request: Request,
+  env: Env,
+  user: UserContext,
+  cors: CorsConfig
+): Promise<Response> {
   const body = await readJson(request);
   const name = typeof body.name === "string" ? body.name.trim() : "";
   const youtubeChannelId = typeof body.youtubeChannelId === "string" ? body.youtubeChannelId.trim() : "";
@@ -196,10 +221,10 @@ async function createArtist(request: Request, env: Env, user: UserContext): Prom
     "INSERT INTO artists (name, youtube_channel_id, created_by) VALUES (?, ?, ?)"
   ).bind(name, youtubeChannelId, user.id).run();
   const artistId = numberFromRowId(result.meta.last_row_id);
-  return jsonResponse({ id: artistId, name, youtubeChannelId } satisfies ArtistResponse, 201);
+  return jsonResponse({ id: artistId, name, youtubeChannelId } satisfies ArtistResponse, 201, cors);
 }
 
-async function listArtists(url: URL, env: Env, user: UserContext): Promise<Response> {
+async function listArtists(url: URL, env: Env, user: UserContext, cors: CorsConfig): Promise<Response> {
   const mine = url.searchParams.get("mine") === "true";
   const query = mine
     ? `SELECT a.id, a.name, a.youtube_channel_id
@@ -213,10 +238,15 @@ async function listArtists(url: URL, env: Env, user: UserContext): Promise<Respo
         ORDER BY id DESC`;
   const { results } = await env.DB.prepare(query).bind(user.id).all<ArtistRow>();
   const artists = (results ?? []).map(toArtistResponse);
-  return jsonResponse(artists);
+  return jsonResponse(artists, 200, cors);
 }
 
-async function toggleFavorite(request: Request, env: Env, user: UserContext): Promise<Response> {
+async function toggleFavorite(
+  request: Request,
+  env: Env,
+  user: UserContext,
+  cors: CorsConfig
+): Promise<Response> {
   const body = await readJson(request);
   const artistId = Number(body.artistId);
   if (!Number.isFinite(artistId)) {
@@ -238,10 +268,15 @@ async function toggleFavorite(request: Request, env: Env, user: UserContext): Pr
       "INSERT INTO user_favorite_artists (user_id, artist_id) VALUES (?, ?)"
     ).bind(user.id, artistId).run();
   }
-  return emptyResponse();
+  return emptyResponse(204, cors);
 }
 
-async function createVideo(request: Request, env: Env, user: UserContext): Promise<Response> {
+async function createVideo(
+  request: Request,
+  env: Env,
+  user: UserContext,
+  cors: CorsConfig
+): Promise<Response> {
   const body = await readJson(request);
   const artistId = Number(body.artistId);
   if (!Number.isFinite(artistId)) {
@@ -289,7 +324,7 @@ async function createVideo(request: Request, env: Env, user: UserContext): Promi
     if (!row) {
       throw new HttpError(500, "Failed to load updated video");
     }
-    return jsonResponse(toVideoResponse(row));
+    return jsonResponse(toVideoResponse(row), 200, cors);
   }
 
   const result = await env.DB.prepare(
@@ -313,10 +348,10 @@ async function createVideo(request: Request, env: Env, user: UserContext): Promi
   if (!row) {
     throw new HttpError(500, "Failed to load created video");
   }
-  return jsonResponse(toVideoResponse(row), 201);
+  return jsonResponse(toVideoResponse(row), 201, cors);
 }
 
-async function listVideos(url: URL, env: Env, user: UserContext): Promise<Response> {
+async function listVideos(url: URL, env: Env, user: UserContext, cors: CorsConfig): Promise<Response> {
   const artistIdParam = url.searchParams.get("artistId");
   const artistId = artistIdParam ? Number(artistIdParam) : NaN;
   if (!Number.isFinite(artistId)) {
@@ -327,10 +362,15 @@ async function listVideos(url: URL, env: Env, user: UserContext): Promise<Respon
     `SELECT * FROM videos WHERE artist_id = ? ORDER BY id DESC`
   ).bind(artistId).all<VideoRow>();
   const videos = (results ?? []).map(toVideoResponse);
-  return jsonResponse(videos);
+  return jsonResponse(videos, 200, cors);
 }
 
-async function createClip(request: Request, env: Env, user: UserContext): Promise<Response> {
+async function createClip(
+  request: Request,
+  env: Env,
+  user: UserContext,
+  cors: CorsConfig
+): Promise<Response> {
   const body = await readJson(request);
   const videoId = Number(body.videoId);
   const title = typeof body.title === "string" ? body.title.trim() : "";
@@ -371,10 +411,10 @@ async function createClip(request: Request, env: Env, user: UserContext): Promis
     throw new HttpError(500, "Failed to load created clip");
   }
   const clip = await attachTags(env, [clipRow]);
-  return jsonResponse(clip[0], 201);
+  return jsonResponse(clip[0], 201, cors);
 }
 
-async function listClips(url: URL, env: Env, user: UserContext): Promise<Response> {
+async function listClips(url: URL, env: Env, user: UserContext, cors: CorsConfig): Promise<Response> {
   const artistIdParam = url.searchParams.get("artistId");
   const videoIdParam = url.searchParams.get("videoId");
   if (artistIdParam) {
@@ -391,7 +431,7 @@ async function listClips(url: URL, env: Env, user: UserContext): Promise<Respons
         ORDER BY c.start_sec`
     ).bind(artistId).all<ClipRow>();
     const clips = await attachTags(env, results ?? []);
-    return jsonResponse(clips);
+    return jsonResponse(clips, 200, cors);
   }
   if (videoIdParam) {
     const videoId = Number(videoIdParam);
@@ -406,12 +446,17 @@ async function listClips(url: URL, env: Env, user: UserContext): Promise<Respons
         ORDER BY start_sec`
     ).bind(videoId).all<ClipRow>();
     const clips = await attachTags(env, results ?? []);
-    return jsonResponse(clips);
+    return jsonResponse(clips, 200, cors);
   }
   throw new HttpError(400, "artistId or videoId query parameter is required");
 }
 
-async function autoDetect(request: Request, env: Env, user: UserContext): Promise<Response> {
+async function autoDetect(
+  request: Request,
+  env: Env,
+  user: UserContext,
+  cors: CorsConfig
+): Promise<Response> {
   const body = await readJson(request);
   const videoId = Number(body.videoId);
   const modeRaw = typeof body.mode === "string" ? body.mode : "";
@@ -443,7 +488,7 @@ async function autoDetect(request: Request, env: Env, user: UserContext): Promis
     combined.sort((a, b) => a.startSec - b.startSec);
     candidates = combined;
   }
-  return jsonResponse(candidates);
+  return jsonResponse(candidates, 200, cors);
 }
 
 async function getOrCreateUser(env: Env, headers: Headers): Promise<UserContext> {
@@ -454,14 +499,14 @@ async function getOrCreateUser(env: Env, headers: Headers): Promise<UserContext>
   return await upsertUser(env, email, displayName);
 }
 
-async function loginUser(request: Request, env: Env): Promise<Response> {
+async function loginUser(request: Request, env: Env, cors: CorsConfig): Promise<Response> {
   const body = await readJson(request);
   const emailRaw = typeof body.email === "string" ? body.email : "";
   const displayNameRaw = typeof body.displayName === "string" ? body.displayName : "";
   const email = emailRaw.trim() || "guest@example.com";
   const displayName = displayNameRaw.trim() || "Guest";
   const user = await upsertUser(env, email, displayName);
-  return jsonResponse(user);
+  return jsonResponse(user, 200, cors);
 }
 
 async function upsertUser(env: Env, email: string, displayName: string): Promise<UserContext> {
