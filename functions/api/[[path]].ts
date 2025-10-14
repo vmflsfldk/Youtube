@@ -1,8 +1,12 @@
 export const onRequest: PagesFunction = async ({ request, params }) => {
   const url = new URL(request.url);
-  const sub = Array.isArray((params as any).path)
-    ? (params as any).path.join("/")
-    : ((params as any).path || "");
+  const pathParam = (params as Record<string, string | string[] | undefined>).path;
+  const segments = Array.isArray(pathParam)
+    ? pathParam
+    : typeof pathParam === "string" && pathParam.length > 0
+      ? pathParam.split("/")
+      : [];
+  const sub = segments.join("/");
   const target = `https://yt-clip-api.word-game.workers.dev/api/${sub}${url.search}`;
 
   const headers = new Headers(request.headers);
