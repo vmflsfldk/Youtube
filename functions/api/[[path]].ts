@@ -1,9 +1,40 @@
+interface ProxyEnv {
+  API_PROXY_BASE_URL?: string;
+  API_PROXY_ORIGIN?: string;
+}
+
 interface EventContext {
   request: Request;
   params: Record<string, string | string[] | undefined>;
+  env: ProxyEnv;
 }
 
-export const onRequest = async ({ request, params }: EventContext) => {
+const DEFAULT_PROXY_BASE = "https://yt-clip-api.word-game.workers.dev";
+
+const normalizeBaseUrl = (raw: string | undefined): string | null => {
+  if (!raw) {
+    return null;
+  }
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return null;
+  }
+  return trimmed.replace(/\/+$/, "");
+};
+
+const resolveProxyBase = (env: ProxyEnv): string => {
+  const configured = normalizeBaseUrl(env.API_PROXY_BASE_URL) ?? normalizeBaseUrl(env.API_PROXY_ORIGIN);
+  const base = configured ?? DEFAULT_PROXY_BASE;
+  return base.endsWith("/api") ? base : `${base}/api`;
+};
+
+const buildTargetUrl = (base: string, subPath: string, search: string): string => {
+  const normalizedBase = base.replace(/\/+$/, "");
+  const suffix = subPath ? `/${subPath}` : "";
+  return `${normalizedBase}${suffix}${search}`;
+};
+
+export const onRequest = async ({ request, params, env }: EventContext) => {
   const url = new URL(request.url);
   const pathParam = (params as Record<string, string | string[] | undefined>).path;
   const segments = Array.isArray(pathParam)
@@ -12,7 +43,8 @@ export const onRequest = async ({ request, params }: EventContext) => {
       ? pathParam.split("/")
       : [];
   const sub = segments.join("/");
-  const target = `https://yt-clip-api.word-game.workers.dev/api/${sub}${url.search}`;
+  const proxyBase = resolveProxyBase(env);
+  const target = buildTargetUrl(proxyBase, sub, url.search);
 
   const requestOrigin = request.headers.get("origin") ?? "*";
 
@@ -35,13 +67,28 @@ export const onRequest = async ({ request, params }: EventContext) => {
   headers.delete("origin");
   headers.delete("referer");
 
-  const resp = await fetch(target, {
-    method: request.method,
-    headers,
-    body: (request.method === "GET" || request.method === "HEAD")
-      ? undefined
-      : await request.arrayBuffer(),
-  });
+  let resp: Response;
+  try {
+    resp = await fetch(target, {
+      method: request.method,
+      headers,
+      body: (request.method === "GET" || request.method === "HEAD")
+        ? undefined
+        : await request.arrayBuffer(),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return new Response(JSON.stringify({ error: "Upstream request failed", message }), {
+      status: 502,
+      headers: {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": requestOrigin,
+        "Access-Control-Allow-Methods": "GET,HEAD,POST,PUT,DELETE,OPTIONS",
+        "Access-Control-Allow-Headers": "content-type, authorization, x-user-email, x-user-name",
+        "Vary": "Origin",
+      },
+    });
+  }
 
   const out = new Headers(resp.headers);
   out.delete("access-control-allow-origin");
