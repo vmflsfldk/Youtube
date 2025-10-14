@@ -3,6 +3,31 @@ import axios from 'axios';
 import ClipPlayer from './components/ClipPlayer';
 import GoogleLoginButton from './components/GoogleLoginButton';
 
+type MaybeArray<T> =
+  | T[]
+  | { items?: T[]; data?: T[]; results?: T[] }
+  | null
+  | undefined;
+
+const ensureArray = <T,>(value: MaybeArray<T>): T[] => {
+  if (Array.isArray(value)) {
+    return value;
+  }
+  if (value && typeof value === 'object') {
+    const container = value as { items?: T[]; data?: T[]; results?: T[] };
+    if (Array.isArray(container.items)) {
+      return container.items;
+    }
+    if (Array.isArray(container.data)) {
+      return container.data;
+    }
+    if (Array.isArray(container.results)) {
+      return container.results;
+    }
+  }
+  return [];
+};
+
 interface ArtistResponse {
   id: number;
   name: string;
@@ -34,6 +59,25 @@ interface ClipCandidateResponse {
   score: number;
   label: string;
 }
+
+type ClipLike = Omit<ClipResponse, 'tags'> & { tags?: unknown };
+
+const normalizeClip = (clip: ClipLike): ClipResponse => {
+  const rawTags = clip.tags;
+  const normalizedTags = Array.isArray(rawTags)
+    ? rawTags.filter((tag): tag is string => typeof tag === 'string')
+    : typeof rawTags === 'string'
+      ? rawTags
+          .split(',')
+          .map((tag) => tag.trim())
+          .filter(Boolean)
+      : [];
+
+  return {
+    ...clip,
+    tags: normalizedTags
+  };
+};
 
 const resolveApiBaseUrl = () => {
   const rawBase = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim();
@@ -143,7 +187,7 @@ export default function App() {
   const fetchArtists = useCallback(async () => {
     try {
       const response = await http.get<ArtistResponse[]>('/artists', { headers: authHeaders });
-      setArtists(response.data);
+      setArtists(ensureArray(response.data));
     } catch (error) {
       console.error('Failed to load artists', error);
       setArtists([]);
@@ -207,7 +251,7 @@ export default function App() {
           headers: authHeaders,
           params: { videoId: selectedVideo }
         });
-        setClips(response.data);
+        setClips(ensureArray(response.data).map(normalizeClip));
       } catch (error) {
         console.error('Failed to load clips', error);
         setClips([]);
@@ -235,7 +279,7 @@ export default function App() {
         },
         { headers: authHeaders }
       );
-      setClips((prev) => [...prev, response.data]);
+      setClips((prev) => [...prev, normalizeClip(response.data)]);
       setClipForm({ title: '', startSec: 0, endSec: 0, tags: '' });
     } catch (error) {
       console.error('Failed to create clip', error);
@@ -252,7 +296,7 @@ export default function App() {
         { videoId: selectedVideo, mode: autoDetectMode },
         { headers: authHeaders }
       );
-      setClipCandidates(response.data);
+      setClipCandidates(ensureArray(response.data));
     } catch (error) {
       console.error('Failed to auto-detect clips', error);
       setClipCandidates([]);
@@ -275,12 +319,13 @@ export default function App() {
           params: { artistId: Number(videoForm.artistId) }
         });
 
-        setVideos(response.data);
+        const fetchedVideos = ensureArray(response.data);
+        setVideos(fetchedVideos);
         setSelectedVideo((previous) => {
-          if (previous && response.data.some((video) => video.id === previous)) {
+          if (previous && fetchedVideos.some((video) => video.id === previous)) {
             return previous;
           }
-          return response.data.length > 0 ? response.data[0].id : null;
+          return fetchedVideos.length > 0 ? fetchedVideos[0].id : null;
         });
       } catch (error) {
         console.error('Failed to load videos', error);
