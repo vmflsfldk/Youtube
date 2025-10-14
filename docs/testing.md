@@ -92,3 +92,40 @@ curl -X POST "http://127.0.0.1:8787/api/clips" \
 - 모바일 또는 작은 화면에서도 플레이어 및 리스트 레이아웃이 깨지지 않는지 확인
 
 위 과정을 반복하면 새로운 기능 추가 후에도 핵심 시나리오가 영향을 받지 않았는지 빠르게 검증할 수 있습니다.
+
+## 3. 테스트 데이터 시드 예시
+
+로컬 D1 데이터베이스에 바로 레코드를 추가하고 싶다면 `wrangler d1 execute` 명령으로 SQL을 실행하면 됩니다. 아래는 테스트용
+사용자와 함께 아티스트 **HACHI**(유튜브 채널: `https://www.youtube.com/@HACHIVSinger`)를 추가하는 최소한의 예시입니다.
+
+> ⚠️  Foreign key 제약이 있으므로 먼저 사용자를 만든 뒤, 그 사용자의 `id`를 참조해 아티스트를 입력해야 합니다.
+
+```bash
+# 1) wrangler.toml에 정의된 D1 인스턴스 이름을 사용합니다 (예: ytclipdb)
+DB_NAME=ytclipdb
+
+# 2) 테스트 사용자 생성
+wrangler d1 execute "$DB_NAME" --command '
+  INSERT INTO users (email, display_name)
+  VALUES ("tester@example.com", "Manual Seed Tester");
+'
+
+# 3) 방금 만든 사용자 ID 확인 (SQLite AUTOINCREMENT라면 보통 1부터 시작합니다)
+wrangler d1 execute "$DB_NAME" --command '
+  SELECT id, email, display_name FROM users ORDER BY id DESC LIMIT 1;
+'
+
+# 4) 사용자 ID를 이용해 HACHI 아티스트 추가 (예시는 사용자 ID = 1)
+wrangler d1 execute "$DB_NAME" --command '
+  INSERT INTO artists (name, youtube_channel_id, created_by)
+  VALUES ("HACHI", "https://www.youtube.com/@HACHIVSinger", 1);
+'
+
+# 5) 최종 확인
+wrangler d1 execute "$DB_NAME" --command '
+  SELECT id, name, youtube_channel_id FROM artists WHERE name = "HACHI";
+'
+```
+
+이 과정을 거치면 API나 프론트엔드에서 바로 HACHI 아티스트를 선택하여 영상 및 클립을 추가해볼 수 있습니다. 다른 테스트 데이터를
+추가할 때도 동일한 방식으로 INSERT/SELECT 구문을 실행하면 됩니다.
