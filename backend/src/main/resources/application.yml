@@ -16,3 +16,8 @@ spring:
 logging:
   level:
     com.example.youtube: DEBUG
+app:
+  cors:
+    allowed-origins:
+      - http://localhost:5173
+      - https://youtube-timecapsule.pages.dev
