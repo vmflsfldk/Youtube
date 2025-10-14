@@ -16,6 +16,7 @@ declare global {
             auto_select?: boolean;
             cancel_on_tap_outside?: boolean;
             prompt_parent_id?: string;
+            use_fedcm_for_prompting?: boolean;
           }) => void;
           renderButton?: (
             element: HTMLElement,
@@ -28,7 +29,7 @@ declare global {
               logo_alignment?: 'left' | 'center';
             }
           ) => void;
-          prompt?: () => void;
+          prompt?: (momentListener?: (notification: unknown) => void) => void;
         };
       };
     };
