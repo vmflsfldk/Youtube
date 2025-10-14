@@ -1,0 +1,9 @@
+name = "yt-clip-api"
+main = "src/worker.ts"
+compatibility_date = "2025-10-14"
+migrations_dir = "migrations"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "ytclipdb"
+database_id = "8d173d8b-ebd6-4a4f-8e47-c279ed278416"

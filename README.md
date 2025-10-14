@@ -110,18 +110,20 @@
 
 ## 7. 구현 가이드
 
-### 백엔드(Spring Boot)
+### 백엔드 옵션
 
-프로젝트는 `backend` 디렉터리의 Spring Boot 애플리케이션으로 구성되어 있으며, H2 인메모리 데이터베이스를 기본으로 사용합니다.
+#### A. Cloudflare Workers + D1 (기본)
 
-```bash
-cd backend
-mvn spring-boot:run
-```
+- `wrangler.toml`에 정의된 Cloudflare Worker(`yt-clip-api`)가 D1 데이터베이스(`ytclipdb`)와 통신합니다.
+- 개발 환경에서는 아래 명령어로 로컬 프록시를 실행할 수 있습니다.
 
-헤더에 `X-User-Email`, `X-User-Name` 을 설정하면 요청 사용자 컨텍스트가 생성됩니다. 헤더가 없으면 게스트 계정으로 처리됩니다.
+  ```bash
+  wrangler dev
+  ```
 
-주요 엔드포인트 요약:
+- 요청 헤더 `X-User-Email`, `X-User-Name` 으로 사용자 컨텍스트를 전달하며, 값이 없으면 게스트 계정이 자동으로 생성됩니다.
+- 프론트엔드에서 Cloudflare Worker를 호출하려면 `VITE_API_BASE_URL`을 Worker 엔드포인트(예: `https://yt-clip-api.your-account.workers.dev`)로 설정합니다. 미설정 시 `/api` 경로를 사용하여 Vite 개발 서버 프록시에 연결됩니다.
+- 제공되는 REST 엔드포인트는 기존 Spring Boot 버전과 동일합니다.
 
 | Method | Endpoint | 설명 |
 | --- | --- | --- |
@@ -132,6 +134,15 @@ mvn spring-boot:run
 | POST | `/api/clips` | 클립 생성 |
 | GET | `/api/clips?videoId=` | 특정 영상의 클립 조회 |
 | POST | `/api/clips/auto-detect` | 자막/설명 기반 추천 클립 |
+
+#### B. Spring Boot (레거시 참고용)
+
+`backend` 디렉터리의 Spring Boot 애플리케이션은 참고용 구현으로 남겨 두었습니다. H2 인메모리 데이터베이스를 사용하며 아래와 같이 실행할 수 있습니다.
+
+```bash
+cd backend
+mvn spring-boot:run
+```
 
 ### 프론트엔드(React + Vite)
 
