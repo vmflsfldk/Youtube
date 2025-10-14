@@ -1,6 +1,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import ClipPlayer from './components/ClipPlayer';
+import GoogleLoginButton from './components/GoogleLoginButton';
 
 interface ArtistResponse {
   id: number;
@@ -46,9 +47,32 @@ const http = axios.create({
   baseURL: resolveApiBaseUrl()
 });
 
+interface GoogleIdTokenPayload {
+  email?: string;
+  name?: string;
+  given_name?: string;
+  family_name?: string;
+}
+
+const decodeGoogleToken = (token: string): GoogleIdTokenPayload | null => {
+  try {
+    const [, payload] = token.split('.');
+    if (!payload) {
+      return null;
+    }
+    const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const padding = '='.repeat((4 - (normalized.length % 4)) % 4);
+    const decoded = atob(normalized + padding);
+    return JSON.parse(decoded) as GoogleIdTokenPayload;
+  } catch (error) {
+    console.error('Failed to decode Google token', error);
+    return null;
+  }
+};
+
 export default function App() {
-  const [email, setEmail] = useState('demo@example.com');
-  const [displayName, setDisplayName] = useState('Demo User');
+  const [email, setEmail] = useState('');
+  const [displayName, setDisplayName] = useState('');
   const [artists, setArtists] = useState<ArtistResponse[]>([]);
   const [videos, setVideos] = useState<VideoResponse[]>([]);
   const [clips, setClips] = useState<ClipResponse[]>([]);
@@ -58,6 +82,8 @@ export default function App() {
   const [videoForm, setVideoForm] = useState({ url: '', artistId: '', description: '', captionsJson: '' });
   const [clipForm, setClipForm] = useState({ title: '', startSec: 0, endSec: 0, tags: '' });
   const [autoDetectMode, setAutoDetectMode] = useState('chapters');
+  const [idToken, setIdToken] = useState<string | null>(null);
+  const [isGoogleReady, setIsGoogleReady] = useState(false);
 
   const authHeaders = useMemo(
     () => ({
@@ -66,6 +92,53 @@ export default function App() {
     }),
     [email, displayName]
   );
+
+  const isAuthenticated = Boolean(idToken);
+
+  useEffect(() => {
+    if (window.google?.accounts?.id) {
+      setIsGoogleReady(true);
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    script.onload = () => setIsGoogleReady(true);
+    script.onerror = () => {
+      console.error('Failed to load Google Identity Services script');
+    };
+    document.head.appendChild(script);
+
+    return () => {
+      script.remove();
+    };
+  }, []);
+
+  const handleGoogleCredential = useCallback((credential: string) => {
+    const payload = decodeGoogleToken(credential);
+    if (!payload?.email) {
+      console.error('Google credential did not include an email address');
+      return;
+    }
+    setEmail(payload.email);
+    setDisplayName(payload.name ?? payload.email);
+    setIdToken(credential);
+  }, []);
+
+  const handleSignOut = () => {
+    setIdToken(null);
+    setEmail('');
+    setDisplayName('');
+    setArtists([]);
+    setVideos([]);
+    setClips([]);
+    setClipCandidates([]);
+    setSelectedVideo(null);
+    setVideoForm({ url: '', artistId: '', description: '', captionsJson: '' });
+    setClipForm({ title: '', startSec: 0, endSec: 0, tags: '' });
+  };
 
   const fetchArtists = useCallback(async () => {
     try {
@@ -230,13 +303,34 @@ export default function App() {
         <section className="panel login-panel">
           <div>
             <h1>로그인 (유저정보)</h1>
-            <p>API 요청을 보내기 전에 사용할 이메일과 표시 이름을 입력하세요.</p>
+            <p>Google 계정으로 로그인하면 API 요청에 사용자 정보가 자동으로 포함됩니다.</p>
+          </div>
+          <div className="login-status">
+            {isAuthenticated ? (
+              <div className="login-status__row">
+                <span className="login-status__message">구글 계정으로 로그인되었습니다.</span>
+                <button type="button" onClick={handleSignOut} className="login-status__button">
+                  로그아웃
+                </button>
+              </div>
+            ) : (
+              <div className="login-status__row">
+                {isGoogleReady ? (
+                  <GoogleLoginButton
+                    clientId="245943329145-os94mkp21415hadulir67v1i0lqjrcnq.apps.googleusercontent.com"
+                    onCredential={handleGoogleCredential}
+                  />
+                ) : (
+                  <span className="login-status__message">구글 로그인 준비 중...</span>
+                )}
+              </div>
+            )}
           </div>
           <label htmlFor="email">이메일</label>
-          <input id="email" value={email} onChange={(event) => setEmail(event.target.value)} />
+          <input id="email" value={email} readOnly placeholder="로그인 후 자동 입력" />
           <label htmlFor="displayName">표시 이름</label>
-          <input id="displayName" value={displayName} onChange={(event) => setDisplayName(event.target.value)} />
-          <button type="button" onClick={fetchArtists}>
+          <input id="displayName" value={displayName} readOnly placeholder="로그인 후 자동 입력" />
+          <button type="button" onClick={fetchArtists} disabled={!isAuthenticated}>
             나의 아티스트 새로고침
           </button>
         </section>
