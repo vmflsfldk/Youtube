@@ -74,7 +74,7 @@ wrangler dev
 wrangler deploy
 ```
 
-배포가 완료되면 Workers.dev 주소 또는 커스텀 도메인이 출력됩니다. Cloudflare Pages에 프론트엔드를 함께 호스팅하는 경우 Pages Functions가 `/api/*` 경로를 워커로 프록시하므로 추가 설정 없이 동일 오리진에서 API를 호출할 수 있습니다. 다른 호스트를 사용하려면 프론트엔드 환경 변수 `VITE_API_BASE_URL`을 원하는 엔드포인트(예: `https://yt-clip-api.<account>.workers.dev`)로 지정하세요.
+배포가 완료되면 Workers.dev 주소 또는 커스텀 도메인이 출력됩니다. Cloudflare Pages에 프론트엔드를 함께 호스팅하는 경우 Pages Functions가 `/api/*` 경로를 워커로 프록시하므로 추가 설정 없이 동일 오리진에서 API를 호출할 수 있습니다. 다른 호스트를 사용하려면 프론트엔드 환경 변수 `VITE_API_BASE_URL`을 원하는 엔드포인트(예: `https://yt-clip-api.<account>.workers.dev`)로 지정하고, Pages Functions 환경 변수 `API_PROXY_BASE_URL`(또는 `API_PROXY_ORIGIN`)에 동일한 값을 입력해 프록시 대상도 함께 변경하세요.
 
 ## 7. 배포 후 확인 사항
 
