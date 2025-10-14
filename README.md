@@ -162,6 +162,15 @@ npm run dev
 - Pages의 **Build command**는 `npm run build`, **Build output directory**는 `frontend/dist`로 지정합니다.
 - API 호출은 기본적으로 동일 도메인의 `/api`로 전송되므로, Cloudflare Workers 또는 다른 백엔드 엔드포인트를 사용한다면 `VITE_API_BASE_URL` 환경 변수를 설정하세요.
 
+##### 배포 후 기본 점검(404 또는 1016 오류 대응)
+
+1. **Latest deployment 상태 확인** – Cloudflare Pages 프로젝트의 `Deployments` 탭에서 최근 배포가 `Success`인지 확인합니다. 실패했다면 로그 하단에 표시되는 오류(예: `npm run build` 실패, 의존성 설치 실패 등)를 먼저 해결해야 합니다.
+2. **Build output directory 경로 검증** – 배포 로그에 `frontend/dist/index.html`이 업로드 대상으로 표시되는지 확인합니다. 경로가 비어 있으면 Pages가 404를 반환합니다. 루트에 `dist`만 업로드된 경우에는 Build output directory 설정을 `frontend/dist`로 다시 저장한 뒤 재배포하세요.
+3. **환경 변수 노출 여부 확인** – Vite는 런타임이 아닌 빌드 타임에 환경 변수를 주입하므로, `VITE_` prefix가 붙은 값(`VITE_API_BASE_URL` 등)이 Pages 프로젝트의 **Environment variables**에 설정되어 있고 최신 배포에서 해당 값을 사용했는지 확인합니다. 값이 비어 있으면 API 호출이 실패하며 빈 화면으로 보일 수 있습니다.
+4. **커스텀 도메인 DNS 검사** – `HTTP ERROR 1016`이 발생하는 경우, Pages의 기본 도메인(`*.pages.dev`)과 별도로 연결한 커스텀 도메인의 CNAME 레코드가 `cname.pages.dev`를 가리키는지, 그리고 Cloudflare DNS가 활성화(주황색 구름) 상태인지 확인하세요. DNS가 잘못된 원본을 가리키면 Cloudflare가 페이지를 찾지 못합니다.
+5. **캐시 초기화** – 설정을 수정한 뒤에도 이전 404 응답이 캐시돼 있을 수 있으므로 Cloudflare Dashboard의 **Purge Cache** 기능으로 전체 캐시를 비운 후 다시 접속해 봅니다.
+6. **프리뷰 환경 점검** – 프로덕션이 비어 있더라도 Pull Request/브랜치 배포(Preview)에서는 페이지가 열리는지 확인합니다. Preview가 정상이라면 프로덕션 환경 전용 환경 변수 또는 DNS 설정만 추가로 확인하면 됩니다.
+
 ## 8. Cloudflare Workers 배포
 
 `yt-clip-api` Worker와 D1 데이터베이스를 Cloudflare에 배포하려면 [Cloudflare Workers 배포 가이드](docs/deployment-cloudflare.md)를 참고하세요. Wrangler 로그인, D1 데이터베이스 생성, 마이그레이션 적용, `wrangler deploy`를 통한 프로덕션 배포 절차를 단계별로 정리했습니다.
