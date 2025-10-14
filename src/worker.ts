@@ -135,6 +135,10 @@ export default {
     const path = normalizePath(url.pathname);
 
     try {
+      if (request.method === "POST" && path === "/api/users/login") {
+        return await loginUser(request, env);
+      }
+
       const user = await getOrCreateUser(env, request.headers);
 
       if (request.method === "POST" && path === "/api/artists") {
@@ -447,7 +451,20 @@ async function getOrCreateUser(env: Env, headers: Headers): Promise<UserContext>
   const displayNameHeader = headers.get("X-User-Name");
   const email = emailHeader && emailHeader.trim() ? emailHeader.trim() : "guest@example.com";
   const displayName = displayNameHeader && displayNameHeader.trim() ? displayNameHeader.trim() : "Guest";
+  return await upsertUser(env, email, displayName);
+}
 
+async function loginUser(request: Request, env: Env): Promise<Response> {
+  const body = await readJson(request);
+  const emailRaw = typeof body.email === "string" ? body.email : "";
+  const displayNameRaw = typeof body.displayName === "string" ? body.displayName : "";
+  const email = emailRaw.trim() || "guest@example.com";
+  const displayName = displayNameRaw.trim() || "Guest";
+  const user = await upsertUser(env, email, displayName);
+  return jsonResponse(user);
+}
+
+async function upsertUser(env: Env, email: string, displayName: string): Promise<UserContext> {
   const existing = await env.DB.prepare(
     "SELECT id, email, display_name FROM users WHERE email = ?"
   ).bind(email).first<{ id: number; email: string; display_name: string }>();
