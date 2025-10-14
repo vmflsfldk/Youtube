@@ -1,5 +1,5 @@
 import { useCallback, useRef } from 'react';
-import YouTube, { YouTubeProps } from 'react-youtube';
+import YouTube, { YouTubePlayer, YouTubeProps } from 'react-youtube';
 
 interface ClipPlayerProps {
   youtubeVideoId: string;
@@ -8,11 +8,14 @@ interface ClipPlayerProps {
   autoplay?: boolean;
 }
 
-export default function ClipPlayer({ youtubeVideoId, startSec, endSec, autoplay = true }: ClipPlayerProps) {
-  const playerRef = useRef<any>(null);
+type YouTubeReadyEvent = Parameters<NonNullable<YouTubeProps['onReady']>>[0];
+type YouTubeStateChangeEvent = Parameters<NonNullable<YouTubeProps['onStateChange']>>[0];
 
-  const handleReady: YouTubeProps['onReady'] = useCallback(
-    (event) => {
+export default function ClipPlayer({ youtubeVideoId, startSec, endSec, autoplay = true }: ClipPlayerProps) {
+  const playerRef = useRef<YouTubePlayer | null>(null);
+
+  const handleReady = useCallback<NonNullable<YouTubeProps['onReady']>>(
+    (event: YouTubeReadyEvent) => {
       playerRef.current = event.target;
       event.target.loadVideoById({
         videoId: youtubeVideoId,
@@ -23,8 +26,8 @@ export default function ClipPlayer({ youtubeVideoId, startSec, endSec, autoplay 
     [youtubeVideoId, startSec, endSec]
   );
 
-  const handleStateChange: YouTubeProps['onStateChange'] = useCallback(
-    (event) => {
+  const handleStateChange = useCallback<NonNullable<YouTubeProps['onStateChange']>>(
+    (event: YouTubeStateChangeEvent) => {
       if (event.data === window.YT?.PlayerState?.ENDED) {
         event.target.seekTo(startSec, true);
       }
