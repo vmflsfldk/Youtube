@@ -27,11 +27,18 @@ export default function GoogleLoginButton({ clientId, onCredential }: GoogleLogi
         if (response.credential) {
           onCredential(response.credential);
         }
-      }
+      },
+      use_fedcm_for_prompting: false
     });
 
     googleId.renderButton(buttonRef.current, BUTTON_OPTIONS);
-    googleId.prompt?.();
+    if (googleId.prompt) {
+      try {
+        googleId.prompt();
+      } catch (error) {
+        console.warn('Google Identity Services prompt failed', error);
+      }
+    }
   }, [clientId, onCredential]);
 
   return <div ref={buttonRef} />;
