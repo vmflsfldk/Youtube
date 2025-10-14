@@ -1,0 +1,11 @@
+{
+  "name": "youtube-monorepo",
+  "private": true,
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "postinstall": "npm install --prefix frontend",
+    "build": "npm run build --prefix frontend"
+  }
+}
