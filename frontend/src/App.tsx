@@ -34,11 +34,16 @@ interface ClipCandidateResponse {
   label: string;
 }
 
-const apiBaseUrl =
-  import.meta.env.VITE_API_BASE_URL || 'https://yt-clip-api.word-game.workers.dev';
+const resolveApiBaseUrl = () => {
+  const rawBase = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim();
+  const fallbackBase = 'https://yt-clip-api.word-game.workers.dev/api';
+  const base = rawBase && rawBase.length > 0 ? rawBase : fallbackBase;
+  const normalized = base.replace(/\/+$/, '');
+  return normalized.endsWith('/api') ? normalized : `${normalized}/api`;
+};
 
 const http = axios.create({
-  baseURL: apiBaseUrl
+  baseURL: resolveApiBaseUrl()
 });
 
 export default function App() {
