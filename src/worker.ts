@@ -61,6 +61,28 @@ interface CorsConfig {
   requestHeaders: string | null;
 }
 
+const DEFAULT_ALLOWED_HEADERS = ["Content-Type", "X-User-Email", "X-User-Name"] as const;
+
+const formatAllowedHeaders = (requestedHeaders: string | null): string => {
+  const headerMap = new Map<string, string>();
+  for (const header of DEFAULT_ALLOWED_HEADERS) {
+    headerMap.set(header.toLowerCase(), header);
+  }
+  if (requestedHeaders) {
+    for (const rawHeader of requestedHeaders.split(",")) {
+      const header = rawHeader.trim();
+      if (!header) {
+        continue;
+      }
+      const lower = header.toLowerCase();
+      if (!headerMap.has(lower)) {
+        headerMap.set(lower, header);
+      }
+    }
+  }
+  return Array.from(headerMap.values()).join(", ");
+};
+
 const ALLOWED_ORIGINS = new Set<string>([
   "https://youtube-1my.pages.dev",
   "http://localhost:5173",
@@ -132,13 +154,10 @@ const corsHeaders = (config: CorsConfig): Headers => {
   if (allowedOrigin && allowedOrigin !== "*") {
     headers.set("Vary", "Origin");
   }
-  const requestedHeaders = config.requestHeaders;
-  if (requestedHeaders && requestedHeaders.trim().length > 0) {
-    headers.set("Access-Control-Allow-Headers", requestedHeaders);
-  } else {
-    headers.set("Access-Control-Allow-Headers", "Content-Type, X-User-Email, X-User-Name");
-  }
-  headers.set("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+  headers.append("Vary", "Access-Control-Request-Headers");
+  headers.append("Vary", "Access-Control-Request-Method");
+  headers.set("Access-Control-Allow-Headers", formatAllowedHeaders(config.requestHeaders));
+  headers.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   if (allowedOrigin && allowedOrigin !== "*") {
     headers.set("Access-Control-Allow-Credentials", "true");
   }
