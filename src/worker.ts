@@ -62,15 +62,32 @@ interface CorsConfig {
 }
 
 const ORIGIN_RULES: RegExp[] = [
-  /^https:\/\/youtube-1my\.pages\.dev$/,
-  /^https:\/\/[a-z0-9-]+\.youtube-1my\.pages\.dev$/,
-  /^http:\/\/localhost:(5173|4173)$/,
-  /^http:\/\/127\.0\.0\.1:(5173|4173)$/
+  /^https:\/\/youtube-1my\.pages\.dev$/i,
+  /^https:\/\/[a-z0-9-]+\.youtube-1my\.pages\.dev$/i,
+  /^http:\/\/localhost:(5173|4173)$/i,
+  /^http:\/\/127\.0\.0\.1:(5173|4173)$/i
 ];
+
+const normalizeOrigin = (origin: string): string | null => {
+  const trimmed = origin.trim();
+  if (!trimmed) {
+    return null;
+  }
+  try {
+    const { protocol, host } = new URL(trimmed);
+    return `${protocol}//${host}`.replace(/\/+$/, "").toLowerCase();
+  } catch {
+    return trimmed.replace(/\/+$/, "").toLowerCase() || null;
+  }
+};
 
 const resolveAllowedOrigin = (origin: string | null): string => {
   if (!origin) return "*";
-  return ORIGIN_RULES.some((re) => re.test(origin)) ? origin : "*";
+  const normalized = normalizeOrigin(origin);
+  if (!normalized) {
+    return "*";
+  }
+  return ORIGIN_RULES.some((re) => re.test(normalized)) ? origin : "*";
 };
 
 interface UserContext {
