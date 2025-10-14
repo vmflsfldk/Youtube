@@ -108,3 +108,40 @@
 - 채널/키워드 검색 후 인기 클립 자동 생성
 - 모바일 PWA 지원, 키보드 단축키(I/O로 in/out 설정 등)
 
+## 7. 구현 가이드
+
+### 백엔드(Spring Boot)
+
+프로젝트는 `backend` 디렉터리의 Spring Boot 애플리케이션으로 구성되어 있으며, H2 인메모리 데이터베이스를 기본으로 사용합니다.
+
+```bash
+cd backend
+mvn spring-boot:run
+```
+
+헤더에 `X-User-Email`, `X-User-Name` 을 설정하면 요청 사용자 컨텍스트가 생성됩니다. 헤더가 없으면 게스트 계정으로 처리됩니다.
+
+주요 엔드포인트 요약:
+
+| Method | Endpoint | 설명 |
+| --- | --- | --- |
+| POST | `/api/artists` | 아티스트 생성 |
+| GET | `/api/artists?mine=true` | 즐겨찾기 아티스트 조회 |
+| POST | `/api/users/me/favorites` | 즐겨찾기 토글 |
+| POST | `/api/videos` | YouTube URL 메타데이터 저장 |
+| POST | `/api/clips` | 클립 생성 |
+| GET | `/api/clips?videoId=` | 특정 영상의 클립 조회 |
+| POST | `/api/clips/auto-detect` | 자막/설명 기반 추천 클립 |
+
+### 프론트엔드(React + Vite)
+
+`frontend` 디렉터리에는 React 기반 관리 도구가 포함되어 있습니다. Vite 개발 서버는 백엔드(`localhost:8080`)로 API 프록시를 제공합니다.
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+로그인 헤더 값, 아티스트/영상/클립을 순차적으로 등록하고 자동 추천 기능을 실행할 수 있습니다.
+
