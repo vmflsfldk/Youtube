@@ -34,8 +34,10 @@ interface ClipCandidateResponse {
   label: string;
 }
 
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '/api';
+
 const http = axios.create({
-  baseURL: '/api'
+  baseURL: apiBaseUrl
 });
 
 export default function App() {
