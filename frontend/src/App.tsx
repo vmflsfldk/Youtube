@@ -62,45 +62,56 @@ export default function App() {
   );
 
   const fetchArtists = useCallback(async () => {
-    const response = await http.get<ArtistResponse[]>('/artists', { headers: authHeaders });
-    setArtists(response.data);
+    try {
+      const response = await http.get<ArtistResponse[]>('/artists', { headers: authHeaders });
+      setArtists(response.data);
+    } catch (error) {
+      console.error('Failed to load artists', error);
+      setArtists([]);
+    }
   }, [authHeaders]);
 
   useEffect(() => {
-    fetchArtists().catch(() => {
-      setArtists([]);
-    });
+    void fetchArtists();
   }, [fetchArtists]);
 
   const handleArtistSubmit = async (event: FormEvent) => {
     event.preventDefault();
-    await http.post<ArtistResponse>(
-      '/artists',
-      { name: artistForm.name, youtubeChannelId: artistForm.channelId },
-      { headers: authHeaders }
-    );
-    setArtistForm({ name: '', channelId: '' });
-    await fetchArtists();
+    try {
+      await http.post<ArtistResponse>(
+        '/artists',
+        { name: artistForm.name, youtubeChannelId: artistForm.channelId },
+        { headers: authHeaders }
+      );
+      setArtistForm({ name: '', channelId: '' });
+      await fetchArtists();
+    } catch (error) {
+      console.error('Failed to create artist', error);
+    }
   };
 
   const handleVideoSubmit = async (event: FormEvent) => {
     event.preventDefault();
-    const response = await http.post<VideoResponse>(
-      '/videos',
-      {
-        videoUrl: videoForm.url,
-        artistId: Number(videoForm.artistId),
-        description: videoForm.description,
-        captionsJson: videoForm.captionsJson
-      },
-      { headers: authHeaders }
-    );
-    setVideos((prev) => {
-      const otherVideos = prev.filter((video) => video.id !== response.data.id);
-      return [...otherVideos, response.data];
-    });
-    setSelectedVideo(response.data.id);
-    setVideoForm((prev) => ({ ...prev, url: '', description: '', captionsJson: '' }));
+    try {
+      const response = await http.post<VideoResponse>(
+        '/videos',
+        {
+          videoUrl: videoForm.url,
+          artistId: Number(videoForm.artistId),
+          description: videoForm.description,
+          captionsJson: videoForm.captionsJson
+        },
+        { headers: authHeaders }
+      );
+      setVideos((prev) => {
+        const otherVideos = prev.filter((video) => video.id !== response.data.id);
+        return [...otherVideos, response.data];
+      });
+      setSelectedVideo(response.data.id);
+      setVideoForm((prev) => ({ ...prev, url: '', description: '', captionsJson: '' }));
+    } catch (error) {
+      console.error('Failed to save video', error);
+    }
   };
 
   useEffect(() => {
@@ -112,11 +123,16 @@ export default function App() {
     setClipCandidates([]);
 
     (async () => {
-      const response = await http.get<ClipResponse[]>('/clips', {
-        headers: authHeaders,
-        params: { videoId: selectedVideo }
-      });
-      setClips(response.data);
+      try {
+        const response = await http.get<ClipResponse[]>('/clips', {
+          headers: authHeaders,
+          params: { videoId: selectedVideo }
+        });
+        setClips(response.data);
+      } catch (error) {
+        console.error('Failed to load clips', error);
+        setClips([]);
+      }
     })();
   }, [selectedVideo, authHeaders]);
 
@@ -125,34 +141,43 @@ export default function App() {
     if (!selectedVideo) {
       return;
     }
-    const response = await http.post<ClipResponse>(
-      '/clips',
-      {
-        videoId: selectedVideo,
-        title: clipForm.title,
-        startSec: Number(clipForm.startSec),
-        endSec: Number(clipForm.endSec),
-        tags: clipForm.tags
-          .split(',')
-          .map((tag) => tag.trim())
-          .filter(Boolean)
-      },
-      { headers: authHeaders }
-    );
-    setClips((prev) => [...prev, response.data]);
-    setClipForm({ title: '', startSec: 0, endSec: 0, tags: '' });
+    try {
+      const response = await http.post<ClipResponse>(
+        '/clips',
+        {
+          videoId: selectedVideo,
+          title: clipForm.title,
+          startSec: Number(clipForm.startSec),
+          endSec: Number(clipForm.endSec),
+          tags: clipForm.tags
+            .split(',')
+            .map((tag) => tag.trim())
+            .filter(Boolean)
+        },
+        { headers: authHeaders }
+      );
+      setClips((prev) => [...prev, response.data]);
+      setClipForm({ title: '', startSec: 0, endSec: 0, tags: '' });
+    } catch (error) {
+      console.error('Failed to create clip', error);
+    }
   };
 
   const runAutoDetect = async () => {
     if (!selectedVideo) {
       return;
     }
-    const response = await http.post<ClipCandidateResponse[]>(
-      '/clips/auto-detect',
-      { videoId: selectedVideo, mode: autoDetectMode },
-      { headers: authHeaders }
-    );
-    setClipCandidates(response.data);
+    try {
+      const response = await http.post<ClipCandidateResponse[]>(
+        '/clips/auto-detect',
+        { videoId: selectedVideo, mode: autoDetectMode },
+        { headers: authHeaders }
+      );
+      setClipCandidates(response.data);
+    } catch (error) {
+      console.error('Failed to auto-detect clips', error);
+      setClipCandidates([]);
+    }
   };
 
   useEffect(() => {
@@ -165,18 +190,24 @@ export default function App() {
     }
 
     (async () => {
-      const response = await http.get<VideoResponse[]>('/videos', {
-        headers: authHeaders,
-        params: { artistId: Number(videoForm.artistId) }
-      });
+      try {
+        const response = await http.get<VideoResponse[]>('/videos', {
+          headers: authHeaders,
+          params: { artistId: Number(videoForm.artistId) }
+        });
 
-      setVideos(response.data);
-      setSelectedVideo((previous) => {
-        if (previous && response.data.some((video) => video.id === previous)) {
-          return previous;
-        }
-        return response.data.length > 0 ? response.data[0].id : null;
-      });
+        setVideos(response.data);
+        setSelectedVideo((previous) => {
+          if (previous && response.data.some((video) => video.id === previous)) {
+            return previous;
+          }
+          return response.data.length > 0 ? response.data[0].id : null;
+        });
+      } catch (error) {
+        console.error('Failed to load videos', error);
+        setVideos([]);
+        setSelectedVideo(null);
+      }
     })();
   }, [videoForm.artistId, authHeaders]);
 
