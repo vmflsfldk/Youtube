@@ -61,6 +61,12 @@ wrangler dev
 
 - 기본 바인딩으로 로컬 D1 프록시가 연결됩니다.
 - API 호출 시 `X-User-Email`, `X-User-Name` 헤더를 지정하면 Worker가 사용자 컨텍스트를 생성합니다.
+- **중요:** 위 모드는 Cloudflare D1이 아닌 Miniflare 기반의 로컬 인메모리 DB를 사용합니다. 실제 D1에 쓰기가 발생하지 않으므로
+  Cloudflare 대시보드에서는 데이터가 증가하지 않습니다. 배포 전 실제 D1을 대상으로 테스트하려면 아래 중 하나를 선택합니다.
+  - `wrangler dev --remote`: 프리뷰 모드에서 Cloudflare 인프라 및 실제 D1 바인딩을 사용합니다. 네트워크 지연이 존재하지만 DB 쓰기 결과를 즉시 확인할 수 있습니다.
+  - 이미 배포된 워커 엔드포인트(예: `https://yt-clip-api.<account>.workers.dev`)에 직접 요청합니다.
+  - CLI에서 `wrangler d1 execute ytclipdb --command "SELECT * FROM artists"`와 같이 쿼리를 실행해 실제 DB의 상태를 확인합니다.
+  - API 요청 후 `wrangler tail yt-clip-api --persist`로 워커 로그를 확인하면 요청이 원격 워커까지 도달했는지 빠르게 검증할 수 있습니다.
 
 ## 6. 프로덕션 배포
 
