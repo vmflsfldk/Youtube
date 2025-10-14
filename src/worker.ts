@@ -243,7 +243,7 @@ async function createVideo(request: Request, env: Env, user: UserContext): Promi
   if (!Number.isFinite(artistId)) {
     throw new HttpError(400, "artistId must be a number");
   }
-  await ensureArtist(env, artistId);
+  await ensureArtist(env, artistId, user.id);
 
   const videoUrl = typeof body.videoUrl === "string" ? body.videoUrl : "";
   const description = typeof body.description === "string" ? body.description : null;
@@ -318,7 +318,7 @@ async function listVideos(url: URL, env: Env, user: UserContext): Promise<Respon
   if (!Number.isFinite(artistId)) {
     throw new HttpError(400, "artistId query parameter is required");
   }
-  await ensureArtist(env, artistId);
+  await ensureArtist(env, artistId, user.id);
   const { results } = await env.DB.prepare(
     `SELECT * FROM videos WHERE artist_id = ? ORDER BY id DESC`
   ).bind(artistId).all<VideoRow>();
@@ -346,7 +346,7 @@ async function createClip(request: Request, env: Env, user: UserContext): Promis
   if (endSec <= startSec) {
     throw new HttpError(400, "endSec must be greater than startSec");
   }
-  await ensureVideo(env, videoId);
+  await ensureVideo(env, videoId, user.id);
 
   const result = await env.DB.prepare(
     `INSERT INTO clips (video_id, title, start_sec, end_sec) VALUES (?, ?, ?, ?)`
@@ -378,7 +378,7 @@ async function listClips(url: URL, env: Env, user: UserContext): Promise<Respons
     if (!Number.isFinite(artistId)) {
       throw new HttpError(400, "artistId must be a number");
     }
-    await ensureArtist(env, artistId);
+    await ensureArtist(env, artistId, user.id);
     const { results } = await env.DB.prepare(
       `SELECT c.id, c.video_id, c.title, c.start_sec, c.end_sec
          FROM clips c
@@ -394,7 +394,7 @@ async function listClips(url: URL, env: Env, user: UserContext): Promise<Respons
     if (!Number.isFinite(videoId)) {
       throw new HttpError(400, "videoId must be a number");
     }
-    await ensureVideo(env, videoId);
+    await ensureVideo(env, videoId, user.id);
     const { results } = await env.DB.prepare(
       `SELECT id, video_id, title, start_sec, end_sec
          FROM clips
@@ -414,8 +414,14 @@ async function autoDetect(request: Request, env: Env, user: UserContext): Promis
   if (!Number.isFinite(videoId)) {
     throw new HttpError(400, "videoId must be a number");
   }
-  const row = await env.DB.prepare("SELECT * FROM videos WHERE id = ?")
-    .bind(videoId)
+  const row = await env.DB.prepare(
+    `SELECT v.*
+       FROM videos v
+       JOIN artists a ON a.id = v.artist_id
+      WHERE v.id = ?
+        AND a.created_by = ?`
+  )
+    .bind(videoId, user.id)
     .first<VideoRow>();
   if (!row) {
     throw new HttpError(404, `Video not found: ${videoId}`);
@@ -461,18 +467,29 @@ async function getOrCreateUser(env: Env, headers: Headers): Promise<UserContext>
   return { id: userId, email, displayName };
 }
 
-async function ensureArtist(env: Env, artistId: number): Promise<void> {
-  const artist = await env.DB.prepare("SELECT id FROM artists WHERE id = ?")
-    .bind(artistId)
+async function ensureArtist(env: Env, artistId: number, userId: number): Promise<void> {
+  const artist = await env.DB.prepare(
+    `SELECT id
+       FROM artists
+      WHERE id = ?
+        AND created_by = ?`
+  )
+    .bind(artistId, userId)
     .first<{ id: number }>();
   if (!artist) {
     throw new HttpError(404, `Artist not found: ${artistId}`);
   }
 }
 
-async function ensureVideo(env: Env, videoId: number): Promise<void> {
-  const video = await env.DB.prepare("SELECT id FROM videos WHERE id = ?")
-    .bind(videoId)
+async function ensureVideo(env: Env, videoId: number, userId: number): Promise<void> {
+  const video = await env.DB.prepare(
+    `SELECT v.id
+       FROM videos v
+       JOIN artists a ON a.id = v.artist_id
+      WHERE v.id = ?
+        AND a.created_by = ?`
+  )
+    .bind(videoId, userId)
     .first<{ id: number }>();
   if (!video) {
     throw new HttpError(404, `Video not found: ${videoId}`);
