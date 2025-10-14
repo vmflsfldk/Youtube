@@ -61,6 +61,24 @@ interface CorsConfig {
   requestHeaders: string | null;
 }
 
+const ALLOWED_ORIGINS = new Set<string>([
+  "https://youtube-1my.pages.dev",
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+  "http://localhost:4173",
+  "http://127.0.0.1:4173"
+]);
+
+const resolveAllowedOrigin = (origin: string | null): string | null => {
+  if (!origin) {
+    return "*";
+  }
+  if (ALLOWED_ORIGINS.has(origin)) {
+    return origin;
+  }
+  return null;
+};
+
 interface UserContext {
   id: number;
   email: string;
@@ -107,11 +125,12 @@ class HttpError extends Error {
 
 const corsHeaders = (config: CorsConfig): Headers => {
   const headers = new Headers();
-  if (config.origin) {
-    headers.set("Access-Control-Allow-Origin", config.origin);
+  const allowedOrigin = resolveAllowedOrigin(config.origin);
+  if (allowedOrigin) {
+    headers.set("Access-Control-Allow-Origin", allowedOrigin);
+  }
+  if (allowedOrigin && allowedOrigin !== "*") {
     headers.set("Vary", "Origin");
-  } else {
-    headers.set("Access-Control-Allow-Origin", "*");
   }
   const requestedHeaders = config.requestHeaders;
   if (requestedHeaders && requestedHeaders.trim().length > 0) {
@@ -120,6 +139,10 @@ const corsHeaders = (config: CorsConfig): Headers => {
     headers.set("Access-Control-Allow-Headers", "Content-Type, X-User-Email, X-User-Name");
   }
   headers.set("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+  if (allowedOrigin && allowedOrigin !== "*") {
+    headers.set("Access-Control-Allow-Credentials", "true");
+  }
+  headers.set("Access-Control-Max-Age", "86400");
   return headers;
 };
 
