@@ -156,6 +156,12 @@ npm run dev
 
 로그인 헤더 값, 아티스트/영상/클립을 순차적으로 등록하고 자동 추천 기능을 실행할 수 있습니다.
 
+#### Cloudflare Pages 배포
+
+- 루트 디렉터리에 있는 `package.json`이 Cloudflare Pages에서 `npm install`과 `npm run build`를 실행하면 자동으로 `frontend` 의존성을 설치하고 빌드를 수행하도록 설정되어 있습니다.
+- Pages의 **Build command**는 `npm run build`, **Build output directory**는 `frontend/dist`로 지정합니다.
+- API 호출은 기본적으로 동일 도메인의 `/api`로 전송되므로, Cloudflare Workers 또는 다른 백엔드 엔드포인트를 사용한다면 `VITE_API_BASE_URL` 환경 변수를 설정하세요.
+
 ## 8. Cloudflare Workers 배포
 
 `yt-clip-api` Worker와 D1 데이터베이스를 Cloudflare에 배포하려면 [Cloudflare Workers 배포 가이드](docs/deployment-cloudflare.md)를 참고하세요. Wrangler 로그인, D1 데이터베이스 생성, 마이그레이션 적용, `wrangler deploy`를 통한 프로덕션 배포 절차를 단계별로 정리했습니다.
