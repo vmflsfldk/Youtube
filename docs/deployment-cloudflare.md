@@ -76,4 +76,29 @@ wrangler deploy
 - Cloudflare 대시보드 → Workers → Deployments에서 최신 배포가 활성화되어 있는지 확인합니다.
 - 필요 시 `wrangler tail`로 실시간 로그를 수집해 에러를 파악합니다.
 
+## 8. Super Bot Fight Mode 예외 설정
+
+워커 엔드포인트가 Cloudflare Bot 관리 기능(Managed Challenge, Super Bot Fight Mode 등)에 의해 차단되면 프론트엔드에서 `OPTIONS`,
+`GET`, `POST` 요청이 실패하고, `wrangler tail`에도 호출이 기록되지 않습니다. 다음과 같이 예외 규칙을 추가해 워커 도메인에 대한 정당한
+트래픽을 허용하세요.
+
+1. Cloudflare 대시보드에서 **Security → WAF (또는 Bots)** 메뉴로 이동합니다.
+2. `yt-clip-api` 워커 호스트에 대한 커스텀 규칙을 추가하고 아래와 같은 Expression을 설정합니다.
+
+   ```
+   (http.host eq "yt-clip-api.word-game.workers.dev" and http.request.method in {"OPTIONS","GET","POST"})
+   ```
+
+3. **Action**을 **Skip**으로 지정하고, Super Bot Fight Mode/Managed Challenge/JS Challenge가 건너뛰어지도록 설정합니다.
+4. 규칙을 저장한 뒤, 아래와 같이 사전 요청을 다시 전송해 204 응답과 `Access-Control-Allow-*` 헤더가 반환되는지 확인합니다.
+
+   ```bash
+   curl -i -X OPTIONS "https://yt-clip-api.word-game.workers.dev/api/artists" \
+     -H "Origin: https://youtube-1my.pages.dev" \
+     -H "Access-Control-Request-Method: POST" \
+     -H "Access-Control-Request-Headers: content-type, authorization"
+   ```
+
+정상적으로 구성됐다면 Super Bot Fight Mode가 워커 호출을 차단하지 않으며, `wrangler tail`에서도 요청 로그를 확인할 수 있습니다.
+
 이 과정을 통해 Cloudflare Workers와 D1 환경에 `yt-clip-api`를 배포할 수 있습니다.
