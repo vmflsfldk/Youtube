@@ -156,3 +156,7 @@ npm run dev
 
 로그인 헤더 값, 아티스트/영상/클립을 순차적으로 등록하고 자동 추천 기능을 실행할 수 있습니다.
 
+## 8. Cloudflare Workers 배포
+
+`yt-clip-api` Worker와 D1 데이터베이스를 Cloudflare에 배포하려면 [Cloudflare Workers 배포 가이드](docs/deployment-cloudflare.md)를 참고하세요. Wrangler 로그인, D1 데이터베이스 생성, 마이그레이션 적용, `wrangler deploy`를 통한 프로덕션 배포 절차를 단계별로 정리했습니다.
+
