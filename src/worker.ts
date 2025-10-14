@@ -75,9 +75,7 @@ const formatAllowedHeaders = (requestedHeaders: string | null): string => {
         continue;
       }
       const lower = header.toLowerCase();
-      if (!headerMap.has(lower)) {
-        headerMap.set(lower, header);
-      }
+      headerMap.set(lower, header);
     }
   }
   return Array.from(headerMap.values()).join(", ");
