@@ -61,57 +61,16 @@ interface CorsConfig {
   requestHeaders: string | null;
 }
 
-const DEFAULT_ALLOWED_HEADERS = ["Content-Type", "X-User-Email", "X-User-Name"] as const;
+const ORIGIN_RULES: RegExp[] = [
+  /^https:\/\/youtube-1my\.pages\.dev$/,
+  /^https:\/\/[a-z0-9-]+\.youtube-1my\.pages\.dev$/,
+  /^http:\/\/localhost:(5173|4173)$/,
+  /^http:\/\/127\.0\.0\.1:(5173|4173)$/
+];
 
-const formatAllowedHeaders = (requestedHeaders: string | null): string => {
-  const headerMap = new Map<string, string>();
-  for (const header of DEFAULT_ALLOWED_HEADERS) {
-    headerMap.set(header.toLowerCase(), header);
-  }
-  if (requestedHeaders) {
-    for (const rawHeader of requestedHeaders.split(",")) {
-      const header = rawHeader.trim();
-      if (!header) {
-        continue;
-      }
-      const lower = header.toLowerCase();
-      headerMap.set(lower, header);
-    }
-  }
-  return Array.from(headerMap.values()).join(", ");
-};
-
-const ALLOWED_ORIGINS = new Set<string>([
-  "https://youtube-1my.pages.dev",
-  "http://localhost:5173",
-  "http://127.0.0.1:5173",
-  "http://localhost:4173",
-  "http://127.0.0.1:4173"
-]);
-
-const ALLOWED_ORIGIN_HOST_SUFFIXES = ["youtube-1my.pages.dev"] as const;
-
-const isAllowedOrigin = (origin: string): boolean => {
-  if (ALLOWED_ORIGINS.has(origin)) {
-    return true;
-  }
-
-  try {
-    const { hostname } = new URL(origin);
-    return ALLOWED_ORIGIN_HOST_SUFFIXES.some((suffix) => hostname === suffix || hostname.endsWith(`.${suffix}`));
-  } catch {
-    return false;
-  }
-};
-
-const resolveAllowedOrigin = (origin: string | null): string | null => {
-  if (!origin) {
-    return "*";
-  }
-  if (isAllowedOrigin(origin)) {
-    return origin;
-  }
-  return null;
+const resolveAllowedOrigin = (origin: string | null): string => {
+  if (!origin) return "*";
+  return ORIGIN_RULES.some((re) => re.test(origin)) ? origin : "*";
 };
 
 interface UserContext {
@@ -158,20 +117,35 @@ class HttpError extends Error {
   }
 }
 
+const collectAllowedHeaders = (requestedHeaders: string | null): string => {
+  const headers = new Map<string, string>();
+  for (const header of ["Content-Type", "Authorization", "X-User-Email", "X-User-Name"]) {
+    headers.set(header.toLowerCase(), header);
+  }
+  if (requestedHeaders) {
+    for (const rawHeader of requestedHeaders.split(",")) {
+      const header = rawHeader.trim();
+      if (!header) {
+        continue;
+      }
+      headers.set(header.toLowerCase(), header);
+    }
+  }
+  return Array.from(headers.values()).join(", ");
+};
+
 const corsHeaders = (config: CorsConfig): Headers => {
   const headers = new Headers();
   const allowedOrigin = resolveAllowedOrigin(config.origin);
-  if (allowedOrigin) {
-    headers.set("Access-Control-Allow-Origin", allowedOrigin);
-  }
-  if (allowedOrigin && allowedOrigin !== "*") {
+  headers.set("Access-Control-Allow-Origin", allowedOrigin);
+  if (allowedOrigin !== "*") {
     headers.set("Vary", "Origin");
   }
   headers.append("Vary", "Access-Control-Request-Headers");
   headers.append("Vary", "Access-Control-Request-Method");
-  headers.set("Access-Control-Allow-Headers", formatAllowedHeaders(config.requestHeaders));
+  headers.set("Access-Control-Allow-Headers", collectAllowedHeaders(config.requestHeaders));
   headers.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  if (allowedOrigin && allowedOrigin !== "*") {
+  if (allowedOrigin !== "*") {
     headers.set("Access-Control-Allow-Credentials", "true");
   }
   headers.set("Access-Control-Max-Age", "86400");
@@ -197,6 +171,8 @@ const normalizePath = (pathname: string): string => {
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    const url = new URL(request.url);
+    const path = normalizePath(url.pathname);
     const cors: CorsConfig = {
       origin: request.headers.get("Origin"),
       requestHeaders: request.headers.get("Access-Control-Request-Headers")
@@ -206,55 +182,66 @@ export default {
       return emptyResponse(204, cors);
     }
 
-    const url = new URL(request.url);
-    const path = normalizePath(url.pathname);
-
-    try {
-      if (request.method === "POST" && path === "/api/users/login") {
-        return await loginUser(request, env, cors);
-      }
-
-      const user = await getOrCreateUser(env, request.headers);
-
-      if (request.method === "POST" && path === "/api/artists") {
-        return await createArtist(request, env, user, cors);
-      }
-      if (request.method === "GET" && path === "/api/artists") {
-        return await listArtists(url, env, user, cors);
-      }
-      if (request.method === "POST" && path === "/api/users/me/favorites") {
-        return await toggleFavorite(request, env, user, cors);
-      }
-      if (path === "/api/videos") {
-        if (request.method === "POST") {
-          return await createVideo(request, env, user, cors);
-        }
-        if (request.method === "GET") {
-          return await listVideos(url, env, user, cors);
-        }
-      }
-      if (path === "/api/clips") {
-        if (request.method === "POST") {
-          return await createClip(request, env, user, cors);
-        }
-        if (request.method === "GET") {
-          return await listClips(url, env, user, cors);
-        }
-      }
-      if (request.method === "POST" && path === "/api/clips/auto-detect") {
-        return await autoDetect(request, env, user, cors);
-      }
-
-      return jsonResponse({ error: "Not Found" }, 404, cors);
-    } catch (error) {
-      if (error instanceof HttpError) {
-        return jsonResponse({ error: error.message }, error.status, cors);
-      }
-      console.error("Unexpected error", error);
-      return jsonResponse({ error: "Internal Server Error" }, 500, cors);
+    if (path.startsWith("/api/") || path.startsWith("/auth/")) {
+      return await handleApi(request, env, cors, url, path);
     }
+
+    return new Response("ok");
   }
 };
+
+async function handleApi(
+  request: Request,
+  env: Env,
+  cors: CorsConfig,
+  url: URL,
+  path: string
+): Promise<Response> {
+  try {
+    if (request.method === "POST" && path === "/api/users/login") {
+      return await loginUser(request, env, cors);
+    }
+
+    const user = await getOrCreateUser(env, request.headers);
+
+    if (request.method === "POST" && path === "/api/artists") {
+      return await createArtist(request, env, user, cors);
+    }
+    if (request.method === "GET" && path === "/api/artists") {
+      return await listArtists(url, env, user, cors);
+    }
+    if (request.method === "POST" && path === "/api/users/me/favorites") {
+      return await toggleFavorite(request, env, user, cors);
+    }
+    if (path === "/api/videos") {
+      if (request.method === "POST") {
+        return await createVideo(request, env, user, cors);
+      }
+      if (request.method === "GET") {
+        return await listVideos(url, env, user, cors);
+      }
+    }
+    if (path === "/api/clips") {
+      if (request.method === "POST") {
+        return await createClip(request, env, user, cors);
+      }
+      if (request.method === "GET") {
+        return await listClips(url, env, user, cors);
+      }
+    }
+    if (request.method === "POST" && path === "/api/clips/auto-detect") {
+      return await autoDetect(request, env, user, cors);
+    }
+
+    return jsonResponse({ error: "Not Found" }, 404, cors);
+  } catch (error) {
+    if (error instanceof HttpError) {
+      return jsonResponse({ error: error.message }, error.status, cors);
+    }
+    console.error("Unexpected error", error);
+    return jsonResponse({ error: "Internal Server Error" }, 500, cors);
+  }
+}
 
 async function createArtist(
   request: Request,
