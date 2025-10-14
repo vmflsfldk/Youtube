@@ -100,5 +100,15 @@ export const onRequest = async ({ request, params, env }: EventContext) => {
   out.set("Access-Control-Allow-Headers", "content-type, authorization, x-user-email, x-user-name");
   out.set("Vary", "Origin");
 
-  return new Response(resp.body, { status: resp.status, headers: out });
+  if (!out.has("Content-Type") && resp.headers.has("Content-Type")) {
+    out.set("Content-Type", resp.headers.get("Content-Type")!);
+  }
+
+  const bodyBuffer = await resp.arrayBuffer();
+
+  return new Response(bodyBuffer, {
+    status: resp.status,
+    statusText: resp.statusText,
+    headers: out,
+  });
 };
