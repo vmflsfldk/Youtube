@@ -1,4 +1,9 @@
-export const onRequest: PagesFunction = async ({ request, params }) => {
+interface EventContext {
+  request: Request;
+  params: Record<string, string | string[] | undefined>;
+}
+
+export const onRequest = async ({ request, params }: EventContext) => {
   const url = new URL(request.url);
   const pathParam = (params as Record<string, string | string[] | undefined>).path;
   const segments = Array.isArray(pathParam)
