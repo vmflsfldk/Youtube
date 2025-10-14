@@ -59,6 +59,7 @@ interface ClipCandidateResponse {
 interface CorsConfig {
   origin: string | null;
   requestHeaders: string | null;
+  allowPrivateNetwork: boolean;
 }
 
 const ORIGIN_RULES: RegExp[] = [
@@ -166,7 +167,43 @@ const corsHeaders = (config: CorsConfig): Headers => {
     headers.set("Access-Control-Allow-Credentials", "true");
   }
   headers.set("Access-Control-Max-Age", "86400");
+  if (config.allowPrivateNetwork) {
+    headers.set("Access-Control-Allow-Private-Network", "true");
+  }
   return headers;
+};
+
+const mergeHeaderList = (existing: string | null, value: string): string => {
+  if (!existing) {
+    return value;
+  }
+  const parts = (raw: string) =>
+    raw
+      .split(",")
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0);
+  const merged = new Set<string>(parts(existing));
+  for (const item of parts(value)) {
+    merged.add(item);
+  }
+  return Array.from(merged).join(", ");
+};
+
+const withCors = (response: Response, cors: CorsConfig): Response => {
+  const headers = new Headers(response.headers);
+  const corsMap = corsHeaders(cors);
+  for (const [key, value] of corsMap.entries()) {
+    if (key.toLowerCase() === "vary") {
+      headers.set("Vary", mergeHeaderList(headers.get("Vary"), value));
+    } else {
+      headers.set(key, value);
+    }
+  }
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers
+  });
 };
 
 const jsonResponse = (data: unknown, status: number, cors: CorsConfig): Response => {
@@ -192,7 +229,8 @@ export default {
     const path = normalizePath(url.pathname);
     const cors: CorsConfig = {
       origin: request.headers.get("Origin"),
-      requestHeaders: request.headers.get("Access-Control-Request-Headers")
+      requestHeaders: request.headers.get("Access-Control-Request-Headers"),
+      allowPrivateNetwork: request.headers.get("Access-Control-Request-Private-Network") === "true"
     };
 
     if (request.method === "OPTIONS") {
@@ -203,7 +241,7 @@ export default {
       return await handleApi(request, env, cors, url, path);
     }
 
-    return new Response("ok");
+    return withCors(new Response("ok"), cors);
   }
 };
 
