@@ -34,7 +34,8 @@ interface ClipCandidateResponse {
   label: string;
 }
 
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '/api';
+const apiBaseUrl =
+  import.meta.env.VITE_API_BASE_URL || 'https://yt-clip-api.word-game.workers.dev';
 
 const http = axios.create({
   baseURL: apiBaseUrl
