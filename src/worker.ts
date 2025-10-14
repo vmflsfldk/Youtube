@@ -91,11 +91,26 @@ const ALLOWED_ORIGINS = new Set<string>([
   "http://127.0.0.1:4173"
 ]);
 
+const ALLOWED_ORIGIN_HOST_SUFFIXES = ["youtube-1my.pages.dev"] as const;
+
+const isAllowedOrigin = (origin: string): boolean => {
+  if (ALLOWED_ORIGINS.has(origin)) {
+    return true;
+  }
+
+  try {
+    const { hostname } = new URL(origin);
+    return ALLOWED_ORIGIN_HOST_SUFFIXES.some((suffix) => hostname === suffix || hostname.endsWith(`.${suffix}`));
+  } catch {
+    return false;
+  }
+};
+
 const resolveAllowedOrigin = (origin: string | null): string | null => {
   if (!origin) {
     return "*";
   }
-  if (ALLOWED_ORIGINS.has(origin)) {
+  if (isAllowedOrigin(origin)) {
     return origin;
   }
   return null;
