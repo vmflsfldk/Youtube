@@ -146,7 +146,7 @@ mvn spring-boot:run
 
 ### 프론트엔드(React + Vite)
 
-`frontend` 디렉터리에는 React 기반 관리 도구가 포함되어 있습니다. Vite 개발 서버는 백엔드(`localhost:8080`)로 API 프록시를 제공합니다.
+`frontend` 디렉터리에는 React 기반 관리 도구가 포함되어 있습니다. Vite 개발 서버는 기본적으로 Cloudflare Workers 로컬 개발 포트(`http://127.0.0.1:8787`)로 API 프록시를 제공합니다. 다른 백엔드 주소를 사용해야 한다면 `VITE_DEV_API_PROXY_TARGET` 환경 변수를 설정해 원하는 URL로 프록시 대상을 변경할 수 있습니다.
 
 ```bash
 cd frontend
