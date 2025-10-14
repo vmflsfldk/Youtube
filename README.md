@@ -122,7 +122,7 @@
   ```
 
 - 요청 헤더 `X-User-Email`, `X-User-Name` 으로 사용자 컨텍스트를 전달하며, 값이 없으면 게스트 계정이 자동으로 생성됩니다.
-- 프론트엔드에서 Cloudflare Worker를 호출하려면 `VITE_API_BASE_URL`을 Worker 엔드포인트(예: `https://yt-clip-api.your-account.workers.dev`)로 설정합니다. 미설정 시 `https://yt-clip-api.word-game.workers.dev` 주소가 기본값으로 사용됩니다.
+- 프론트엔드에서 Cloudflare Worker를 호출하려면 `VITE_API_BASE_URL`을 Worker 엔드포인트(예: `https://yt-clip-api.your-account.workers.dev`)로 설정합니다. Cloudflare Pages에 함께 배포한 경우 기본값은 동일 오리진 `/api` 경로이며, Pages Functions가 `yt-clip-api.word-game.workers.dev`로 프록시합니다.
 - 제공되는 REST 엔드포인트는 기존 Spring Boot 버전과 동일합니다.
 
 | Method | Endpoint | 설명 |
@@ -160,7 +160,7 @@ npm run dev
 
 - 루트 디렉터리에 있는 `package.json`이 Cloudflare Pages에서 `npm install`과 `npm run build`를 실행하면 자동으로 `frontend` 의존성을 설치하고 빌드를 수행하도록 설정되어 있습니다.
 - Pages의 **Build command**는 `npm run build`, **Build output directory**는 `frontend/dist`로 지정합니다.
-- API 호출은 기본적으로 `https://yt-clip-api.word-game.workers.dev`로 전송되므로, Cloudflare Workers 또는 다른 백엔드 엔드포인트를 사용한다면 `VITE_API_BASE_URL` 환경 변수를 설정하세요.
+- Cloudflare Pages Functions가 `/api/*` 경로를 워커로 프록시하므로, 기본 설정만으로도 동일 오리진에서 API를 호출할 수 있습니다. 다른 백엔드 엔드포인트를 사용하려면 `VITE_API_BASE_URL` 환경 변수를 재정의하세요.
 
 ##### 배포 후 기본 점검(404 또는 1016 오류 대응)
 
