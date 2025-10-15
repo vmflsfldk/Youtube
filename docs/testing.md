@@ -117,13 +117,13 @@ wrangler d1 execute "$DB_NAME" --command '
 
 # 4) 사용자 ID를 이용해 HACHI 아티스트 추가 (예시는 사용자 ID = 1)
 wrangler d1 execute "$DB_NAME" --command '
-  INSERT INTO artists (name, youtube_channel_id, created_by)
-  VALUES ("HACHI", "https://www.youtube.com/@HACHIVSinger", 1);
+  INSERT INTO artists (name, display_name, youtube_channel_id, created_by)
+  VALUES ("HACHI", "하치", "https://www.youtube.com/@HACHIVSinger", 1);
 '
 
 # 5) 최종 확인
 wrangler d1 execute "$DB_NAME" --command '
-  SELECT id, name, youtube_channel_id FROM artists WHERE name = "HACHI";
+  SELECT id, name, display_name, youtube_channel_id FROM artists WHERE name = "HACHI";
 '
 ```
 
