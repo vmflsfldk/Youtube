@@ -79,12 +79,55 @@ const normalizeClip = (clip: ClipLike): ClipResponse => {
   };
 };
 
+const allowCrossOriginApi = String(import.meta.env.VITE_ALLOW_CROSS_ORIGIN_API ?? '')
+  .toLowerCase()
+  .trim() === 'true';
+
+const normalizeApiBase = (base: string): string => {
+  if (!base) {
+    return '/api';
+  }
+
+  const trimmed = base.trim().replace(/\/+$/, '');
+
+  if (/^https?:\/\//i.test(trimmed)) {
+    return trimmed.endsWith('/api') ? trimmed : `${trimmed}/api`;
+  }
+
+  const withLeadingSlash = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+  return withLeadingSlash.endsWith('/api') ? withLeadingSlash : `${withLeadingSlash}/api`;
+};
+
 const resolveApiBaseUrl = () => {
   const rawBase = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim();
-  const fallbackBase = '/api';
-  const base = rawBase && rawBase.length > 0 ? rawBase : fallbackBase;
-  const normalized = base.replace(/\/+$/, '');
-  return normalized.endsWith('/api') ? normalized : `${normalized}/api`;
+  const fallback = normalizeApiBase('/api');
+
+  if (!rawBase) {
+    return fallback;
+  }
+
+  const normalized = normalizeApiBase(rawBase);
+
+  if (allowCrossOriginApi) {
+    return normalized;
+  }
+
+  if (typeof window !== 'undefined') {
+    try {
+      const parsed = new URL(normalized, window.location.origin);
+      if (parsed.origin !== window.location.origin && /^https?:$/.test(parsed.protocol)) {
+        console.warn(
+          '[yt-clip] Cross-origin API base URL detected. Falling back to same-origin /api proxy to avoid Cloudflare preflight blocks.'
+        );
+        return fallback;
+      }
+    } catch (error) {
+      console.warn('[yt-clip] Failed to parse API base URL, defaulting to same-origin /api.', error);
+      return fallback;
+    }
+  }
+
+  return normalized;
 };
 
 const http = axios.create({

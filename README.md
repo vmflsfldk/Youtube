@@ -123,6 +123,7 @@
 
 - 요청 헤더 `X-User-Email`, `X-User-Name` 으로 사용자 컨텍스트를 전달하며, 값이 없으면 게스트 계정이 자동으로 생성됩니다.
 - 프론트엔드에서 Cloudflare Worker를 호출하려면 `VITE_API_BASE_URL`을 Worker 엔드포인트(예: `https://yt-clip-api.your-account.workers.dev`)로 설정합니다. Cloudflare Pages에 함께 배포한 경우 기본값은 동일 오리진 `/api` 경로이며, Pages Functions가 기본적으로 `yt-clip-api.word-game.workers.dev`로 프록시합니다. 자체 워커 엔드포인트를 사용하려면 Pages 프로젝트의 환경 변수 `API_PROXY_BASE_URL`(또는 `API_PROXY_ORIGIN`)을 원하는 호스트로 지정하세요. 값은 `https://your-worker.workers.dev` 혹은 `http://127.0.0.1:8787` 처럼 `/api` 이전까지만 입력하면 됩니다.
+- `workers.dev` 호스트로 직접 요청하면 Cloudflare Bot 관리 기능이 `OPTIONS` 프리플라이트를 403으로 차단하는 경우가 있습니다. 동일 오리진 `/api` 프록시를 사용하면 브라우저가 CORS 사전 요청을 보내지 않아 이 문제를 우회할 수 있습니다. 교차 오리진 호출이 꼭 필요한 경우에만 `VITE_ALLOW_CROSS_ORIGIN_API=true`를 설정해 강제로 외부 호스트를 사용하세요.
 - 제공되는 REST 엔드포인트는 기존 Spring Boot 버전과 동일합니다.
 
 | Method | Endpoint | 설명 |
