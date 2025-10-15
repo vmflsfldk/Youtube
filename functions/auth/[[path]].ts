@@ -7,7 +7,9 @@ const shouldUseProxy = (env: { API_PROXY_BASE_URL?: string; API_PROXY_ORIGIN?: s
 };
 
 export const onRequest = async (ctx: Parameters<typeof handleProxyRequest>[0]) => {
-  if (shouldUseProxy(ctx.env)) {
+  const useProxy = shouldUseProxy(ctx.env) || !("DB" in ctx.env && ctx.env.DB);
+
+  if (useProxy) {
     return handleProxyRequest(ctx, { upstreamPrefix: "auth" });
   }
 
@@ -15,12 +17,5 @@ export const onRequest = async (ctx: Parameters<typeof handleProxyRequest>[0]) =
     return worker.fetch(ctx.request, ctx.env as WorkerEnv);
   }
 
-  if ("DB" in ctx.env && ctx.env.DB) {
-    return worker.fetch(ctx.request, ctx.env as WorkerEnv);
-  }
-
-  return new Response(JSON.stringify({ error: "Database binding is not configured" }), {
-    status: 500,
-    headers: { "Content-Type": "application/json" }
-  });
+  return worker.fetch(ctx.request, ctx.env as WorkerEnv);
 };
