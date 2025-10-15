@@ -54,12 +54,15 @@ curl -X POST "http://127.0.0.1:8787/api/artists" \
   -H "X-User-Name: Test User" \
   -d '{"name":"NewJeans","youtubeChannelId":"UCwppdrjsBPAZg5_cUwQjfMQ"}'
 
-# 2) 내 아티스트 목록 확인
+# 2) 전체 공개 아티스트 목록 확인 (인증 없이 호출 가능)
+curl "http://127.0.0.1:8787/api/artists"
+
+# 3) 내 아티스트 즐겨찾기 목록 확인
 curl "http://127.0.0.1:8787/api/artists?mine=true" \
   -H "X-User-Email: test@example.com" \
   -H "X-User-Name: Test User"
 
-# 3) 영상과 클립 등록
+# 4) 영상과 클립 등록
 curl -X POST "http://127.0.0.1:8787/api/videos" \
   -H "Content-Type: application/json" \
   -H "X-User-Email: test@example.com" \
