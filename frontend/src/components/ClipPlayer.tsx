@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import YouTube, { YouTubePlayer, YouTubeProps } from 'react-youtube';
 
 interface ClipPlayerProps {
@@ -14,16 +14,28 @@ type YouTubeStateChangeEvent = Parameters<NonNullable<YouTubeProps['onStateChang
 export default function ClipPlayer({ youtubeVideoId, startSec, endSec, autoplay = true }: ClipPlayerProps) {
   const playerRef = useRef<YouTubePlayer | null>(null);
 
-  const handleReady = useCallback<NonNullable<YouTubeProps['onReady']>>(
-    (event: YouTubeReadyEvent) => {
-      playerRef.current = event.target;
-      event.target.loadVideoById({
+  const loadSegment = useCallback(
+    (player: YouTubePlayer) => {
+      const config = {
         videoId: youtubeVideoId,
         startSeconds: startSec,
         endSeconds: endSec
-      });
+      } as const;
+      if (autoplay) {
+        player.loadVideoById(config);
+      } else {
+        player.cueVideoById(config);
+      }
     },
-    [youtubeVideoId, startSec, endSec]
+    [youtubeVideoId, startSec, endSec, autoplay]
+  );
+
+  const handleReady = useCallback<NonNullable<YouTubeProps['onReady']>>(
+    (event: YouTubeReadyEvent) => {
+      playerRef.current = event.target;
+      loadSegment(event.target);
+    },
+    [loadSegment]
   );
 
   const handleStateChange = useCallback<NonNullable<YouTubeProps['onStateChange']>>(
@@ -34,6 +46,12 @@ export default function ClipPlayer({ youtubeVideoId, startSec, endSec, autoplay 
     },
     [startSec]
   );
+
+  useEffect(() => {
+    if (playerRef.current) {
+      loadSegment(playerRef.current);
+    }
+  }, [loadSegment]);
 
   return (
     <YouTube
