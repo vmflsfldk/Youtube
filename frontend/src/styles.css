@@ -328,6 +328,12 @@ button:disabled:hover {
   margin: 0 0 4px 0;
 }
 
+.playlist-video-title {
+  margin: 4px 0;
+  font-size: 0.9rem;
+  opacity: 0.85;
+}
+
 .tag-row {
   display: flex;
   flex-wrap: wrap;

@@ -48,6 +48,8 @@ interface ClipResponse {
   startSec: number;
   endSec: number;
   tags: string[];
+  youtubeVideoId?: string;
+  videoTitle?: string | null;
 }
 
 interface ClipCandidateResponse {
@@ -423,35 +425,39 @@ async function handleApi(
       return await loginUser(request, env, cors);
     }
 
-    const user = await getOrCreateUser(env, request.headers);
+    if (request.method === "GET" && path === "/api/public/clips") {
+      return await listPublicClips(env, cors);
+    }
+
+    const user = await getUserFromHeaders(env, request.headers);
 
     if (request.method === "POST" && path === "/api/artists") {
-      return await createArtist(request, env, user, cors);
+      return await createArtist(request, env, requireUser(user), cors);
     }
     if (request.method === "GET" && path === "/api/artists") {
-      return await listArtists(url, env, user, cors);
+      return await listArtists(url, env, requireUser(user), cors);
     }
     if (request.method === "POST" && path === "/api/users/me/favorites") {
-      return await toggleFavorite(request, env, user, cors);
+      return await toggleFavorite(request, env, requireUser(user), cors);
     }
     if (path === "/api/videos") {
       if (request.method === "POST") {
-        return await createVideo(request, env, user, cors);
+        return await createVideo(request, env, requireUser(user), cors);
       }
       if (request.method === "GET") {
-        return await listVideos(url, env, user, cors);
+        return await listVideos(url, env, requireUser(user), cors);
       }
     }
     if (path === "/api/clips") {
       if (request.method === "POST") {
-        return await createClip(request, env, user, cors);
+        return await createClip(request, env, requireUser(user), cors);
       }
       if (request.method === "GET") {
-        return await listClips(url, env, user, cors);
+        return await listClips(url, env, requireUser(user), cors);
       }
     }
     if (request.method === "POST" && path === "/api/clips/auto-detect") {
-      return await autoDetect(request, env, user, cors);
+      return await autoDetect(request, env, requireUser(user), cors);
     }
 
     return jsonResponse({ error: "Not Found" }, 404, cors);
@@ -690,7 +696,7 @@ async function createClip(
   if (!clipRow) {
     throw new HttpError(500, "Failed to load created clip");
   }
-  const clip = await attachTags(env, [clipRow]);
+  const clip = await attachTags(env, [clipRow], { includeVideoMeta: true });
   return jsonResponse(clip[0], 201, cors);
 }
 
@@ -710,7 +716,7 @@ async function listClips(url: URL, env: Env, user: UserContext, cors: CorsConfig
         WHERE v.artist_id = ?
         ORDER BY c.start_sec`
     ).bind(artistId).all<ClipRow>();
-    const clips = await attachTags(env, results ?? []);
+    const clips = await attachTags(env, results ?? [], { includeVideoMeta: true });
     return jsonResponse(clips, 200, cors);
   }
   if (videoIdParam) {
@@ -725,10 +731,21 @@ async function listClips(url: URL, env: Env, user: UserContext, cors: CorsConfig
         WHERE video_id = ?
         ORDER BY start_sec`
     ).bind(videoId).all<ClipRow>();
-    const clips = await attachTags(env, results ?? []);
+    const clips = await attachTags(env, results ?? [], { includeVideoMeta: true });
     return jsonResponse(clips, 200, cors);
   }
   throw new HttpError(400, "artistId or videoId query parameter is required");
+}
+
+async function listPublicClips(env: Env, cors: CorsConfig): Promise<Response> {
+  const { results } = await env.DB.prepare(
+    `SELECT c.id, c.video_id, c.title, c.start_sec, c.end_sec
+       FROM clips c
+       JOIN videos v ON v.id = c.video_id
+      ORDER BY c.id DESC`
+  ).all<ClipRow>();
+  const clips = await attachTags(env, results ?? [], { includeVideoMeta: true });
+  return jsonResponse(clips, 200, cors);
 }
 
 async function autoDetect(
@@ -771,11 +788,17 @@ async function autoDetect(
   return jsonResponse(candidates, 200, cors);
 }
 
-async function getOrCreateUser(env: Env, headers: Headers): Promise<UserContext> {
+async function getUserFromHeaders(env: Env, headers: Headers): Promise<UserContext | null> {
   const emailHeader = headers.get("X-User-Email");
+  if (!emailHeader) {
+    return null;
+  }
+  const email = emailHeader.trim();
+  if (!email) {
+    return null;
+  }
   const displayNameHeader = headers.get("X-User-Name");
-  const email = emailHeader && emailHeader.trim() ? emailHeader.trim() : "guest@example.com";
-  const displayName = displayNameHeader && displayNameHeader.trim() ? displayNameHeader.trim() : "Guest";
+  const displayName = displayNameHeader && displayNameHeader.trim() ? displayNameHeader.trim() : email;
   return await upsertUser(env, email, displayName);
 }
 
@@ -787,6 +810,13 @@ async function loginUser(request: Request, env: Env, cors: CorsConfig): Promise<
   const displayName = displayNameRaw.trim() || "Guest";
   const user = await upsertUser(env, email, displayName);
   return jsonResponse(user, 200, cors);
+}
+
+function requireUser(user: UserContext | null): UserContext {
+  if (!user) {
+    throw new HttpError(401, "Authentication required");
+  }
+  return user;
 }
 
 async function upsertUser(env: Env, email: string, displayName: string): Promise<UserContext> {
@@ -861,7 +891,15 @@ function toVideoResponse(row: VideoRow): VideoResponse {
   };
 }
 
-async function attachTags(env: Env, rows: ClipRow[] | undefined): Promise<ClipResponse[]> {
+interface AttachTagsOptions {
+  includeVideoMeta?: boolean;
+}
+
+async function attachTags(
+  env: Env,
+  rows: ClipRow[] | undefined,
+  options: AttachTagsOptions = {}
+): Promise<ClipResponse[]> {
   const clips = rows ?? [];
   if (clips.length === 0) {
     return [];
@@ -878,14 +916,40 @@ async function attachTags(env: Env, rows: ClipRow[] | undefined): Promise<ClipRe
     }
     tagsMap.get(entry.clip_id)!.push(entry.tag);
   }
-  return clips.map((clip) => ({
-    id: clip.id,
-    videoId: clip.video_id,
-    title: clip.title,
-    startSec: Number(clip.start_sec),
-    endSec: Number(clip.end_sec),
-    tags: tagsMap.get(clip.id) ?? []
-  } satisfies ClipResponse));
+
+  let videoMeta: Map<number, { youtubeVideoId: string | null; title: string | null }> | null = null;
+  if (options.includeVideoMeta) {
+    const videoIds = Array.from(new Set(clips.map((clip) => clip.video_id)));
+    if (videoIds.length > 0) {
+      const videoPlaceholders = videoIds.map(() => "?").join(", ");
+      const { results: videoRows } = await env.DB.prepare(
+        `SELECT id, youtube_video_id, title FROM videos WHERE id IN (${videoPlaceholders})`
+      )
+        .bind(...videoIds)
+        .all<{ id: number; youtube_video_id: string | null; title: string | null }>();
+      videoMeta = new Map();
+      for (const row of videoRows ?? []) {
+        videoMeta.set(row.id, {
+          youtubeVideoId: row.youtube_video_id ?? null,
+          title: row.title ?? null
+        });
+      }
+    }
+  }
+
+  return clips.map((clip) => {
+    const meta = videoMeta?.get(clip.video_id) ?? null;
+    return {
+      id: clip.id,
+      videoId: clip.video_id,
+      title: clip.title,
+      startSec: Number(clip.start_sec),
+      endSec: Number(clip.end_sec),
+      tags: tagsMap.get(clip.id) ?? [],
+      youtubeVideoId: meta?.youtubeVideoId ?? undefined,
+      videoTitle: meta?.title ?? null
+    } satisfies ClipResponse;
+  });
 }
 
 function extractVideoId(url: string): string | null {
