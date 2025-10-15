@@ -1,5 +1,7 @@
 interface Env {
   DB: D1Database;
+  GOOGLE_OAUTH_CLIENT_IDS?: string;
+  GOOGLE_CLIENT_ID?: string;
 }
 
 type D1Database = {
@@ -71,6 +73,85 @@ const ORIGIN_RULES: RegExp[] = [
   /^http:\/\/localhost:(5173|4173)$/i,
   /^http:\/\/127\.0\.0\.1:(5173|4173)$/i
 ];
+
+const GOOGLE_TOKENINFO_ENDPOINT = "https://oauth2.googleapis.com/tokeninfo";
+
+const DEFAULT_ALLOWED_GOOGLE_CLIENT_IDS = Object.freeze([
+  "245943329145-os94mkp21415hadulir67v1i0lqjrcnq.apps.googleusercontent.com"
+]);
+
+const resolveAllowedGoogleAudiences = (env: Env): string[] => {
+  const configured = [env.GOOGLE_OAUTH_CLIENT_IDS, env.GOOGLE_CLIENT_ID]
+    .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+    .flatMap((value) => value.split(","))
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+  if (configured.length > 0) {
+    return Array.from(new Set(configured));
+  }
+  return DEFAULT_ALLOWED_GOOGLE_CLIENT_IDS;
+};
+
+interface GoogleTokenInfoPayload {
+  aud?: string;
+  email?: string;
+  email_verified?: string | boolean;
+  exp?: string;
+  name?: string;
+}
+
+interface VerifiedGoogleIdentity {
+  email: string;
+  displayName?: string;
+}
+
+async function verifyGoogleIdToken(env: Env, token: string): Promise<VerifiedGoogleIdentity | null> {
+  if (!token) {
+    return null;
+  }
+  let response: Response;
+  try {
+    const url = `${GOOGLE_TOKENINFO_ENDPOINT}?id_token=${encodeURIComponent(token)}`;
+    response = await fetch(url, { method: "GET" });
+  } catch (error) {
+    console.error("[yt-clip] Failed to contact Google token verification endpoint", error);
+    return null;
+  }
+  if (!response.ok) {
+    console.warn(`[yt-clip] Google token verification failed with status ${response.status}`);
+    return null;
+  }
+  let payload: GoogleTokenInfoPayload;
+  try {
+    payload = (await response.json()) as GoogleTokenInfoPayload;
+  } catch (error) {
+    console.error("[yt-clip] Failed to parse Google token verification response", error);
+    return null;
+  }
+  const email = typeof payload.email === "string" ? payload.email.trim() : "";
+  if (!email) {
+    console.warn("[yt-clip] Google token verification response did not include an email");
+    return null;
+  }
+  const emailVerified = payload.email_verified;
+  if (typeof emailVerified !== "undefined" && String(emailVerified).toLowerCase() !== "true") {
+    console.warn(`[yt-clip] Google token email for ${email} is not verified`);
+    return null;
+  }
+  const audiences = resolveAllowedGoogleAudiences(env);
+  const audience = typeof payload.aud === "string" ? payload.aud.trim() : "";
+  if (!audience || !audiences.includes(audience)) {
+    console.warn(`[yt-clip] Google token audience ${audience || "<missing>"} is not allowed`);
+    return null;
+  }
+  const expValue = payload.exp ? Number(payload.exp) : NaN;
+  if (Number.isFinite(expValue) && expValue * 1000 <= Date.now()) {
+    console.warn(`[yt-clip] Google token for ${email} is expired`);
+    return null;
+  }
+  const displayName = typeof payload.name === "string" ? payload.name.trim() : "";
+  return { email, displayName: displayName || undefined };
+}
 
 const normalizeOrigin = (origin: string): string | null => {
   const trimmed = origin.trim();
@@ -789,27 +870,37 @@ async function autoDetect(
 }
 
 async function getUserFromHeaders(env: Env, headers: Headers): Promise<UserContext | null> {
-  const emailHeader = headers.get("X-User-Email");
-  if (!emailHeader) {
+  const authorization = headers.get("Authorization");
+  if (!authorization) {
     return null;
   }
-  const email = emailHeader.trim();
-  if (!email) {
+  const match = authorization.match(/^Bearer\s+(.+)$/i);
+  if (!match) {
     return null;
+  }
+  const token = match[1].trim();
+  if (!token) {
+    return null;
+  }
+  const verified = await verifyGoogleIdToken(env, token);
+  if (!verified) {
+    return null;
+  }
+  const emailHeader = headers.get("X-User-Email");
+  if (emailHeader && emailHeader.trim() && emailHeader.trim().toLowerCase() !== verified.email.toLowerCase()) {
+    console.warn(
+      `[yt-clip] Ignoring mismatched X-User-Email header for verified account ${verified.email}`
+    );
   }
   const displayNameHeader = headers.get("X-User-Name");
-  const displayName = displayNameHeader && displayNameHeader.trim() ? displayNameHeader.trim() : email;
-  return await upsertUser(env, email, displayName);
+  const displayNameCandidate = displayNameHeader && displayNameHeader.trim() ? displayNameHeader.trim() : null;
+  const displayName = displayNameCandidate || verified.displayName || verified.email;
+  return await upsertUser(env, verified.email, displayName);
 }
 
 async function loginUser(request: Request, env: Env, cors: CorsConfig): Promise<Response> {
-  const body = await readJson(request);
-  const emailRaw = typeof body.email === "string" ? body.email : "";
-  const displayNameRaw = typeof body.displayName === "string" ? body.displayName : "";
-  const email = emailRaw.trim() || "guest@example.com";
-  const displayName = displayNameRaw.trim() || "Guest";
-  const user = await upsertUser(env, email, displayName);
-  return jsonResponse(user, 200, cors);
+  const user = await getUserFromHeaders(env, request.headers);
+  return jsonResponse(requireUser(user), 200, cors);
 }
 
 function requireUser(user: UserContext | null): UserContext {
