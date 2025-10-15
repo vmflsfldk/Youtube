@@ -83,6 +83,8 @@ const normalizeClip = (clip: ClipLike): ClipResponse => {
   };
 };
 
+type SectionKey = 'auth' | 'management' | 'library' | 'playlist';
+
 const allowCrossOriginApi = String(import.meta.env.VITE_ALLOW_CROSS_ORIGIN_API ?? '')
   .toLowerCase()
   .trim() === 'true';
@@ -716,512 +718,673 @@ export default function App() {
     : previewStartSec + 30;
   const previewEndSec = Number(clipForm.endSec) > previewStartSec ? Number(clipForm.endSec) : fallbackEnd;
 
+  const [activeSection, setActiveSection] = useState<SectionKey>('auth');
+
+  const sidebarTabs = useMemo(
+    () => [
+      {
+        id: 'auth' as const,
+        label: '인증 센터',
+        description: '로그인 및 사용자 정보 확인',
+        icon: (
+          <svg viewBox="0 0 24 24" role="presentation" aria-hidden="true">
+            <path
+              d="M12 2a5 5 0 0 1 5 5v1a5 5 0 1 1-10 0V7a5 5 0 0 1 5-5Zm0 12c3.87 0 7 2.239 7 5v1a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-1c0-2.761 3.13-5 7-5Z"
+              fill="currentColor"
+            />
+          </svg>
+        )
+      },
+      {
+        id: 'management' as const,
+        label: '콘텐츠 관리',
+        description: '클립 · 영상 · 아티스트 등록',
+        icon: (
+          <svg viewBox="0 0 24 24" role="presentation" aria-hidden="true">
+            <path
+              d="M6.75 3A1.75 1.75 0 0 0 5 4.75v14.5C5 20.216 5.784 21 6.75 21h10.5A1.75 1.75 0 0 0 19 19.25V4.75A1.75 1.75 0 0 0 17.25 3H6.75ZM8 6h8v2H8V6Zm0 5h8v2H8v-2Zm0 5h5v2H8v-2Z"
+              fill="currentColor"
+            />
+          </svg>
+        )
+      },
+      {
+        id: 'library' as const,
+        label: '미디어 라이브러리',
+        description: '등록된 아티스트와 영상 탐색',
+        icon: (
+          <svg viewBox="0 0 24 24" role="presentation" aria-hidden="true">
+            <path
+              d="M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v11a2.5 2.5 0 0 1-2.5 2.5H6.5A2.5 2.5 0 0 1 4 16.5v-11ZM9.5 8.75l6 3.25-6 3.25v-6.5Z"
+              fill="currentColor"
+            />
+          </svg>
+        )
+      },
+      {
+        id: 'playlist' as const,
+        label: '플레이리스트',
+        description: '저장된 클립과 태그 모아보기',
+        icon: (
+          <svg viewBox="0 0 24 24" role="presentation" aria-hidden="true">
+            <path
+              d="M4 5a1 1 0 0 1 1-1h10.5a1 1 0 0 1 0 2H5a1 1 0 0 1-1-1Zm0 5a1 1 0 0 1 1-1h10.5a1 1 0 0 1 0 2H5a1 1 0 0 1-1-1Zm1 4a1 1 0 1 0 0 2h7.5a1 1 0 0 0 0-2H5Zm13.25-4.5a2.75 2.75 0 1 1 0 5.5a2.75 2.75 0 0 1 0-5.5Zm0 7.25a4.5 4.5 0 1 0-3.583-1.75l-.752 1.503a1 1 0 1 0 1.788.894l.719-1.437a4.47 4.47 0 0 0 1.828.39Z"
+              fill="currentColor"
+            />
+          </svg>
+        )
+      }
+    ],
+    []
+  );
+
+  const activeSidebarTab = sidebarTabs.find((tab) => tab.id === activeSection) ?? sidebarTabs[0];
+
+
   return (
-    <div className="dashboard">
-      <div className="left-column">
-        <section className="panel login-panel">
-          <div>
-            <h1>로그인 (유저정보)</h1>
-            <p>Google 계정 또는 이메일 인증으로 로그인한 뒤 닉네임을 설정해주세요.</p>
+    <div className="app-shell">
+      <aside className="sidebar" aria-label="주요 탐색">
+        <div className="sidebar__brand">
+          <div className="sidebar__logo" aria-hidden="true">
+            <span>YT</span>
           </div>
-          <div className="login-status">
-            {isAuthenticated ? (
-              <div className="login-status__row">
-                <span className="login-status__message">
-                  {currentUser?.displayName
-                    ? `${currentUser.displayName} 님, 환영합니다!`
-                    : `${currentUser?.email ?? ''} 계정으로 로그인되었습니다.`}
+          <div className="sidebar__brand-copy">
+            <p className="sidebar__eyebrow">Youtube Clip Curator</p>
+            <h1>Creator Studio</h1>
+          </div>
+        </div>
+        <nav className="sidebar__nav">
+          {sidebarTabs.map((tab) => {
+            const isActive = activeSection === tab.id;
+            return (
+              <button
+                key={tab.id}
+                id={`sidebar-tab-${tab.id}`}
+                type="button"
+                className={`sidebar__tab${isActive ? ' active' : ''}`}
+                onClick={() => setActiveSection(tab.id)}
+                aria-current={isActive ? 'page' : undefined}
+              >
+                <span className="sidebar__tab-icon">{tab.icon}</span>
+                <span className="sidebar__tab-text">
+                  <span className="sidebar__tab-label">{tab.label}</span>
+                  <span className="sidebar__tab-description">{tab.description}</span>
                 </span>
-                <button type="button" onClick={handleSignOut} className="login-status__button">
-                  로그아웃
-                </button>
-              </div>
-            ) : (
-              <>
-                <div className="login-status__row">
-                  {isGoogleReady ? (
-                    <GoogleLoginButton
-                      clientId="245943329145-os94mkp21415hadulir67v1i0lqjrcnq.apps.googleusercontent.com"
-                      onCredential={handleGoogleCredential}
-                    />
-                  ) : (
-                    <span className="login-status__message">구글 로그인 준비 중...</span>
-                  )}
-                </div>
-                <form className="stacked-form" onSubmit={handleEmailRegisterRequest}>
-                  <label htmlFor="registerEmail">이메일 회원가입</label>
-                  <input
-                    id="registerEmail"
-                    type="email"
-                    placeholder="이메일 주소"
-                    value={emailRegisterEmail}
-                    onChange={(event) => setEmailRegisterEmail(event.target.value)}
-                  />
-                  <button type="submit">인증 코드 받기</button>
-                </form>
-                {emailRegisterPhase === 'code-sent' && (
-                  <form className="stacked-form" onSubmit={handleEmailRegisterVerify}>
-                    <label htmlFor="registerCode">인증 코드</label>
-                    <input
-                      id="registerCode"
-                      placeholder="6자리 인증 코드"
-                      value={emailRegisterCode}
-                      onChange={(event) => setEmailRegisterCode(event.target.value)}
-                    />
-                    <label htmlFor="registerPassword">비밀번호</label>
-                    <input
-                      id="registerPassword"
-                      type="password"
-                      placeholder="비밀번호 (8자 이상)"
-                      value={emailRegisterPassword}
-                      onChange={(event) => setEmailRegisterPassword(event.target.value)}
-                    />
-                    <label htmlFor="registerPasswordConfirm">비밀번호 확인</label>
-                    <input
-                      id="registerPasswordConfirm"
-                      type="password"
-                      placeholder="비밀번호 다시 입력"
-                      value={emailRegisterPasswordConfirm}
-                      onChange={(event) => setEmailRegisterPasswordConfirm(event.target.value)}
-                    />
-                    <button type="submit">회원가입 완료</button>
-                  </form>
-                )}
-                {emailRegisterMessage && (
-                  <p className="login-status__message">{emailRegisterMessage}</p>
-                )}
-                {emailRegisterDebugCode && (
-                  <p className="login-status__message">테스트용 코드: {emailRegisterDebugCode}</p>
-                )}
-                {emailRegisterError && (
-                  <p className="login-status__message error">{emailRegisterError}</p>
-                )}
-                <form className="stacked-form" onSubmit={handlePasswordLogin}>
-                  <label htmlFor="loginEmailInput">이메일 로그인</label>
-                  <input
-                    id="loginEmailInput"
-                    type="email"
-                    placeholder="이메일 주소"
-                    value={passwordLoginEmail}
-                    onChange={(event) => setPasswordLoginEmail(event.target.value)}
-                  />
-                  <label htmlFor="loginPassword">비밀번호</label>
-                  <input
-                    id="loginPassword"
-                    type="password"
-                    placeholder="비밀번호"
-                    value={passwordLoginPassword}
-                    onChange={(event) => setPasswordLoginPassword(event.target.value)}
-                  />
-                  <button type="submit">로그인</button>
-                </form>
-                {passwordLoginMessage && (
-                  <p className="login-status__message">{passwordLoginMessage}</p>
-                )}
-                {passwordLoginError && (
-                  <p className="login-status__message error">{passwordLoginError}</p>
-                )}
-              </>
-            )}
+              </button>
+            );
+          })}
+        </nav>
+      </aside>
+
+      <main className="content-area">
+        <header className="content-header">
+          <div>
+            <p className="content-header__eyebrow">Youtube Clip Curator</p>
+            <h2>{activeSidebarTab.label}</h2>
+            <p className="content-header__description">{activeSidebarTab.description}</p>
           </div>
-          {isAuthenticated && (
-            <form className="stacked-form" onSubmit={handleNicknameSubmit}>
-              <label htmlFor="nickname">닉네임 설정</label>
-              <input
-                id="nickname"
-                placeholder="닉네임을 입력하세요"
-                value={nicknameInput}
-                onChange={(event) => setNicknameInput(event.target.value)}
-              />
-              <button type="submit" disabled={!isAuthenticated}>닉네임 저장</button>
+        </header>
+
+        <div className="content-panels">
+          <section
+            className={`content-panel${activeSection === 'auth' ? ' active' : ''}`}
+            role="tabpanel"
+            aria-labelledby="sidebar-tab-auth"
+            hidden={activeSection !== 'auth'}
+          >
+            <div className="panel login-panel">
+              <div>
+                <h2>로그인 (유저정보)</h2>
+                <p>Google 계정 또는 이메일 인증으로 로그인한 뒤 닉네임을 설정해주세요.</p>
+              </div>
+              <div className="login-status">
+                {isAuthenticated ? (
+                  <div className="login-status__row">
+                    <span className="login-status__message">
+                      {currentUser?.displayName
+                        ? `${currentUser.displayName} 님, 환영합니다!`
+                        : `${currentUser?.email ?? ''} 계정으로 로그인되었습니다.`}
+                    </span>
+                    <button type="button" onClick={handleSignOut} className="login-status__button">
+                      로그아웃
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="login-status__row">
+                      {isGoogleReady ? (
+                        <GoogleLoginButton
+                          clientId="245943329145-os94mkp21415hadulir67v1i0lqjrcnq.apps.googleusercontent.com"
+                          onCredential={handleGoogleCredential}
+                        />
+                      ) : (
+                        <span className="login-status__message">구글 로그인 준비 중...</span>
+                      )}
+                    </div>
+                    <form className="stacked-form" onSubmit={handleEmailRegisterRequest}>
+                      <label htmlFor="registerEmail">이메일 회원가입</label>
+                      <input
+                        id="registerEmail"
+                        type="email"
+                        placeholder="이메일 주소"
+                        value={emailRegisterEmail}
+                        onChange={(event) => setEmailRegisterEmail(event.target.value)}
+                      />
+                      <button type="submit">인증 코드 받기</button>
+                    </form>
+                    {emailRegisterPhase === 'code-sent' && (
+                      <form className="stacked-form" onSubmit={handleEmailRegisterVerify}>
+                        <label htmlFor="registerCode">인증 코드</label>
+                        <input
+                          id="registerCode"
+                          placeholder="6자리 인증 코드"
+                          value={emailRegisterCode}
+                          onChange={(event) => setEmailRegisterCode(event.target.value)}
+                        />
+                        <label htmlFor="registerPassword">비밀번호</label>
+                        <input
+                          id="registerPassword"
+                          type="password"
+                          placeholder="비밀번호 (8자 이상)"
+                          value={emailRegisterPassword}
+                          onChange={(event) => setEmailRegisterPassword(event.target.value)}
+                        />
+                        <label htmlFor="registerPasswordConfirm">비밀번호 확인</label>
+                        <input
+                          id="registerPasswordConfirm"
+                          type="password"
+                          placeholder="비밀번호 다시 입력"
+                          value={emailRegisterPasswordConfirm}
+                          onChange={(event) => setEmailRegisterPasswordConfirm(event.target.value)}
+                        />
+                        <button type="submit">회원가입 완료</button>
+                      </form>
+                    )}
+                    {emailRegisterMessage && (
+                      <p className="login-status__message">{emailRegisterMessage}</p>
+                    )}
+                    {emailRegisterDebugCode && (
+                      <p className="login-status__message">테스트용 코드: {emailRegisterDebugCode}</p>
+                    )}
+                    {emailRegisterError && (
+                      <p className="login-status__message error">{emailRegisterError}</p>
+                    )}
+                    <form className="stacked-form" onSubmit={handlePasswordLogin}>
+                      <label htmlFor="loginEmailInput">이메일 로그인</label>
+                      <input
+                        id="loginEmailInput"
+                        type="email"
+                        placeholder="이메일 주소"
+                        value={passwordLoginEmail}
+                        onChange={(event) => setPasswordLoginEmail(event.target.value)}
+                      />
+                      <label htmlFor="loginPassword">비밀번호</label>
+                      <input
+                        id="loginPassword"
+                        type="password"
+                        placeholder="비밀번호"
+                        value={passwordLoginPassword}
+                        onChange={(event) => setPasswordLoginPassword(event.target.value)}
+                      />
+                      <button type="submit">로그인</button>
+                    </form>
+                    {passwordLoginMessage && (
+                      <p className="login-status__message">{passwordLoginMessage}</p>
+                    )}
+                    {passwordLoginError && (
+                      <p className="login-status__message error">{passwordLoginError}</p>
+                    )}
+                  </>
+                )}
+              </div>
+              {isAuthenticated && (
+                <form className="stacked-form" onSubmit={handleNicknameSubmit}>
+                  <label htmlFor="nicknameInput">닉네임 설정</label>
+                  <input
+                    id="nicknameInput"
+                    placeholder="닉네임"
+                    value={nicknameInput}
+                    onChange={(event) => setNicknameInput(event.target.value)}
+                  />
+                  <button type="submit">닉네임 저장</button>
+                </form>
+              )}
               {nicknameStatus && <p className="login-status__message">{nicknameStatus}</p>}
               {nicknameError && <p className="login-status__message error">{nicknameError}</p>}
-            </form>
-          )}
-          {isLoadingUser && <p className="login-status__message">사용자 정보를 불러오는 중...</p>}
-          <button type="button" onClick={fetchArtists} disabled={isLoadingUser}>
-            아티스트 목록 새로고침
-          </button>
-        </section>
-
-        <section className="panel management-panel">
-          <div className="section-heading">
-            <h2>콘텐츠 관리</h2>
-            <p>좌측 탭에서 등록과 클립 생성을 전환할 수 있습니다.</p>
-          </div>
-          <div className="management-tabs">
-            <button
-              type="button"
-              className={activeManagementTab === 'clips' ? 'active' : ''}
-              onClick={() => setActiveManagementTab('clips')}
-            >
-              클립 만들기
-            </button>
-            <button
-              type="button"
-              className={activeManagementTab === 'videos' ? 'active' : ''}
-              onClick={() => setActiveManagementTab('videos')}
-            >
-              영상 등록
-            </button>
-            <button
-              type="button"
-              className={activeManagementTab === 'artists' ? 'active' : ''}
-              onClick={() => setActiveManagementTab('artists')}
-            >
-              아티스트 등록
-            </button>
-          </div>
-          <div className="management-content">
-            {activeManagementTab === 'clips' && (
-              <div className="management-section">
-                <h3>클립 생성 및 자동 감지</h3>
-                <form onSubmit={handleClipSubmit} className="stacked-form">
-                  <select
-                    id="videoSelect"
-                    value={selectedVideo ?? ''}
-                    onChange={(event) => {
-                      const value = Number(event.target.value);
-                      setSelectedVideo(Number.isNaN(value) ? null : value);
-                    }}
-                    required
-                    disabled={creationDisabled}
-                  >
-                    <option value="" disabled>
-                      영상 선택
-                    </option>
-                    {videos.map((video) => (
-                      <option key={video.id} value={video.id}>
-                        {video.title || video.youtubeVideoId}
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    id="clipTitle"
-                    placeholder="클립 제목"
-                    value={clipForm.title}
-                    onChange={(event) => setClipForm((prev) => ({ ...prev, title: event.target.value }))}
-                    required
-                    disabled={creationDisabled}
-                  />
-                  <div className="number-row">
-                    <input
-                      id="startSec"
-                      type="number"
-                      min={0}
-                      placeholder="시작 (초)"
-                      value={clipForm.startSec}
-                      onChange={(event) =>
-                        setClipForm((prev) => ({ ...prev, startSec: Number(event.target.value) }))
-                      }
-                      required
-                      disabled={creationDisabled}
-                    />
-                    <input
-                      id="endSec"
-                      type="number"
-                      min={0}
-                      placeholder="종료 (초)"
-                      value={clipForm.endSec}
-                      onChange={(event) =>
-                        setClipForm((prev) => ({ ...prev, endSec: Number(event.target.value) }))
-                      }
-                      required
-                      disabled={creationDisabled}
-                    />
-                  </div>
-                  <input
-                    id="clipTags"
-                    placeholder="태그 (쉼표로 구분)"
-                    value={clipForm.tags}
-                    onChange={(event) => setClipForm((prev) => ({ ...prev, tags: event.target.value }))}
-                    disabled={creationDisabled}
-                  />
-                  <button type="submit" disabled={creationDisabled}>
-                    클립 저장
-                  </button>
-                </form>
-                <div className="auto-detect">
-                  <div className="number-row">
-                    <select
-                      id="detectVideo"
-                      value={selectedVideo ?? ''}
-                      onChange={(event) => {
-                        const value = Number(event.target.value);
-                        setSelectedVideo(Number.isNaN(value) ? null : value);
-                      }}
-                      disabled={creationDisabled}
-                    >
-                      <option value="" disabled>
-                        영상 선택
-                      </option>
-                      {videos.map((video) => (
-                        <option key={video.id} value={video.id}>
-                          {video.title || video.youtubeVideoId}
-                        </option>
-                      ))}
-                    </select>
-                    <select
-                      id="mode"
-                      value={autoDetectMode}
-                      onChange={(event) => setAutoDetectMode(event.target.value)}
-                      disabled={creationDisabled}
-                    >
-                      <option value="chapters">챕터 기반</option>
-                      <option value="captions">자막 기반</option>
-                      <option value="combined">혼합</option>
-                    </select>
-                  </div>
-                  <button type="button" onClick={runAutoDetect} disabled={creationDisabled}>
-                    자동으로 클립 제안 받기
-                  </button>
-                </div>
-              </div>
-            )}
-            {activeManagementTab === 'videos' && (
-              <div className="management-section">
-                <h3>영상 등록</h3>
-                <form onSubmit={handleVideoSubmit} className="stacked-form">
-                  <input
-                    id="videoUrl"
-                    placeholder="YouTube 영상 URL"
-                    value={videoForm.url}
-                    onChange={(event) => setVideoForm((prev) => ({ ...prev, url: event.target.value }))}
-                    required
-                    disabled={creationDisabled}
-                  />
-                  <select
-                    id="artistSelect"
-                    value={videoForm.artistId}
-                    onChange={(event) => setVideoForm((prev) => ({ ...prev, artistId: event.target.value }))}
-                    required
-                    disabled={creationDisabled}
-                  >
-                    <option value="" disabled>
-                      아티스트 선택
-                    </option>
-                    {artists.map((artist) => (
-                      <option key={artist.id} value={artist.id}>
-                        {artist.displayName || artist.name}
-                      </option>
-                    ))}
-                  </select>
-                  <textarea
-                    id="description"
-                    rows={3}
-                    placeholder="영상 설명 (선택 사항)"
-                    value={videoForm.description}
-                    onChange={(event) => setVideoForm((prev) => ({ ...prev, description: event.target.value }))}
-                    disabled={creationDisabled}
-                  />
-                  <textarea
-                    id="captions"
-                    rows={3}
-                    placeholder="캡션 JSON 또는 시작시간|문장 형식"
-                    value={videoForm.captionsJson}
-                    onChange={(event) => setVideoForm((prev) => ({ ...prev, captionsJson: event.target.value }))}
-                    disabled={creationDisabled}
-                  />
-                  <button type="submit" disabled={creationDisabled}>
-                    영상 메타데이터 저장
-                  </button>
-                </form>
-              </div>
-            )}
-            {activeManagementTab === 'artists' && (
-              <div className="management-section">
-                <h3>아티스트 등록</h3>
-                <form onSubmit={handleArtistSubmit} className="stacked-form">
-                  <input
-                    id="artistName"
-                    placeholder="아티스트 이름"
-                    value={artistForm.name}
-                    onChange={(event) => setArtistForm((prev) => ({ ...prev, name: event.target.value }))}
-                    required
-                    disabled={creationDisabled}
-                  />
-                  <input
-                    id="artistChannel"
-                    placeholder="YouTube 채널 ID"
-                    value={artistForm.channelId}
-                    onChange={(event) => setArtistForm((prev) => ({ ...prev, channelId: event.target.value }))}
-                    required
-                    disabled={creationDisabled}
-                  />
-                  <button type="submit" disabled={creationDisabled}>
-                    아티스트 등록
-                  </button>
-                </form>
-              </div>
-            )}
-          </div>
-        </section>
-      </div>
-
-      <section className="panel media-panel">
-        <header>
-          <h2>대시보드</h2>
-          <p>영상과 클립을 한눈에 관리하고, 공개된 아티스트 목록을 확인하세요.</p>
-        </header>
-        <div className="media-grid">
-          <div className="media-card highlight-card">
-            <h3>선택된 영상 미리보기</h3>
-            {selectedVideoData ? (
-              <>
-                <ClipPlayer
-                  youtubeVideoId={selectedVideoData.youtubeVideoId}
-                  startSec={previewStartSec}
-                  endSec={previewEndSec}
-                  autoplay={false}
-                />
-                <div className="highlight-meta">
-                  <span>시작: {previewStartSec.toFixed(0)}s</span>
-                  <span>종료: {previewEndSec.toFixed(0)}s</span>
-                </div>
-                <p className="highlight-description">
-                  {clipForm.title
-                    ? `${clipForm.title} · ${selectedVideoData.title || selectedVideoData.youtubeVideoId}`
-                    : '좌측 탭에서 클립 정보를 입력하면 미리보기가 업데이트됩니다.'}
-                </p>
-              </>
-            ) : (
-              <p className="empty-state">좌측 탭에서 영상을 선택하면 미리보기가 표시됩니다.</p>
-            )}
-          </div>
-          <div className="media-card artist-directory">
-            <h3>등록된 아티스트</h3>
-            <p className="artist-directory__subtitle">전체 이용자가 확인할 수 있는 공개 목록입니다.</p>
-            <ul className="artist-directory__list">
-              {artists.length === 0 ? (
-                <li className="artist-empty">등록된 아티스트가 없습니다.</li>
-              ) : (
-                artists.map((artist) => {
-                  const isActive = Number(videoForm.artistId) === artist.id;
-                  return (
-                    <li
-                      key={artist.id}
-                      className={`artist-directory__item${isActive ? ' active' : ''}`}
-                      onClick={() => handleArtistClick(artist.id)}
-                    >
-                      <span className="artist-directory__icon" aria-hidden="true">
-                        <svg viewBox="0 0 24 24" role="presentation">
-                          <path d="M21.8 8.001a2.5 2.5 0 0 0-1.758-1.77C18.25 6 12 6 12 6s-6.25 0-8.042.231a2.5 2.5 0 0 0-1.758 1.77C2 9.801 2 12 2 12s0 2.199.2 3.999a2.5 2.5 0 0 0 1.758 1.77C5.75 18 12 18 12 18s6.25 0 8.042-.231a2.5 2.5 0 0 0 1.758-1.77C22 14.199 22 12 22 12s0-2.199-.2-3.999Z" />
-                          <path d="M10 14.5v-5l4.5 2.5Z" fill="currentColor" />
-                        </svg>
-                      </span>
-                      <div className="artist-directory__meta">
-                        <span className="artist-directory__name">{artist.displayName || artist.name}</span>
-                        <span className="artist-directory__channel">{artist.youtubeChannelId}</span>
-                      </div>
-                    </li>
-                  );
-                })
-              )}
-            </ul>
-          </div>
-        </div>
-
-        <div className="media-card full">
-          <h3>등록된 영상</h3>
-          {videos.length === 0 ? (
-            <p className="empty-state">선택된 아티스트의 영상이 아직 없습니다.</p>
-          ) : (
-            <ul className="video-list">
-              {videos.map((video) => {
-                const isActive = selectedVideo === video.id;
-                return (
-                  <li
-                    key={video.id}
-                    className={`video-item${isActive ? ' active' : ''}`}
-                    onClick={() => setSelectedVideo(video.id)}
-                  >
-                    <div>
-                      <h4>{video.title || video.youtubeVideoId}</h4>
-                      <p>{video.youtubeVideoId}</p>
-                    </div>
-                    {video.thumbnailUrl && <img src={video.thumbnailUrl} alt="Video thumbnail" />}
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </div>
-
-        {clipCandidates.length > 0 && (
-          <div className="media-card full">
-            <h3>자동 감지된 클립 제안</h3>
-            <div className="candidate-grid">
-              {clipCandidates.map((candidate, index) => (
-                <div className="candidate-card" key={`${candidate.startSec}-${candidate.endSec}-${index}`}>
-                  <div>
-                    <h4>{candidate.label || `세그먼트 ${index + 1}`}</h4>
-                    <p>
-                      {candidate.startSec}s → {candidate.endSec}s (신뢰도 {(candidate.score * 100).toFixed(0)}%)
-                    </p>
-                  </div>
-                  {selectedVideoData && (
-                    <ClipPlayer
-                      youtubeVideoId={selectedVideoData.youtubeVideoId}
-                      startSec={candidate.startSec}
-                      endSec={candidate.endSec}
-                      autoplay={false}
-                    />
-                  )}
-                </div>
-              ))}
+              {isLoadingUser && <p className="login-status__message">사용자 정보를 불러오는 중...</p>}
             </div>
-          </div>
-        )}
-      </section>
+          </section>
 
-      <section className="panel playlist-panel">
-        <div>
-          <h2>{playlistHeading}</h2>
-          <p className="playlist-subtitle">{playlistSubtitle}</p>
-        </div>
-        {displayedClips.length === 0 ? (
-          <p className="empty-state">{playlistEmptyMessage}</p>
-        ) : (
-          <div className="playlist-list">
-            {displayedClips.map((clip) => {
-              const clipVideo = videos.find((video) => video.id === clip.videoId);
-              const youtubeVideoId = clip.youtubeVideoId ?? clipVideo?.youtubeVideoId;
-              const resolvedVideoTitle =
-                clip.videoTitle ?? clipVideo?.title ?? clipVideo?.youtubeVideoId ?? '';
-              return (
-                <div className="playlist-card" key={clip.id}>
-                  <div className="playlist-meta">
-                    <h3>{clip.title}</h3>
-                    <p>
-                      {clip.startSec}s → {clip.endSec}s
-                    </p>
-                    {resolvedVideoTitle && (
-                      <p className="playlist-video-title">{resolvedVideoTitle}</p>
-                    )}
-                    {clip.tags.length > 0 && (
-                      <div className="tag-row">
-                        {clip.tags.map((tag) => (
-                          <span key={tag} className="tag">
-                            #{tag}
-                          </span>
+          <section
+            className={`content-panel${activeSection === 'management' ? ' active' : ''}`}
+            role="tabpanel"
+            aria-labelledby="sidebar-tab-management"
+            hidden={activeSection !== 'management'}
+          >
+            <div className="panel management-panel">
+              <div className="section-heading">
+                <h2>데이터 관리</h2>
+                <p>아티스트, 영상, 클립을 관리하고 자동 클립 탐지를 실행할 수 있습니다.</p>
+              </div>
+              <div className="management-tabs">
+                <button
+                  type="button"
+                  className={activeManagementTab === 'clips' ? 'active' : ''}
+                  onClick={() => setActiveManagementTab('clips')}
+                >
+                  클립 등록
+                </button>
+                <button
+                  type="button"
+                  className={activeManagementTab === 'videos' ? 'active' : ''}
+                  onClick={() => setActiveManagementTab('videos')}
+                >
+                  영상 등록
+                </button>
+                <button
+                  type="button"
+                  className={activeManagementTab === 'artists' ? 'active' : ''}
+                  onClick={() => setActiveManagementTab('artists')}
+                >
+                  아티스트 등록
+                </button>
+              </div>
+              <div className="management-content">
+                {activeManagementTab === 'clips' && (
+                  <div className="management-section">
+                    <h3>새로운 클립 등록</h3>
+                    <form onSubmit={handleClipSubmit} className="stacked-form">
+                      <label htmlFor="clipVideoId">영상 선택</label>
+                      <select
+                        id="clipVideoId"
+                        value={selectedVideo ?? ''}
+                        onChange={(event) => {
+                          const value = Number(event.target.value);
+                          setSelectedVideo(Number.isNaN(value) ? null : value);
+                        }}
+                        required
+                        disabled={creationDisabled || videos.length === 0}
+                      >
+                        <option value="" disabled>
+                          영상 선택
+                        </option>
+                        {videos.map((video) => (
+                          <option key={video.id} value={video.id}>
+                            {video.title || video.youtubeVideoId}
+                          </option>
                         ))}
+                      </select>
+                      <label htmlFor="clipTitle">클립 제목</label>
+                      <input
+                        id="clipTitle"
+                        placeholder="클립 제목"
+                        value={clipForm.title}
+                        onChange={(event) => setClipForm((prev) => ({ ...prev, title: event.target.value }))}
+                        required
+                        disabled={creationDisabled}
+                      />
+                      <div className="number-row">
+                        <div>
+                          <label htmlFor="clipStartSec">시작 시간 (초)</label>
+                          <input
+                            id="clipStartSec"
+                            type="number"
+                            min="0"
+                            value={clipForm.startSec}
+                            onChange={(event) =>
+                              setClipForm((prev) => ({ ...prev, startSec: Number(event.target.value) }))
+                            }
+                            required
+                            disabled={creationDisabled}
+                          />
+                        </div>
+                        <div>
+                          <label htmlFor="clipEndSec">종료 시간 (초)</label>
+                          <input
+                            id="clipEndSec"
+                            type="number"
+                            min="0"
+                            value={clipForm.endSec}
+                            onChange={(event) =>
+                              setClipForm((prev) => ({ ...prev, endSec: Number(event.target.value) }))
+                            }
+                            required
+                            disabled={creationDisabled}
+                          />
+                        </div>
+                      </div>
+                      <label htmlFor="clipTags">태그 (쉼표로 구분)</label>
+                      <input
+                        id="clipTags"
+                        placeholder="예: 하이라이트, 라이브"
+                        value={clipForm.tags}
+                        onChange={(event) => setClipForm((prev) => ({ ...prev, tags: event.target.value }))}
+                        disabled={creationDisabled}
+                      />
+                      <button type="submit" disabled={creationDisabled}>
+                        클립 등록
+                      </button>
+                    </form>
+                    <div className="clip-preview">
+                      <h4>프리뷰</h4>
+                      {selectedVideoData ? (
+                        <ClipPlayer
+                          youtubeVideoId={selectedVideoData.youtubeVideoId}
+                          startSec={previewStartSec}
+                          endSec={previewEndSec}
+                          autoplay={false}
+                        />
+                      ) : (
+                        <p className="empty-state">클립 프리뷰를 확인하려면 영상을 선택하세요.</p>
+                      )}
+                    </div>
+                    <div className="auto-detect">
+                      <div className="number-row">
+                        <select
+                          id="detectVideo"
+                          value={selectedVideo ?? ''}
+                          onChange={(event) => {
+                            const value = Number(event.target.value);
+                            setSelectedVideo(Number.isNaN(value) ? null : value);
+                          }}
+                          disabled={creationDisabled || videos.length === 0}
+                        >
+                          <option value="" disabled>
+                            영상 선택
+                          </option>
+                          {videos.map((video) => (
+                            <option key={video.id} value={video.id}>
+                              {video.title || video.youtubeVideoId}
+                            </option>
+                          ))}
+                        </select>
+                        <select
+                          id="detectMode"
+                          value={autoDetectMode}
+                          onChange={(event) => setAutoDetectMode(event.target.value)}
+                          disabled={creationDisabled}
+                        >
+                          <option value="chapters">챕터 기반</option>
+                          <option value="captions">자막 기반</option>
+                          <option value="combined">혼합</option>
+                        </select>
+                      </div>
+                      <button type="button" onClick={runAutoDetect} disabled={creationDisabled || !selectedVideo}>
+                        자동으로 클립 제안 받기
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {activeManagementTab === 'videos' && (
+                  <div className="management-section">
+                    <h3>영상 등록</h3>
+                    <form onSubmit={handleVideoSubmit} className="stacked-form">
+                      <label htmlFor="videoUrl">YouTube 영상 URL</label>
+                      <input
+                        id="videoUrl"
+                        placeholder="https://www.youtube.com/watch?v=..."
+                        value={videoForm.url}
+                        onChange={(event) => setVideoForm((prev) => ({ ...prev, url: event.target.value }))}
+                        required
+                        disabled={creationDisabled}
+                      />
+                      <label htmlFor="videoArtistId">아티스트 선택</label>
+                      <select
+                        id="videoArtistId"
+                        value={videoForm.artistId}
+                        onChange={(event) => setVideoForm((prev) => ({ ...prev, artistId: event.target.value }))}
+                        required
+                        disabled={creationDisabled || artists.length === 0}
+                      >
+                        <option value="" disabled>
+                          아티스트 선택
+                        </option>
+                        {artists.map((artist) => (
+                          <option key={artist.id} value={artist.id}>
+                            {artist.displayName || artist.name}
+                          </option>
+                        ))}
+                      </select>
+                      <label htmlFor="videoDescription">영상 설명 (선택)</label>
+                      <textarea
+                        id="videoDescription"
+                        rows={3}
+                        placeholder="영상 설명을 입력하거나 붙여넣기하세요."
+                        value={videoForm.description}
+                        onChange={(event) =>
+                          setVideoForm((prev) => ({ ...prev, description: event.target.value }))
+                        }
+                        disabled={creationDisabled}
+                      />
+                      <label htmlFor="videoCaptions">캡션 JSON 또는 시작시간|문장</label>
+                      <textarea
+                        id="videoCaptions"
+                        rows={3}
+                        placeholder={'[{"start":0,"text":"문장"}] 또는 12|첫 문장'}
+                        value={videoForm.captionsJson}
+                        onChange={(event) =>
+                          setVideoForm((prev) => ({ ...prev, captionsJson: event.target.value }))
+                        }
+                        disabled={creationDisabled}
+                      />
+                      <button type="submit" disabled={creationDisabled}>
+                        영상 메타데이터 저장
+                      </button>
+                    </form>
+                  </div>
+                )}
+                {activeManagementTab === 'artists' && (
+                  <div className="management-section">
+                    <h3>아티스트 등록</h3>
+                    <form onSubmit={handleArtistSubmit} className="stacked-form">
+                      <label htmlFor="artistName">아티스트 이름</label>
+                      <input
+                        id="artistName"
+                        placeholder="아티스트 이름"
+                        value={artistForm.name}
+                        onChange={(event) => setArtistForm((prev) => ({ ...prev, name: event.target.value }))}
+                        required
+                        disabled={creationDisabled}
+                      />
+                      <label htmlFor="artistChannelId">YouTube 채널 ID</label>
+                      <input
+                        id="artistChannelId"
+                        placeholder="UC..."
+                        value={artistForm.channelId}
+                        onChange={(event) => setArtistForm((prev) => ({ ...prev, channelId: event.target.value }))}
+                        required
+                        disabled={creationDisabled}
+                      />
+                      <button type="submit" disabled={creationDisabled}>
+                        아티스트 등록
+                      </button>
+                    </form>
+                  </div>
+                )}
+              </div>
+            </div>
+          </section>
+
+          <section
+            className={`content-panel${activeSection === 'library' ? ' active' : ''}`}
+            role="tabpanel"
+            aria-labelledby="sidebar-tab-library"
+            hidden={activeSection !== 'library'}
+          >
+            <div className="panel media-panel">
+              <div className="media-grid">
+                <div className="media-card highlight-card">
+                  <div className="highlight-header">
+                    <span className="highlight-badge">추천</span>
+                    <h2>클립 만들기</h2>
+                  </div>
+                  <p className="highlight-description">
+                    신규 영상에서 하이라이트 구간을 선택하고 태그와 함께 저장해보세요.
+                  </p>
+                  <div className="highlight-player">
+                    {selectedVideoData ? (
+                      <ClipPlayer
+                        youtubeVideoId={selectedVideoData.youtubeVideoId}
+                        startSec={previewStartSec}
+                        endSec={previewEndSec}
+                        autoplay={false}
+                      />
+                    ) : (
+                      <div className="empty-state">
+                        좌측 탭에서 영상을 선택하면 미리보기가 표시됩니다.
                       </div>
                     )}
                   </div>
-                  {youtubeVideoId && (
-                    <ClipPlayer
-                      youtubeVideoId={youtubeVideoId}
-                      startSec={clip.startSec}
-                      endSec={clip.endSec}
-                      autoplay={false}
-                    />
-                  )}
+                  <div className="highlight-meta">
+                    <span>{selectedVideoData?.title || '영상이 선택되지 않았습니다'}</span>
+                    {selectedVideoData?.durationSec && <span>{selectedVideoData.durationSec}초</span>}
+                  </div>
                 </div>
-              );
-            })}
-          </div>
-        )}
-      </section>
+
+                <div className="media-card artist-directory">
+                  <h3>아티스트 디렉토리</h3>
+                  <p className="artist-directory__subtitle">전체 이용자가 확인할 수 있는 공개 목록입니다.</p>
+                  <ul className="artist-directory__list">
+                    {artists.length === 0 ? (
+                      <li className="artist-empty">등록된 아티스트가 없습니다.</li>
+                    ) : (
+                      artists.map((artist) => {
+                        const isActive = selectedArtist?.id === artist.id;
+                        return (
+                          <li
+                            key={artist.id}
+                            className={`artist-directory__item${isActive ? ' active' : ''}`}
+                            onClick={() => handleArtistClick(artist.id)}
+                          >
+                            <span className="artist-directory__icon" aria-hidden="true">
+                              <svg viewBox="0 0 24 24" role="presentation">
+                                <path d="M21.8 8.001a2.5 2.5 0 0 0-1.758-1.77C18.25 6 12 6 12 6s-6.25 0-8.042.231a2.5 2.5 0 0 0-1.758 1.77C2 9.801 2 12 2 12s0 2.199.2 3.999a2.5 2.5 0 0 0 1.758 1.77C5.75 18 12 18 12 18s6.25 0 8.042-.231a2.5 2.5 0 0 0 1.758-1.77C22 14.199 22 12 22 12s0-2.199-.2-3.999Z" />
+                                <path d="M10 14.5v-5l4.5 2.5Z" fill="currentColor" />
+                              </svg>
+                            </span>
+                            <div className="artist-directory__meta">
+                              <span className="artist-directory__name">{artist.displayName || artist.name}</span>
+                              <span className="artist-directory__channel">{artist.youtubeChannelId}</span>
+                            </div>
+                          </li>
+                        );
+                      })
+                    )}
+                  </ul>
+                </div>
+              </div>
+
+              <div className="media-card full">
+                <h3>등록된 영상</h3>
+                {videos.length === 0 ? (
+                  <p className="empty-state">선택된 아티스트의 영상이 아직 없습니다.</p>
+                ) : (
+                  <ul className="video-list">
+                    {videos.map((video) => {
+                      const isActive = selectedVideo === video.id;
+                      return (
+                        <li
+                          key={video.id}
+                          className={`video-item${isActive ? ' active' : ''}`}
+                          onClick={() => setSelectedVideo(video.id)}
+                        >
+                          <div>
+                            <h4>{video.title || video.youtubeVideoId}</h4>
+                            <p>{video.youtubeVideoId}</p>
+                          </div>
+                          {video.thumbnailUrl && <img src={video.thumbnailUrl} alt="Video thumbnail" />}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+
+              {clipCandidates.length > 0 && (
+                <div className="media-card full">
+                  <h3>자동 감지된 클립 제안</h3>
+                  <div className="candidate-grid">
+                    {clipCandidates.map((candidate, index) => (
+                      <div className="candidate-card" key={`${candidate.startSec}-${candidate.endSec}-${index}`}>
+                        <div>
+                          <h4>{candidate.label || `세그먼트 ${index + 1}`}</h4>
+                          <p>
+                            {candidate.startSec}s → {candidate.endSec}s (신뢰도 {(candidate.score * 100).toFixed(0)}%)
+                          </p>
+                        </div>
+                        {selectedVideoData && (
+                          <ClipPlayer
+                            youtubeVideoId={selectedVideoData.youtubeVideoId}
+                            startSec={candidate.startSec}
+                            endSec={candidate.endSec}
+                            autoplay={false}
+                          />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </section>
+
+          <section
+            className={`content-panel${activeSection === 'playlist' ? ' active' : ''}`}
+            role="tabpanel"
+            aria-labelledby="sidebar-tab-playlist"
+            hidden={activeSection !== 'playlist'}
+          >
+            <div className="panel playlist-panel">
+              <div>
+                <h2>{playlistHeading}</h2>
+                <p className="playlist-subtitle">{playlistSubtitle}</p>
+              </div>
+              {displayedClips.length === 0 ? (
+                <p className="empty-state">{playlistEmptyMessage}</p>
+              ) : (
+                <div className="playlist-list">
+                  {displayedClips.map((clip) => {
+                    const clipVideo = videos.find((video) => video.id === clip.videoId);
+                    const youtubeVideoId = clip.youtubeVideoId ?? clipVideo?.youtubeVideoId;
+                    const resolvedVideoTitle =
+                      clip.videoTitle ?? clipVideo?.title ?? clipVideo?.youtubeVideoId ?? '';
+                    return (
+                      <div className="playlist-card" key={clip.id}>
+                        <div className="playlist-meta">
+                          <h3>{clip.title}</h3>
+                          <p>
+                            {clip.startSec}s → {clip.endSec}s
+                          </p>
+                          {resolvedVideoTitle && (
+                            <p className="playlist-video-title">{resolvedVideoTitle}</p>
+                          )}
+                          {clip.tags.length > 0 && (
+                            <div className="tag-row">
+                              {clip.tags.map((tag) => (
+                                <span key={tag} className="tag">
+                                  #{tag}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        {youtubeVideoId && (
+                          <ClipPlayer
+                            youtubeVideoId={youtubeVideoId}
+                            startSec={clip.startSec}
+                            endSec={clip.endSec}
+                            autoplay={false}
+                          />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </section>
+        </div>
+      </main>
     </div>
   );
 }
