@@ -31,6 +31,7 @@ const ensureArray = <T,>(value: MaybeArray<T>): T[] => {
 interface ArtistResponse {
   id: number;
   name: string;
+  displayName: string;
   youtubeChannelId: string;
 }
 
@@ -246,7 +247,7 @@ export default function App() {
     try {
       await http.post<ArtistResponse>(
         '/artists',
-        { name: artistForm.name, youtubeChannelId: artistForm.channelId },
+        { name: artistForm.name, displayName: artistForm.name, youtubeChannelId: artistForm.channelId },
         { headers: authHeaders }
       );
       setArtistForm({ name: '', channelId: '' });
@@ -455,7 +456,7 @@ export default function App() {
                   className={`artist-card${isActive ? ' active' : ''}`}
                   onClick={() => handleArtistClick(artist.id)}
                 >
-                  <span className="artist-name">{artist.name}</span>
+                  <span className="artist-name">{artist.displayName || artist.name}</span>
                   <span className="artist-channel">{artist.youtubeChannelId}</span>
                 </li>
               );
@@ -469,7 +470,7 @@ export default function App() {
           <h2>아티스트에 대해 등록된 영상 및 노래</h2>
           <p>
             {selectedArtist
-              ? `${selectedArtist.name} 아티스트의 콘텐츠를 등록하고 자동으로 하이라이트를 추출하세요.`
+              ? `${selectedArtist.displayName || selectedArtist.name} 아티스트의 콘텐츠를 등록하고 자동으로 하이라이트를 추출하세요.`
               : '왼쪽에서 아티스트를 선택하면 영상과 노래를 등록할 수 있습니다.'}
           </p>
         </header>
@@ -495,7 +496,7 @@ export default function App() {
                 </option>
                 {artists.map((artist) => (
                   <option key={artist.id} value={artist.id}>
-                    {artist.name}
+                    {artist.displayName || artist.name}
                   </option>
                 ))}
               </select>
