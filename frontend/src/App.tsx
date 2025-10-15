@@ -52,6 +52,8 @@ interface ClipResponse {
   startSec: number;
   endSec: number;
   tags: string[];
+  youtubeVideoId?: string;
+  videoTitle?: string | null;
 }
 
 interface ClipCandidateResponse {
@@ -76,7 +78,8 @@ const normalizeClip = (clip: ClipLike): ClipResponse => {
 
   return {
     ...clip,
-    tags: normalizedTags
+    tags: normalizedTags,
+    videoTitle: clip.videoTitle ?? null
   };
 };
 
@@ -164,6 +167,7 @@ export default function App() {
   const [artists, setArtists] = useState<ArtistResponse[]>([]);
   const [videos, setVideos] = useState<VideoResponse[]>([]);
   const [clips, setClips] = useState<ClipResponse[]>([]);
+  const [publicClips, setPublicClips] = useState<ClipResponse[]>([]);
   const [selectedVideo, setSelectedVideo] = useState<number | null>(null);
   const [clipCandidates, setClipCandidates] = useState<ClipCandidateResponse[]>([]);
   const [artistForm, setArtistForm] = useState({ name: '', channelId: '' });
@@ -182,6 +186,7 @@ export default function App() {
   );
 
   const isAuthenticated = Boolean(idToken);
+  const creationDisabled = !isAuthenticated;
 
   useEffect(() => {
     if (window.google?.accounts?.id) {
@@ -222,6 +227,7 @@ export default function App() {
     setArtists([]);
     setVideos([]);
     setClips([]);
+    setPublicClips([]);
     setClipCandidates([]);
     setSelectedVideo(null);
     setVideoForm({ url: '', artistId: '', description: '', captionsJson: '' });
@@ -229,6 +235,10 @@ export default function App() {
   };
 
   const fetchArtists = useCallback(async () => {
+    if (!isAuthenticated) {
+      setArtists([]);
+      return;
+    }
     try {
       const response = await http.get<ArtistResponse[]>('/artists', { headers: authHeaders });
       setArtists(ensureArray(response.data));
@@ -236,14 +246,26 @@ export default function App() {
       console.error('Failed to load artists', error);
       setArtists([]);
     }
-  }, [authHeaders]);
+  }, [authHeaders, isAuthenticated]);
 
   useEffect(() => {
+    if (!isAuthenticated) {
+      setArtists([]);
+      setVideos([]);
+      setClips([]);
+      setClipCandidates([]);
+      setSelectedVideo(null);
+      return;
+    }
     void fetchArtists();
-  }, [fetchArtists]);
+  }, [isAuthenticated, fetchArtists]);
 
   const handleArtistSubmit = async (event: FormEvent) => {
     event.preventDefault();
+    if (creationDisabled) {
+      console.warn('Authentication is required to create artists.');
+      return;
+    }
     try {
       await http.post<ArtistResponse>(
         '/artists',
@@ -259,6 +281,10 @@ export default function App() {
 
   const handleVideoSubmit = async (event: FormEvent) => {
     event.preventDefault();
+    if (creationDisabled) {
+      console.warn('Authentication is required to register videos.');
+      return;
+    }
     try {
       const response = await http.post<VideoResponse>(
         '/videos',
@@ -282,6 +308,10 @@ export default function App() {
   };
 
   useEffect(() => {
+    if (!isAuthenticated) {
+      setClips([]);
+      return;
+    }
     if (!selectedVideo) {
       setClips([]);
       return;
@@ -301,10 +331,31 @@ export default function App() {
         setClips([]);
       }
     })();
-  }, [selectedVideo, authHeaders]);
+  }, [selectedVideo, authHeaders, isAuthenticated]);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      setPublicClips([]);
+      return;
+    }
+
+    (async () => {
+      try {
+        const response = await http.get<ClipResponse[]>('/public/clips');
+        setPublicClips(ensureArray(response.data).map(normalizeClip));
+      } catch (error) {
+        console.error('Failed to load public clips', error);
+        setPublicClips([]);
+      }
+    })();
+  }, [isAuthenticated]);
 
   const handleClipSubmit = async (event: FormEvent) => {
     event.preventDefault();
+    if (creationDisabled) {
+      console.warn('Authentication is required to create clips.');
+      return;
+    }
     if (!selectedVideo) {
       return;
     }
@@ -334,6 +385,10 @@ export default function App() {
     if (!selectedVideo) {
       return;
     }
+    if (creationDisabled) {
+      console.warn('Authentication is required to run auto-detection.');
+      return;
+    }
     try {
       const response = await http.post<ClipCandidateResponse[]>(
         '/clips/auto-detect',
@@ -348,6 +403,13 @@ export default function App() {
   };
 
   useEffect(() => {
+    if (!isAuthenticated) {
+      setVideos([]);
+      setSelectedVideo(null);
+      setClips([]);
+      setClipCandidates([]);
+      return;
+    }
     if (!videoForm.artistId) {
       setVideos([]);
       setSelectedVideo(null);
@@ -377,14 +439,25 @@ export default function App() {
         setSelectedVideo(null);
       }
     })();
-  }, [videoForm.artistId, authHeaders]);
+  }, [videoForm.artistId, authHeaders, isAuthenticated]);
 
   const handleArtistClick = (artistId: number) => {
+    if (creationDisabled) {
+      return;
+    }
     setVideoForm((prev) => ({ ...prev, artistId: String(artistId) }));
   };
 
   const selectedArtist = artists.find((artist) => artist.id === Number(videoForm.artistId));
   const selectedVideoData = selectedVideo ? videos.find((video) => video.id === selectedVideo) : null;
+  const displayedClips = isAuthenticated ? clips : publicClips;
+  const playlistHeading = isAuthenticated ? '유저가 저장한 플레이리스트' : '공개된 클립 모음';
+  const playlistSubtitle = isAuthenticated
+    ? '(백그라운드 재생)'
+    : '로그인 없이 감상 가능한 클립 모음';
+  const playlistEmptyMessage = isAuthenticated
+    ? '선택된 영상의 저장된 클립이 없습니다.'
+    : '공개된 클립이 아직 없습니다.';
 
   return (
     <div className="dashboard">
@@ -436,6 +509,7 @@ export default function App() {
               value={artistForm.name}
               onChange={(event) => setArtistForm((prev) => ({ ...prev, name: event.target.value }))}
               required
+              disabled={creationDisabled}
             />
             <input
               id="artistChannel"
@@ -443,8 +517,11 @@ export default function App() {
               value={artistForm.channelId}
               onChange={(event) => setArtistForm((prev) => ({ ...prev, channelId: event.target.value }))}
               required
+              disabled={creationDisabled}
             />
-            <button type="submit">아티스트 등록</button>
+            <button type="submit" disabled={creationDisabled}>
+              아티스트 등록
+            </button>
           </form>
           <ul className="artist-list">
             {artists.length === 0 && <li className="artist-empty">등록된 아티스트가 없습니다.</li>}
@@ -484,12 +561,14 @@ export default function App() {
                 value={videoForm.url}
                 onChange={(event) => setVideoForm((prev) => ({ ...prev, url: event.target.value }))}
                 required
+                disabled={creationDisabled}
               />
               <select
                 id="artistSelect"
                 value={videoForm.artistId}
                 onChange={(event) => setVideoForm((prev) => ({ ...prev, artistId: event.target.value }))}
                 required
+                disabled={creationDisabled}
               >
                 <option value="" disabled>
                   아티스트 선택
@@ -506,6 +585,7 @@ export default function App() {
                 placeholder="영상 설명 (선택 사항)"
                 value={videoForm.description}
                 onChange={(event) => setVideoForm((prev) => ({ ...prev, description: event.target.value }))}
+                disabled={creationDisabled}
               />
               <textarea
                 id="captions"
@@ -513,8 +593,11 @@ export default function App() {
                 placeholder="캡션 JSON 또는 시작시간|문장 형식"
                 value={videoForm.captionsJson}
                 onChange={(event) => setVideoForm((prev) => ({ ...prev, captionsJson: event.target.value }))}
+                disabled={creationDisabled}
               />
-              <button type="submit">영상 메타데이터 저장</button>
+              <button type="submit" disabled={creationDisabled}>
+                영상 메타데이터 저장
+              </button>
             </form>
           </div>
 
@@ -529,6 +612,7 @@ export default function App() {
                   setSelectedVideo(Number.isNaN(value) ? null : value);
                 }}
                 required
+                disabled={creationDisabled}
               >
                 <option value="" disabled>
                   영상 선택
@@ -545,6 +629,7 @@ export default function App() {
                 value={clipForm.title}
                 onChange={(event) => setClipForm((prev) => ({ ...prev, title: event.target.value }))}
                 required
+                disabled={creationDisabled}
               />
               <div className="number-row">
                 <input
@@ -557,6 +642,7 @@ export default function App() {
                     setClipForm((prev) => ({ ...prev, startSec: Number(event.target.value) }))
                   }
                   required
+                  disabled={creationDisabled}
                 />
                 <input
                   id="endSec"
@@ -566,6 +652,7 @@ export default function App() {
                   value={clipForm.endSec}
                   onChange={(event) => setClipForm((prev) => ({ ...prev, endSec: Number(event.target.value) }))}
                   required
+                  disabled={creationDisabled}
                 />
               </div>
               <input
@@ -573,8 +660,11 @@ export default function App() {
                 placeholder="태그 (쉼표로 구분)"
                 value={clipForm.tags}
                 onChange={(event) => setClipForm((prev) => ({ ...prev, tags: event.target.value }))}
+                disabled={creationDisabled}
               />
-              <button type="submit">클립 저장</button>
+              <button type="submit" disabled={creationDisabled}>
+                클립 저장
+              </button>
             </form>
             <div className="auto-detect">
               <div className="number-row">
@@ -585,6 +675,7 @@ export default function App() {
                     const value = Number(event.target.value);
                     setSelectedVideo(Number.isNaN(value) ? null : value);
                   }}
+                  disabled={creationDisabled}
                 >
                   <option value="" disabled>
                     영상 선택
@@ -595,13 +686,18 @@ export default function App() {
                     </option>
                   ))}
                 </select>
-                <select id="mode" value={autoDetectMode} onChange={(event) => setAutoDetectMode(event.target.value)}>
+                <select
+                  id="mode"
+                  value={autoDetectMode}
+                  onChange={(event) => setAutoDetectMode(event.target.value)}
+                  disabled={creationDisabled}
+                >
                   <option value="chapters">챕터 기반</option>
                   <option value="captions">자막 기반</option>
                   <option value="combined">혼합</option>
                 </select>
               </div>
-              <button type="button" onClick={runAutoDetect}>
+              <button type="button" onClick={runAutoDetect} disabled={creationDisabled}>
                 자동으로 클립 제안 받기
               </button>
             </div>
@@ -663,15 +759,18 @@ export default function App() {
 
       <section className="panel playlist-panel">
         <div>
-          <h2>유저가 저장한 플레이리스트</h2>
-          <p className="playlist-subtitle">(백그라운드 재생)</p>
+          <h2>{playlistHeading}</h2>
+          <p className="playlist-subtitle">{playlistSubtitle}</p>
         </div>
-        {clips.length === 0 ? (
-          <p className="empty-state">선택된 영상의 저장된 클립이 없습니다.</p>
+        {displayedClips.length === 0 ? (
+          <p className="empty-state">{playlistEmptyMessage}</p>
         ) : (
           <div className="playlist-list">
-            {clips.map((clip) => {
+            {displayedClips.map((clip) => {
               const clipVideo = videos.find((video) => video.id === clip.videoId);
+              const youtubeVideoId = clip.youtubeVideoId ?? clipVideo?.youtubeVideoId;
+              const resolvedVideoTitle =
+                clip.videoTitle ?? clipVideo?.title ?? clipVideo?.youtubeVideoId ?? '';
               return (
                 <div className="playlist-card" key={clip.id}>
                   <div className="playlist-meta">
@@ -679,6 +778,9 @@ export default function App() {
                     <p>
                       {clip.startSec}s → {clip.endSec}s
                     </p>
+                    {resolvedVideoTitle && (
+                      <p className="playlist-video-title">{resolvedVideoTitle}</p>
+                    )}
                     {clip.tags.length > 0 && (
                       <div className="tag-row">
                         {clip.tags.map((tag) => (
@@ -689,9 +791,9 @@ export default function App() {
                       </div>
                     )}
                   </div>
-                  {clipVideo && (
+                  {youtubeVideoId && (
                     <ClipPlayer
-                      youtubeVideoId={clipVideo.youtubeVideoId}
+                      youtubeVideoId={youtubeVideoId}
                       startSec={clip.startSec}
                       endSec={clip.endSec}
                       autoplay={false}
