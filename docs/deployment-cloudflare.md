@@ -76,6 +76,8 @@ wrangler deploy
 
 배포가 완료되면 Workers.dev 주소 또는 커스텀 도메인이 출력됩니다. Cloudflare Pages에 프론트엔드를 함께 호스팅하는 경우 Pages Functions가 `/api/*` 경로를 워커로 프록시하므로 추가 설정 없이 동일 오리진에서 API를 호출할 수 있습니다. 다른 호스트를 사용하려면 프론트엔드 환경 변수 `VITE_API_BASE_URL`을 원하는 엔드포인트(예: `https://yt-clip-api.<account>.workers.dev`)로 지정하고, Pages Functions 환경 변수 `API_PROXY_BASE_URL`(또는 `API_PROXY_ORIGIN`)에 동일한 값을 입력해 프록시 대상도 함께 변경하세요.
 
+> **주의:** Cloudflare Bot 관리 기능이 Workers.dev 호스트의 `OPTIONS` 사전 요청을 차단하는 경우, 브라우저에서 동일 오리진 `/api` 경로를 사용하면 프리플라이트 자체가 발생하지 않아 문제를 우회할 수 있습니다. 반드시 교차 오리진 호출이 필요한 상황이 아니라면 기본 `/api` 프록시 구성을 유지하세요. 부득이하게 외부 호스트를 직접 호출해야 한다면 프론트엔드 빌드에 `VITE_ALLOW_CROSS_ORIGIN_API=true`를 추가해 경고 없이 원격 엔드포인트를 사용하도록 강제할 수 있습니다.
+
 ## 7. 배포 후 확인 사항
 
 - `wrangler d1 execute ytclipdb --command "SELECT COUNT(*) FROM users;"`와 같은 쿼리로 데이터베이스 상태를 점검합니다.
@@ -84,9 +86,7 @@ wrangler deploy
 
 ## 8. Super Bot Fight Mode 예외 설정
 
-워커 엔드포인트가 Cloudflare Bot 관리 기능(Managed Challenge, Super Bot Fight Mode 등)에 의해 차단되면 프론트엔드에서 `OPTIONS`,
-`GET`, `POST` 요청이 실패하고, `wrangler tail`에도 호출이 기록되지 않습니다. 다음과 같이 예외 규칙을 추가해 워커 도메인에 대한 정당한
-트래픽을 허용하세요.
+워커 엔드포인트가 Cloudflare Bot 관리 기능(Managed Challenge, Super Bot Fight Mode 등)에 의해 차단되면 프론트엔드에서 `OPTIONS`, `GET`, `POST` 요청이 실패하고, `wrangler tail`에도 호출이 기록되지 않습니다. Pages Functions를 통해 동일 오리진 `/api` 경로를 사용하면 브라우저가 사전 요청을 보내지 않아 이러한 차단을 피할 수 있습니다. 동일 오리진 프록시를 사용할 수 없는 경우에는 아래 절차대로 예외 규칙을 추가해 워커 도메인에 대한 정당한 트래픽을 허용하세요.
 
 1. Cloudflare 대시보드에서 **Security → WAF (또는 Bots)** 메뉴로 이동합니다.
 2. `yt-clip-api` 워커 호스트에 대한 커스텀 규칙을 추가하고 아래와 같은 Expression을 설정합니다.
