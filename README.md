@@ -21,7 +21,7 @@
   - `POST /api/users/me/favorites` : 즐겨찾기 추가/삭제
 - **DB 스키마 예시**
   - `users(id, email, display_name, created_at)`
-  - `artists(id, name, youtube_channel_id, created_by)`
+  - `artists(id, name, display_name, youtube_channel_id, created_by)`
   - `user_favorite_artists(user_id, artist_id)` – `UNIQUE (user_id, artist_id)` 인덱스 구성
 
 ### B. 유튜브 영상 등록

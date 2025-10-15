@@ -27,6 +27,7 @@ type D1Result<T> = {
 interface ArtistResponse {
   id: number;
   name: string;
+  displayName: string;
   youtubeChannelId: string;
 }
 
@@ -100,6 +101,7 @@ interface UserContext {
 interface ArtistRow {
   id: number;
   name: string;
+  display_name: string | null;
   youtube_channel_id: string;
 }
 
@@ -306,6 +308,8 @@ async function createArtist(
 ): Promise<Response> {
   const body = await readJson(request);
   const name = typeof body.name === "string" ? body.name.trim() : "";
+  const displayNameRaw = typeof body.displayName === "string" ? body.displayName : "";
+  const displayName = displayNameRaw.trim() || name;
   const youtubeChannelId = typeof body.youtubeChannelId === "string" ? body.youtubeChannelId.trim() : "";
   if (!name) {
     throw new HttpError(400, "name is required");
@@ -315,21 +319,25 @@ async function createArtist(
   }
 
   const result = await env.DB.prepare(
-    "INSERT INTO artists (name, youtube_channel_id, created_by) VALUES (?, ?, ?)"
-  ).bind(name, youtubeChannelId, user.id).run();
+    "INSERT INTO artists (name, display_name, youtube_channel_id, created_by) VALUES (?, ?, ?, ?)"
+  ).bind(name, displayName, youtubeChannelId, user.id).run();
   const artistId = numberFromRowId(result.meta.last_row_id);
-  return jsonResponse({ id: artistId, name, youtubeChannelId } satisfies ArtistResponse, 201, cors);
+  return jsonResponse(
+    { id: artistId, name, displayName, youtubeChannelId } satisfies ArtistResponse,
+    201,
+    cors
+  );
 }
 
 async function listArtists(url: URL, env: Env, user: UserContext, cors: CorsConfig): Promise<Response> {
   const mine = url.searchParams.get("mine") === "true";
   const query = mine
-    ? `SELECT a.id, a.name, a.youtube_channel_id
+    ? `SELECT a.id, a.name, a.display_name, a.youtube_channel_id
          FROM artists a
          JOIN user_favorite_artists ufa ON ufa.artist_id = a.id
         WHERE ufa.user_id = ?
         ORDER BY a.name`
-    : `SELECT id, name, youtube_channel_id
+    : `SELECT id, name, display_name, youtube_channel_id
          FROM artists
         WHERE created_by = ?
         ORDER BY id DESC`;
@@ -659,6 +667,7 @@ function toArtistResponse(row: ArtistRow): ArtistResponse {
   return {
     id: row.id,
     name: row.name,
+    displayName: row.display_name ?? row.name,
     youtubeChannelId: row.youtube_channel_id
   };
 }
