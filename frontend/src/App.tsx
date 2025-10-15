@@ -177,13 +177,21 @@ export default function App() {
   const [idToken, setIdToken] = useState<string | null>(null);
   const [isGoogleReady, setIsGoogleReady] = useState(false);
 
-  const authHeaders = useMemo(
-    () => ({
-      'X-User-Email': email,
-      'X-User-Name': displayName
-    }),
-    [email, displayName]
-  );
+  const authHeaders = useMemo(() => {
+    if (!idToken) {
+      return {} as Record<string, string>;
+    }
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${idToken}`
+    };
+    if (email) {
+      headers['X-User-Email'] = email;
+    }
+    if (displayName) {
+      headers['X-User-Name'] = displayName;
+    }
+    return headers;
+  }, [idToken, email, displayName]);
 
   const isAuthenticated = Boolean(idToken);
   const creationDisabled = !isAuthenticated;
