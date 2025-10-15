@@ -105,6 +105,42 @@ interface ArtistRow {
   youtube_channel_id: string;
 }
 
+interface TableInfoRow {
+  name: string | null;
+}
+
+let hasEnsuredArtistDisplayNameColumn = false;
+
+const isDuplicateColumnError = (error: string | undefined): boolean =>
+  typeof error === "string" && /duplicate column name/i.test(error);
+
+async function ensureArtistDisplayNameColumn(db: D1Database): Promise<void> {
+  if (hasEnsuredArtistDisplayNameColumn) {
+    return;
+  }
+
+  const { results } = await db.prepare("PRAGMA table_info(artists)").all<TableInfoRow>();
+  const hasColumn = (results ?? []).some((column) => column.name?.toLowerCase() === "display_name");
+
+  if (!hasColumn) {
+    const alterResult = await db.prepare("ALTER TABLE artists ADD COLUMN display_name TEXT").run();
+    if (!alterResult.success && !isDuplicateColumnError(alterResult.error)) {
+      throw new Error(alterResult.error ?? "Failed to add display_name column to artists table");
+    }
+  }
+
+  const updateResult = await db
+    .prepare(
+      "UPDATE artists SET display_name = name WHERE display_name IS NULL OR display_name = ''"
+    )
+    .run();
+  if (!updateResult.success) {
+    throw new Error(updateResult.error ?? "Failed to backfill artist display names");
+  }
+
+  hasEnsuredArtistDisplayNameColumn = true;
+}
+
 interface VideoRow {
   id: number;
   artist_id: number;
@@ -318,6 +354,8 @@ async function createArtist(
     throw new HttpError(400, "youtubeChannelId is required");
   }
 
+  await ensureArtistDisplayNameColumn(env.DB);
+
   const result = await env.DB.prepare(
     "INSERT INTO artists (name, display_name, youtube_channel_id, created_by) VALUES (?, ?, ?, ?)"
   ).bind(name, displayName, youtubeChannelId, user.id).run();
@@ -331,6 +369,7 @@ async function createArtist(
 
 async function listArtists(url: URL, env: Env, user: UserContext, cors: CorsConfig): Promise<Response> {
   const mine = url.searchParams.get("mine") === "true";
+  await ensureArtistDisplayNameColumn(env.DB);
   const query = mine
     ? `SELECT a.id, a.name, a.display_name, a.youtube_channel_id
          FROM artists a
