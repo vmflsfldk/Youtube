@@ -1,4 +1,4 @@
-interface Env {
+export interface Env {
   DB: D1Database;
   GOOGLE_OAUTH_CLIENT_IDS?: string;
   GOOGLE_CLIENT_ID?: string;
