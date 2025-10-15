@@ -109,7 +109,133 @@ interface TableInfoRow {
   name: string | null;
 }
 
+let hasEnsuredSchema = false;
 let hasEnsuredArtistDisplayNameColumn = false;
+
+const isStatementError = (result: D1Result<unknown>, context: string): boolean => {
+  if (result.success) {
+    return false;
+  }
+  console.error(`[yt-clip] Failed to execute schema statement (${context}):`, result.error);
+  return true;
+};
+
+async function ensureDatabaseSchema(db: D1Database): Promise<void> {
+  if (hasEnsuredSchema) {
+    return;
+  }
+
+  const statements: Array<{ sql: string; context: string }> = [
+    { sql: "PRAGMA foreign_keys = ON", context: "foreign_keys" },
+    {
+      sql: `CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        email TEXT NOT NULL UNIQUE,
+        display_name TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+      )`,
+      context: "users"
+    },
+    {
+      sql: `CREATE TABLE IF NOT EXISTS artists (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        youtube_channel_id TEXT NOT NULL,
+        created_by INTEGER NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+        display_name TEXT,
+        FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
+      )`,
+      context: "artists"
+    },
+    {
+      sql: `CREATE TABLE IF NOT EXISTS user_favorite_artists (
+        user_id INTEGER NOT NULL,
+        artist_id INTEGER NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+        UNIQUE (user_id, artist_id),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (artist_id) REFERENCES artists(id) ON DELETE CASCADE
+      )`,
+      context: "user_favorite_artists"
+    },
+    {
+      sql: `CREATE TABLE IF NOT EXISTS videos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        artist_id INTEGER NOT NULL,
+        youtube_video_id TEXT NOT NULL UNIQUE,
+        title TEXT NOT NULL,
+        duration_sec INTEGER,
+        thumbnail_url TEXT,
+        channel_id TEXT,
+        description TEXT,
+        captions_json TEXT,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+        updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+        FOREIGN KEY (artist_id) REFERENCES artists(id) ON DELETE CASCADE
+      )`,
+      context: "videos"
+    },
+    {
+      sql: `CREATE TRIGGER IF NOT EXISTS trg_videos_updated_at
+        AFTER UPDATE ON videos
+        FOR EACH ROW
+        BEGIN
+            UPDATE videos SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.id;
+        END`,
+      context: "trg_videos_updated_at"
+    },
+    {
+      sql: `CREATE TABLE IF NOT EXISTS clips (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        video_id INTEGER NOT NULL,
+        title TEXT NOT NULL,
+        start_sec INTEGER NOT NULL,
+        end_sec INTEGER NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+        FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE CASCADE
+      )`,
+      context: "clips"
+    },
+    {
+      sql: `CREATE TABLE IF NOT EXISTS clip_tags (
+        clip_id INTEGER NOT NULL,
+        tag TEXT NOT NULL,
+        FOREIGN KEY (clip_id) REFERENCES clips(id) ON DELETE CASCADE
+      )`,
+      context: "clip_tags"
+    },
+    {
+      sql: "CREATE INDEX IF NOT EXISTS idx_artists_created_by ON artists(created_by)",
+      context: "idx_artists_created_by"
+    },
+    {
+      sql: "CREATE INDEX IF NOT EXISTS idx_videos_artist ON videos(artist_id)",
+      context: "idx_videos_artist"
+    },
+    {
+      sql: "CREATE INDEX IF NOT EXISTS idx_clips_video ON clips(video_id)",
+      context: "idx_clips_video"
+    },
+    {
+      sql: "CREATE INDEX IF NOT EXISTS idx_clip_tags_clip ON clip_tags(clip_id)",
+      context: "idx_clip_tags_clip"
+    },
+    {
+      sql: "CREATE INDEX IF NOT EXISTS idx_favorites_user ON user_favorite_artists(user_id)",
+      context: "idx_favorites_user"
+    }
+  ];
+
+  for (const { sql, context } of statements) {
+    const result = await db.prepare(sql).run();
+    if (isStatementError(result, context)) {
+      throw new Error(result.error ?? `Failed to initialize database: ${context}`);
+    }
+  }
+
+  hasEnsuredSchema = true;
+}
 
 const isDuplicateColumnError = (error: string | undefined): boolean =>
   typeof error === "string" && /duplicate column name/i.test(error);
@@ -291,6 +417,8 @@ async function handleApi(
   path: string
 ): Promise<Response> {
   try {
+    await ensureDatabaseSchema(env.DB);
+
     if (request.method === "POST" && path === "/api/users/login") {
       return await loginUser(request, env, cors);
     }
