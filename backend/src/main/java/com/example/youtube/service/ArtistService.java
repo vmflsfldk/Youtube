@@ -25,7 +25,12 @@ public class ArtistService {
 
     @Transactional
     public ArtistResponse createArtist(ArtistRequest request, UserAccount creator) {
-        Artist artist = new Artist(request.name(), request.youtubeChannelId(), creator);
+        String displayName = request.displayName();
+        if (displayName == null || displayName.isBlank()) {
+            displayName = request.name();
+        }
+
+        Artist artist = new Artist(request.name(), displayName, request.youtubeChannelId(), creator);
         Artist saved = artistRepository.save(artist);
         return map(saved);
     }
@@ -57,6 +62,6 @@ public class ArtistService {
     }
 
     private ArtistResponse map(Artist artist) {
-        return new ArtistResponse(artist.getId(), artist.getName(), artist.getYoutubeChannelId());
+        return new ArtistResponse(artist.getId(), artist.getName(), artist.getDisplayName(), artist.getYoutubeChannelId());
     }
 }
