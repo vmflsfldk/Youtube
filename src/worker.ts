@@ -512,25 +512,121 @@ async function ensureUserPasswordColumns(db: D1Database): Promise<void> {
     return;
   }
 
-  const { results } = await db.prepare("PRAGMA table_info(users)").all<TableInfoRow>();
-  const existing = new Set((results ?? []).map((column) => column.name?.toLowerCase()).filter(Boolean));
+  const refreshColumns = async (): Promise<Set<string>> => {
+    const { results } = await db.prepare("PRAGMA table_info(users)").all<TableInfoRow>();
+    return new Set((results ?? []).map((column) => column.name?.toLowerCase()).filter(Boolean));
+  };
+
+  let existing = await refreshColumns();
   const operations: Array<{ column: string; sql: string }> = [
     { column: "password_hash", sql: "ALTER TABLE users ADD COLUMN password_hash TEXT" },
     { column: "password_salt", sql: "ALTER TABLE users ADD COLUMN password_salt TEXT" },
     { column: "password_updated_at", sql: "ALTER TABLE users ADD COLUMN password_updated_at TEXT" }
   ];
 
+  let attemptedRebuild = false;
+
   for (const { column, sql } of operations) {
     if (existing.has(column)) {
       continue;
     }
+
     const alterResult = await db.prepare(sql).run();
-    if (!alterResult.success && !isDuplicateColumnError(alterResult.error)) {
+    if (alterResult.success || isDuplicateColumnError(alterResult.error)) {
+      existing.add(column);
+      continue;
+    }
+
+    if (attemptedRebuild) {
+      throw new Error(alterResult.error ?? `Failed to add ${column} column to users table`);
+    }
+
+    await rebuildUsersTableWithPasswordColumns(db, existing);
+    attemptedRebuild = true;
+    existing = await refreshColumns();
+
+    if (!existing.has(column)) {
       throw new Error(alterResult.error ?? `Failed to add ${column} column to users table`);
     }
   }
 
   hasEnsuredUserPasswordColumns = true;
+}
+
+async function rebuildUsersTableWithPasswordColumns(db: D1Database, existingColumns: Set<string>): Promise<void> {
+  const runStatement = async (sql: string, context: string): Promise<void> => {
+    const result = await db.prepare(sql).run();
+    if (isStatementError(result, context)) {
+      throw new Error(result.error ?? `Failed to execute statement: ${context}`);
+    }
+  };
+
+  const selectColumns = [
+    "id",
+    "email",
+    existingColumns.has("display_name") ? "display_name" : "NULL AS display_name",
+    existingColumns.has("password_hash") ? "password_hash" : "NULL AS password_hash",
+    existingColumns.has("password_salt") ? "password_salt" : "NULL AS password_salt",
+    existingColumns.has("password_updated_at") ? "password_updated_at" : "NULL AS password_updated_at",
+    existingColumns.has("created_at")
+      ? "created_at"
+      : "strftime('%Y-%m-%dT%H:%M:%fZ', 'now') AS created_at"
+  ].join(", ");
+
+  const enableForeignKeys = async (enabled: boolean) => {
+    const pragmaResult = await db
+      .prepare(`PRAGMA foreign_keys = ${enabled ? "ON" : "OFF"}`)
+      .run();
+    if (isStatementError(pragmaResult, `foreign_keys_${enabled ? "on" : "off"}`)) {
+      throw new Error(pragmaResult.error ?? `Failed to toggle foreign key enforcement (${enabled ? "ON" : "OFF"})`);
+    }
+  };
+
+  let foreignKeysDisabled = false;
+
+  try {
+    await enableForeignKeys(false);
+    foreignKeysDisabled = true;
+
+    const beginResult = await db.prepare("BEGIN TRANSACTION").run();
+    if (isStatementError(beginResult, "begin_transaction")) {
+      throw new Error(beginResult.error ?? "Failed to begin transaction for users table rebuild");
+    }
+
+    await runStatement(
+      `CREATE TABLE users_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        email TEXT NOT NULL UNIQUE,
+        display_name TEXT,
+        password_hash TEXT,
+        password_salt TEXT,
+        password_updated_at TEXT,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+      )`,
+      "create_users_new"
+    );
+
+    await runStatement(
+      `INSERT INTO users_new (id, email, display_name, password_hash, password_salt, password_updated_at, created_at)
+       SELECT ${selectColumns} FROM users`,
+      "migrate_users_into_users_new"
+    );
+
+    await runStatement("DROP TABLE users", "drop_old_users_table");
+    await runStatement("ALTER TABLE users_new RENAME TO users", "rename_users_new_table");
+
+    const commitResult = await db.prepare("COMMIT").run();
+    if (isStatementError(commitResult, "commit_users_table_rebuild")) {
+      throw new Error(commitResult.error ?? "Failed to commit users table rebuild");
+    }
+  } catch (error) {
+    await db.prepare("ROLLBACK").run();
+    throw error;
+  } finally {
+    if (foreignKeysDisabled) {
+      await enableForeignKeys(true);
+    }
+  }
 }
 
 interface VideoRow {
