@@ -175,3 +175,26 @@ npm run dev
 
 `yt-clip-api` Worker와 D1 데이터베이스를 Cloudflare에 배포하려면 [Cloudflare Workers 배포 가이드](docs/deployment-cloudflare.md)를 참고하세요. Wrangler 로그인, D1 데이터베이스 생성, 마이그레이션 적용, `wrangler deploy`를 통한 프로덕션 배포 절차를 단계별로 정리했습니다.
 
+### Cloudflare 보안 설정 (403/사전 요청 차단 해결)
+
+Cloudflare 계정에서 Super Bot Fight Mode 또는 Bot Management가 활성화된 경우, 워커 도메인으로 향하는 `OPTIONS` 사전 요청이 Cloudflare 엣지에서 차단되어 403이 반환될 수 있습니다. 프론트엔드가 `https://yt-clip-api.word-game.workers.dev/api/*` 엔드포인트를 호출할 때 위와 같은 403 응답이 발생한다면 아래 단계를 통해 워커 호스트에 대한 예외 규칙을 추가하세요.
+
+1. Cloudflare 대시보드 → **Security → WAF (또는 Bots)** 메뉴로 이동합니다.
+2. 새 커스텀 규칙을 추가하고 Expression에 아래 조건을 입력합니다.
+
+   ```
+   (http.host eq "yt-clip-api.word-game.workers.dev" and http.request.method in {"OPTIONS","GET","POST"})
+   ```
+
+3. **Action**을 **Skip**으로 지정하고 Super Bot Fight Mode/Managed Challenge/JS Challenge를 건너뛰도록 설정합니다.
+4. 규칙을 저장한 뒤 다음과 같이 사전 요청을 테스트해 `204 No Content` 응답과 `Access-Control-Allow-*` 헤더가 반환되는지 확인합니다.
+
+   ```bash
+   curl -i -X OPTIONS "https://yt-clip-api.word-game.workers.dev/api/artists" \
+     -H "Origin: https://youtube-1my.pages.dev" \
+     -H "Access-Control-Request-Method: POST" \
+     -H "Access-Control-Request-Headers: content-type, authorization"
+   ```
+
+이 규칙을 적용하면 Cloudflare가 정상적인 프런트엔드 요청을 차단하지 않아 Pages Functions 및 직접 워커 호출 환경 모두에서 사전 요청이 성공적으로 통과합니다.
+
