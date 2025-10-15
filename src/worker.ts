@@ -679,18 +679,55 @@ async function createEmailVerification(env: Env, email: string): Promise<{ code:
   const codeHash = await hashValue(code);
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
 
-  await env.DB.prepare("DELETE FROM email_verification_codes WHERE email = ?")
-    .bind(email)
-    .run();
+  try {
+    const deleteResult = await env.DB.prepare("DELETE FROM email_verification_codes WHERE email = ?")
+      .bind(email)
+      .run();
+    if (!deleteResult.success) {
+      console.error("[yt-clip] Failed to delete existing verification codes", {
+        email,
+        error: "DB_ERROR",
+        detail: deleteResult.error
+      });
+      throw new HttpError(500, "DB_ERROR");
+    }
+  } catch (error) {
+    if (error instanceof HttpError) {
+      throw error;
+    }
+    console.error("[yt-clip] DB error while deleting verification codes", {
+      email,
+      error: "DB_ERROR",
+      detail: error instanceof Error ? error.message : String(error)
+    });
+    throw new HttpError(500, "DB_ERROR");
+  }
 
-  const insertResult = await env.DB.prepare(
-    "INSERT INTO email_verification_codes (email, code_hash, expires_at) VALUES (?, ?, ?)"
-  )
-    .bind(email, codeHash, expiresAt)
-    .run();
+  try {
+    const insertResult = await env.DB.prepare(
+      "INSERT INTO email_verification_codes (email, code_hash, expires_at) VALUES (?, ?, ?)"
+    )
+      .bind(email, codeHash, expiresAt)
+      .run();
 
-  if (!insertResult.success) {
-    throw new HttpError(500, insertResult.error ?? "Failed to create verification code");
+    if (!insertResult.success) {
+      console.error("[yt-clip] Failed to insert verification code", {
+        email,
+        error: "DB_ERROR",
+        detail: insertResult.error
+      });
+      throw new HttpError(500, "DB_ERROR");
+    }
+  } catch (error) {
+    if (error instanceof HttpError) {
+      throw error;
+    }
+    console.error("[yt-clip] DB error while inserting verification code", {
+      email,
+      error: "DB_ERROR",
+      detail: error instanceof Error ? error.message : String(error)
+    });
+    throw new HttpError(500, "DB_ERROR");
   }
 
   return { code, expiresAt };
@@ -1380,12 +1417,11 @@ async function requestEmailRegistration(request: Request, env: Env, cors: CorsCo
     throw new HttpError(400, "email format is invalid");
   }
 
-  const { code } = await createEmailVerification(env, emailRaw);
+  await createEmailVerification(env, emailRaw);
 
   return jsonResponse(
     {
-      message: "회원가입 인증 코드가 이메일로 전송되었습니다.",
-      debugCode: code
+      success: true
     },
     200,
     cors
