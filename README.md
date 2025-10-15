@@ -129,6 +129,7 @@
 | Method | Endpoint | 설명 |
 | --- | --- | --- |
 | POST | `/api/artists` | 아티스트 생성 |
+| GET | `/api/artists` | 전체 아티스트 공개 목록 조회 |
 | GET | `/api/artists?mine=true` | 즐겨찾기 아티스트 조회 |
 | POST | `/api/users/me/favorites` | 즐겨찾기 토글 |
 | POST | `/api/videos` | YouTube URL 메타데이터 저장 |

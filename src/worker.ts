@@ -948,7 +948,7 @@ async function handleApi(
       return await createArtist(request, env, requireUser(user), cors);
     }
     if (request.method === "GET" && path === "/api/artists") {
-      return await listArtists(url, env, requireUser(user), cors);
+      return await listArtists(url, env, user, cors);
     }
     if (request.method === "POST" && path === "/api/users/me/nickname") {
       return await updateNickname(request, env, requireUser(user), cors);
@@ -1022,20 +1022,35 @@ async function createArtist(
   );
 }
 
-async function listArtists(url: URL, env: Env, user: UserContext, cors: CorsConfig): Promise<Response> {
+async function listArtists(
+  url: URL,
+  env: Env,
+  user: UserContext | null,
+  cors: CorsConfig
+): Promise<Response> {
   const mine = url.searchParams.get("mine") === "true";
   await ensureArtistDisplayNameColumn(env.DB);
-  const query = mine
-    ? `SELECT a.id, a.name, a.display_name, a.youtube_channel_id
+  let results: ArtistRow[] | null | undefined;
+  if (mine) {
+    const requestingUser = requireUser(user);
+    const response = await env.DB.prepare(
+      `SELECT a.id, a.name, a.display_name, a.youtube_channel_id
          FROM artists a
          JOIN user_favorite_artists ufa ON ufa.artist_id = a.id
         WHERE ufa.user_id = ?
         ORDER BY a.name`
-    : `SELECT id, name, display_name, youtube_channel_id
+    )
+      .bind(requestingUser.id)
+      .all<ArtistRow>();
+    results = response.results;
+  } else {
+    const response = await env.DB.prepare(
+      `SELECT id, name, display_name, youtube_channel_id
          FROM artists
-        WHERE created_by = ?
-        ORDER BY id DESC`;
-  const { results } = await env.DB.prepare(query).bind(user.id).all<ArtistRow>();
+        ORDER BY id DESC`
+    ).all<ArtistRow>();
+    results = response.results;
+  }
   const artists = (results ?? []).map(toArtistResponse);
   return jsonResponse(artists, 200, cors);
 }
