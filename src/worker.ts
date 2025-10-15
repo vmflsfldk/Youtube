@@ -178,7 +178,7 @@ const resolveAllowedOrigin = (origin: string | null): string => {
 interface UserContext {
   id: number;
   email: string;
-  displayName: string;
+  displayName: string | null;
 }
 
 interface ArtistRow {
@@ -192,8 +192,54 @@ interface TableInfoRow {
   name: string | null;
 }
 
+interface EmailVerificationRow {
+  id: number;
+  email: string;
+  code_hash: string;
+  expires_at: string;
+  consumed_at: string | null;
+  created_at: string;
+}
+
+interface EmailSessionRow {
+  id: number;
+  email: string;
+  token_hash: string;
+  expires_at: string;
+  created_at: string;
+}
+
 let hasEnsuredSchema = false;
 let hasEnsuredArtistDisplayNameColumn = false;
+
+const encoder = new TextEncoder();
+
+const hashValue = async (value: string): Promise<string> => {
+  const data = encoder.encode(value);
+  const digest = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+};
+
+const generateNumericCode = (): string => {
+  const buffer = new Uint32Array(1);
+  crypto.getRandomValues(buffer);
+  return (buffer[0] % 1_000_000).toString().padStart(6, "0");
+};
+
+const generateRandomToken = (): string => {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes)
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+};
+
+const isExpired = (isoTimestamp: string): boolean => {
+  const expiresAt = Date.parse(isoTimestamp);
+  return Number.isFinite(expiresAt) && expiresAt <= Date.now();
+};
 
 const isStatementError = (result: D1Result<unknown>, context: string): boolean => {
   if (result.success) {
@@ -214,7 +260,7 @@ async function ensureDatabaseSchema(db: D1Database): Promise<void> {
       sql: `CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         email TEXT NOT NULL UNIQUE,
-        display_name TEXT NOT NULL,
+        display_name TEXT,
         created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
       )`,
       context: "users"
@@ -230,6 +276,35 @@ async function ensureDatabaseSchema(db: D1Database): Promise<void> {
         FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
       )`,
       context: "artists"
+    },
+    {
+      sql: `CREATE TABLE IF NOT EXISTS email_verification_codes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        email TEXT NOT NULL,
+        code_hash TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        consumed_at TEXT,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+      )`,
+      context: "email_verification_codes"
+    },
+    {
+      sql: `CREATE TABLE IF NOT EXISTS email_sessions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        email TEXT NOT NULL,
+        token_hash TEXT NOT NULL UNIQUE,
+        expires_at TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+      )`,
+      context: "email_sessions"
+    },
+    {
+      sql: "CREATE INDEX IF NOT EXISTS idx_email_verification_email ON email_verification_codes(email)",
+      context: "idx_email_verification_email"
+    },
+    {
+      sql: "CREATE INDEX IF NOT EXISTS idx_email_sessions_email ON email_sessions(email)",
+      context: "idx_email_sessions_email"
     },
     {
       sql: `CREATE TABLE IF NOT EXISTS user_favorite_artists (
@@ -502,6 +577,14 @@ async function handleApi(
   try {
     await ensureDatabaseSchema(env.DB);
 
+    if (request.method === "POST" && path === "/auth/email/request") {
+      return await requestEmailLogin(request, env, cors);
+    }
+
+    if (request.method === "POST" && path === "/auth/email/verify") {
+      return await verifyEmailLogin(request, env, cors);
+    }
+
     if (request.method === "POST" && path === "/api/users/login") {
       return await loginUser(request, env, cors);
     }
@@ -517,6 +600,9 @@ async function handleApi(
     }
     if (request.method === "GET" && path === "/api/artists") {
       return await listArtists(url, env, requireUser(user), cors);
+    }
+    if (request.method === "POST" && path === "/api/users/me/nickname") {
+      return await updateNickname(request, env, requireUser(user), cors);
     }
     if (request.method === "POST" && path === "/api/users/me/favorites") {
       return await toggleFavorite(request, env, requireUser(user), cors);
@@ -888,25 +974,181 @@ async function getUserFromHeaders(env: Env, headers: Headers): Promise<UserConte
   if (!token) {
     return null;
   }
-  const verified = await verifyGoogleIdToken(env, token);
-  if (!verified) {
+  if (token.includes(".")) {
+    const verified = await verifyGoogleIdToken(env, token);
+    if (verified) {
+      return await upsertUser(env, verified.email, null);
+    }
+  }
+  const emailSession = await verifyEmailSession(env, token);
+  if (emailSession) {
+    return await upsertUser(env, emailSession.email, null);
+  }
+  return null;
+}
+
+async function verifyEmailSession(env: Env, token: string): Promise<{ email: string } | null> {
+  const tokenHash = await hashValue(token);
+  const session = await env.DB.prepare(
+    "SELECT id, email, expires_at FROM email_sessions WHERE token_hash = ?"
+  )
+    .bind(tokenHash)
+    .first<Pick<EmailSessionRow, "id" | "email" | "expires_at">>();
+  if (!session) {
     return null;
   }
-  const emailHeader = headers.get("X-User-Email");
-  if (emailHeader && emailHeader.trim() && emailHeader.trim().toLowerCase() !== verified.email.toLowerCase()) {
-    console.warn(
-      `[yt-clip] Ignoring mismatched X-User-Email header for verified account ${verified.email}`
-    );
+  if (isExpired(session.expires_at)) {
+    await env.DB.prepare("DELETE FROM email_sessions WHERE id = ?")
+      .bind(session.id)
+      .run();
+    return null;
   }
-  const displayNameHeader = headers.get("X-User-Name");
-  const displayNameCandidate = displayNameHeader && displayNameHeader.trim() ? displayNameHeader.trim() : null;
-  const displayName = displayNameCandidate || verified.displayName || verified.email;
-  return await upsertUser(env, verified.email, displayName);
+  return { email: session.email };
 }
 
 async function loginUser(request: Request, env: Env, cors: CorsConfig): Promise<Response> {
   const user = await getUserFromHeaders(env, request.headers);
   return jsonResponse(requireUser(user), 200, cors);
+}
+
+async function requestEmailLogin(request: Request, env: Env, cors: CorsConfig): Promise<Response> {
+  const body = await readJson(request);
+  const emailRaw = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+  if (!emailRaw) {
+    throw new HttpError(400, "email is required");
+  }
+  const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailPattern.test(emailRaw)) {
+    throw new HttpError(400, "email format is invalid");
+  }
+
+  const code = generateNumericCode();
+  const codeHash = await hashValue(code);
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+
+  await env.DB.prepare("DELETE FROM email_verification_codes WHERE email = ?")
+    .bind(emailRaw)
+    .run();
+
+  const insertResult = await env.DB.prepare(
+    "INSERT INTO email_verification_codes (email, code_hash, expires_at) VALUES (?, ?, ?)"
+  )
+    .bind(emailRaw, codeHash, expiresAt)
+    .run();
+
+  if (!insertResult.success) {
+    throw new HttpError(500, insertResult.error ?? "Failed to create verification code");
+  }
+
+  return jsonResponse(
+    {
+      message: "인증 코드가 이메일로 전송되었습니다.",
+      debugCode: code
+    },
+    200,
+    cors
+  );
+}
+
+async function verifyEmailLogin(request: Request, env: Env, cors: CorsConfig): Promise<Response> {
+  const body = await readJson(request);
+  const emailRaw = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+  const codeRaw = typeof body.code === "string" ? body.code.trim() : "";
+  if (!emailRaw || !codeRaw) {
+    throw new HttpError(400, "email and code are required");
+  }
+
+  const verification = await env.DB.prepare(
+    `SELECT id, email, code_hash, expires_at, consumed_at
+       FROM email_verification_codes
+      WHERE email = ?
+      ORDER BY created_at DESC
+      LIMIT 1`
+  )
+    .bind(emailRaw)
+    .first<Pick<EmailVerificationRow, "id" | "code_hash" | "expires_at" | "consumed_at">>();
+
+  if (!verification) {
+    throw new HttpError(400, "요청된 인증 코드가 없습니다.");
+  }
+
+  if (verification.consumed_at) {
+    throw new HttpError(400, "이미 사용된 인증 코드입니다.");
+  }
+
+  if (isExpired(verification.expires_at)) {
+    await env.DB.prepare("DELETE FROM email_verification_codes WHERE id = ?")
+      .bind(verification.id)
+      .run();
+    throw new HttpError(400, "인증 코드의 유효기간이 만료되었습니다.");
+  }
+
+  const providedHash = await hashValue(codeRaw);
+  if (providedHash !== verification.code_hash) {
+    throw new HttpError(400, "인증 코드가 일치하지 않습니다.");
+  }
+
+  const nowIso = new Date().toISOString();
+  await env.DB.prepare("UPDATE email_verification_codes SET consumed_at = ? WHERE id = ?")
+    .bind(nowIso, verification.id)
+    .run();
+
+  const token = generateRandomToken();
+  const tokenHash = await hashValue(token);
+  const sessionExpires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+  await env.DB.prepare("DELETE FROM email_sessions WHERE email = ? AND expires_at <= ?")
+    .bind(emailRaw, nowIso)
+    .run();
+
+  const insertSession = await env.DB.prepare(
+    "INSERT INTO email_sessions (email, token_hash, expires_at) VALUES (?, ?, ?)"
+  )
+    .bind(emailRaw, tokenHash, sessionExpires)
+    .run();
+
+  if (!insertSession.success) {
+    throw new HttpError(500, insertSession.error ?? "Failed to create session");
+  }
+
+  const user = await upsertUser(env, emailRaw, null);
+
+  return jsonResponse(
+    {
+      token,
+      expiresAt: sessionExpires,
+      user
+    },
+    200,
+    cors
+  );
+}
+
+async function updateNickname(
+  request: Request,
+  env: Env,
+  user: UserContext,
+  cors: CorsConfig
+): Promise<Response> {
+  const body = await readJson(request);
+  const nicknameRaw = typeof body.nickname === "string" ? body.nickname.trim() : "";
+  if (!nicknameRaw) {
+    throw new HttpError(400, "nickname is required");
+  }
+  if (nicknameRaw.length < 2 || nicknameRaw.length > 20) {
+    throw new HttpError(400, "닉네임은 2자 이상 20자 이하로 입력해주세요.");
+  }
+
+  const updateResult = await env.DB.prepare("UPDATE users SET display_name = ? WHERE id = ?")
+    .bind(nicknameRaw, user.id)
+    .run();
+
+  if (!updateResult.success) {
+    throw new HttpError(500, updateResult.error ?? "닉네임을 저장하지 못했습니다.");
+  }
+
+  user.displayName = nicknameRaw;
+  return jsonResponse({ ...user }, 200, cors);
 }
 
 function requireUser(user: UserContext | null): UserContext {
@@ -916,29 +1158,31 @@ function requireUser(user: UserContext | null): UserContext {
   return user;
 }
 
-async function upsertUser(env: Env, email: string, displayName: string): Promise<UserContext> {
+async function upsertUser(env: Env, email: string, displayName?: string | null): Promise<UserContext> {
   const existing = await env.DB.prepare(
     "SELECT id, email, display_name FROM users WHERE email = ?"
-  ).bind(email).first<{ id: number; email: string; display_name: string }>();
+  ).bind(email).first<{ id: number; email: string; display_name: string | null }>();
   if (existing) {
-    if (displayName && displayName !== existing.display_name) {
+    const normalizedDisplayName = displayName && displayName.trim() ? displayName.trim() : null;
+    if (normalizedDisplayName && normalizedDisplayName !== existing.display_name) {
       await env.DB.prepare("UPDATE users SET display_name = ? WHERE id = ?")
-        .bind(displayName, existing.id)
+        .bind(normalizedDisplayName, existing.id)
         .run();
-      existing.display_name = displayName;
+      existing.display_name = normalizedDisplayName;
     }
-    return { id: existing.id, email: existing.email, displayName: existing.display_name };
+    return { id: existing.id, email: existing.email, displayName: existing.display_name ?? null };
   }
+  const normalizedDisplayName = displayName && displayName.trim() ? displayName.trim() : null;
   const insertResult = await env.DB.prepare(
     "INSERT INTO users (email, display_name) VALUES (?, ?)"
   )
-    .bind(email, displayName)
+    .bind(email, normalizedDisplayName)
     .run();
   if (!insertResult.success) {
     throw new HttpError(500, insertResult.error ?? "Failed to insert user");
   }
   const userId = numberFromRowId(insertResult.meta.last_row_id);
-  return { id: userId, email, displayName };
+  return { id: userId, email, displayName: normalizedDisplayName };
 }
 
 async function ensureArtist(env: Env, artistId: number, userId: number): Promise<void> {

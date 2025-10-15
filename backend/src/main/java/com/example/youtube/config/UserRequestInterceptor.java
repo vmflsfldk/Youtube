@@ -25,8 +25,8 @@ public class UserRequestInterceptor implements HandlerInterceptor {
         if (email == null || email.isBlank()) {
             email = "guest@example.com";
         }
-        if (displayName == null || displayName.isBlank()) {
-            displayName = "Guest";
+        if (displayName != null && displayName.isBlank()) {
+            displayName = null;
         }
         UserAccount user = userService.getOrCreateUser(email, displayName);
         request.setAttribute(CURRENT_USER_ATTR, user);

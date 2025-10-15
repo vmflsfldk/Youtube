@@ -138,12 +138,26 @@ const http = axios.create({
   baseURL: resolveApiBaseUrl()
 });
 
+const resolveAuthBaseUrl = () => resolveApiBaseUrl().replace(/\/api$/, '/auth');
+
+const authHttp = axios.create({
+  baseURL: resolveAuthBaseUrl()
+});
+
 interface GoogleIdTokenPayload {
   email?: string;
   name?: string;
   given_name?: string;
   family_name?: string;
 }
+
+interface UserResponse {
+  id: number;
+  email: string;
+  displayName: string | null;
+}
+
+type EmailLoginPhase = 'idle' | 'code-sent';
 
 const decodeGoogleToken = (token: string): GoogleIdTokenPayload | null => {
   try {
@@ -162,8 +176,9 @@ const decodeGoogleToken = (token: string): GoogleIdTokenPayload | null => {
 };
 
 export default function App() {
-  const [email, setEmail] = useState('');
-  const [displayName, setDisplayName] = useState('');
+  const [authToken, setAuthToken] = useState<string | null>(null);
+  const [currentUser, setCurrentUser] = useState<UserResponse | null>(null);
+  const [isLoadingUser, setIsLoadingUser] = useState(false);
   const [artists, setArtists] = useState<ArtistResponse[]>([]);
   const [videos, setVideos] = useState<VideoResponse[]>([]);
   const [clips, setClips] = useState<ClipResponse[]>([]);
@@ -174,26 +189,28 @@ export default function App() {
   const [videoForm, setVideoForm] = useState({ url: '', artistId: '', description: '', captionsJson: '' });
   const [clipForm, setClipForm] = useState({ title: '', startSec: 0, endSec: 0, tags: '' });
   const [autoDetectMode, setAutoDetectMode] = useState('chapters');
-  const [idToken, setIdToken] = useState<string | null>(null);
   const [isGoogleReady, setIsGoogleReady] = useState(false);
+  const [emailLoginEmail, setEmailLoginEmail] = useState('');
+  const [emailLoginCode, setEmailLoginCode] = useState('');
+  const [emailLoginPhase, setEmailLoginPhase] = useState<EmailLoginPhase>('idle');
+  const [emailLoginMessage, setEmailLoginMessage] = useState<string | null>(null);
+  const [emailLoginError, setEmailLoginError] = useState<string | null>(null);
+  const [emailLoginDebugCode, setEmailLoginDebugCode] = useState<string | null>(null);
+  const [nicknameInput, setNicknameInput] = useState('');
+  const [nicknameStatus, setNicknameStatus] = useState<string | null>(null);
+  const [nicknameError, setNicknameError] = useState<string | null>(null);
 
   const authHeaders = useMemo(() => {
-    if (!idToken) {
+    if (!authToken) {
       return {} as Record<string, string>;
     }
     const headers: Record<string, string> = {
-      Authorization: `Bearer ${idToken}`
+      Authorization: `Bearer ${authToken}`
     };
-    if (email) {
-      headers['X-User-Email'] = email;
-    }
-    if (displayName) {
-      headers['X-User-Name'] = displayName;
-    }
     return headers;
-  }, [idToken, email, displayName]);
+  }, [authToken]);
 
-  const isAuthenticated = Boolean(idToken);
+  const isAuthenticated = Boolean(authToken && currentUser);
   const creationDisabled = !isAuthenticated;
 
   useEffect(() => {
@@ -223,15 +240,16 @@ export default function App() {
       console.error('Google credential did not include an email address');
       return;
     }
-    setEmail(payload.email);
-    setDisplayName(payload.name ?? payload.email);
-    setIdToken(credential);
+    setAuthToken(credential);
+    setEmailLoginPhase('idle');
+    setEmailLoginMessage(null);
+    setEmailLoginError(null);
   }, []);
 
   const handleSignOut = () => {
-    setIdToken(null);
-    setEmail('');
-    setDisplayName('');
+    setAuthToken(null);
+    setCurrentUser(null);
+    setIsLoadingUser(false);
     setArtists([]);
     setVideos([]);
     setClips([]);
@@ -240,6 +258,160 @@ export default function App() {
     setSelectedVideo(null);
     setVideoForm({ url: '', artistId: '', description: '', captionsJson: '' });
     setClipForm({ title: '', startSec: 0, endSec: 0, tags: '' });
+    setEmailLoginEmail('');
+    setEmailLoginCode('');
+    setEmailLoginPhase('idle');
+    setEmailLoginMessage(null);
+    setEmailLoginError(null);
+    setEmailLoginDebugCode(null);
+    setNicknameInput('');
+    setNicknameStatus(null);
+    setNicknameError(null);
+  };
+
+  useEffect(() => {
+    if (!authToken) {
+      setCurrentUser(null);
+      setNicknameInput('');
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      setIsLoadingUser(true);
+      try {
+        const response = await http.post<UserResponse>(
+          '/users/login',
+          null,
+          { headers: authHeaders }
+        );
+        if (!cancelled) {
+          setCurrentUser(response.data);
+          setNicknameInput(response.data.displayName ?? '');
+        }
+      } catch (error) {
+        console.error('Failed to load user', error);
+        if (!cancelled) {
+          setCurrentUser(null);
+          setAuthToken(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingUser(false);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authToken, authHeaders]);
+
+  const handleEmailLoginRequest = useCallback(
+    async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      const trimmedEmail = emailLoginEmail.trim();
+      if (!trimmedEmail) {
+        setEmailLoginError('이메일을 입력해주세요.');
+        return;
+      }
+      setEmailLoginError(null);
+      setEmailLoginMessage(null);
+      setEmailLoginDebugCode(null);
+      try {
+        const response = await authHttp.post<{ message?: string; debugCode?: string }>(
+          '/email/request',
+          { email: trimmedEmail }
+        );
+        setEmailLoginPhase('code-sent');
+        setEmailLoginMessage(response.data.message ?? '인증 코드가 전송되었습니다.');
+        if (response.data.debugCode) {
+          setEmailLoginDebugCode(response.data.debugCode);
+        }
+      } catch (error) {
+        console.error('Failed to request email login code', error);
+        if (axios.isAxiosError(error) && error.response?.data && typeof error.response.data === 'object') {
+          const data = error.response.data as { error?: string; message?: string };
+          setEmailLoginError(data.error ?? data.message ?? '인증 코드 발송에 실패했습니다.');
+        } else {
+          setEmailLoginError('인증 코드 발송에 실패했습니다.');
+        }
+      }
+    },
+    [emailLoginEmail]
+  );
+
+  const handleEmailLoginVerify = useCallback(
+    async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      if (emailLoginPhase !== 'code-sent') {
+        return;
+      }
+      const trimmedEmail = emailLoginEmail.trim();
+      const trimmedCode = emailLoginCode.trim();
+      if (!trimmedCode) {
+        setEmailLoginError('인증 코드를 입력해주세요.');
+        return;
+      }
+      setEmailLoginError(null);
+      setEmailLoginMessage(null);
+      setEmailLoginDebugCode(null);
+      try {
+        const response = await authHttp.post<{ token: string; user: UserResponse }>(
+          '/email/verify',
+          { email: trimmedEmail, code: trimmedCode }
+        );
+        setAuthToken(response.data.token);
+        setCurrentUser(response.data.user);
+        setNicknameInput(response.data.user.displayName ?? '');
+        setEmailLoginMessage('이메일 인증이 완료되었습니다.');
+        setEmailLoginPhase('idle');
+        setEmailLoginCode('');
+      } catch (error) {
+        console.error('Failed to verify email login code', error);
+        let message = '인증 코드 확인에 실패했습니다.';
+        if (axios.isAxiosError(error) && error.response?.data && typeof error.response.data === 'object') {
+          const data = error.response.data as { error?: string; message?: string };
+          message = data.error ?? data.message ?? message;
+        }
+        setEmailLoginError(message);
+      }
+    },
+    [emailLoginPhase, emailLoginEmail, emailLoginCode]
+  );
+
+  const handleNicknameSubmit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!isAuthenticated) {
+      return;
+    }
+    const trimmedNickname = nicknameInput.trim();
+    if (!trimmedNickname) {
+      setNicknameError('닉네임을 입력해주세요.');
+      return;
+    }
+    if (trimmedNickname.length < 2 || trimmedNickname.length > 20) {
+      setNicknameError('닉네임은 2자 이상 20자 이하로 입력해주세요.');
+      return;
+    }
+    setNicknameError(null);
+    setNicknameStatus(null);
+    try {
+      const response = await http.post<UserResponse>(
+        '/users/me/nickname',
+        { nickname: trimmedNickname },
+        { headers: authHeaders }
+      );
+      setCurrentUser(response.data);
+      setNicknameInput(response.data.displayName ?? '');
+      setNicknameStatus('닉네임이 저장되었습니다.');
+    } catch (error) {
+      console.error('Failed to update nickname', error);
+      if (axios.isAxiosError(error) && error.response?.data && typeof error.response.data === 'object') {
+        const data = error.response.data as { error?: string; message?: string };
+        setNicknameError(data.error ?? data.message ?? '닉네임 저장에 실패했습니다.');
+      } else {
+        setNicknameError('닉네임 저장에 실패했습니다.');
+      }
+    }
   };
 
   const fetchArtists = useCallback(async () => {
@@ -473,34 +645,83 @@ export default function App() {
         <section className="panel login-panel">
           <div>
             <h1>로그인 (유저정보)</h1>
-            <p>Google 계정으로 로그인하면 API 요청에 사용자 정보가 자동으로 포함됩니다.</p>
+            <p>Google 계정 또는 이메일 인증으로 로그인한 뒤 닉네임을 설정해주세요.</p>
           </div>
           <div className="login-status">
             {isAuthenticated ? (
               <div className="login-status__row">
-                <span className="login-status__message">구글 계정으로 로그인되었습니다.</span>
+                <span className="login-status__message">
+                  {currentUser?.displayName
+                    ? `${currentUser.displayName} 님, 환영합니다!`
+                    : `${currentUser?.email ?? ''} 계정으로 로그인되었습니다.`}
+                </span>
                 <button type="button" onClick={handleSignOut} className="login-status__button">
                   로그아웃
                 </button>
               </div>
             ) : (
-              <div className="login-status__row">
-                {isGoogleReady ? (
-                  <GoogleLoginButton
-                    clientId="245943329145-os94mkp21415hadulir67v1i0lqjrcnq.apps.googleusercontent.com"
-                    onCredential={handleGoogleCredential}
+              <>
+                <div className="login-status__row">
+                  {isGoogleReady ? (
+                    <GoogleLoginButton
+                      clientId="245943329145-os94mkp21415hadulir67v1i0lqjrcnq.apps.googleusercontent.com"
+                      onCredential={handleGoogleCredential}
+                    />
+                  ) : (
+                    <span className="login-status__message">구글 로그인 준비 중...</span>
+                  )}
+                </div>
+                <form className="stacked-form" onSubmit={handleEmailLoginRequest}>
+                  <label htmlFor="loginEmail">이메일 로그인</label>
+                  <input
+                    id="loginEmail"
+                    type="email"
+                    placeholder="이메일 주소"
+                    value={emailLoginEmail}
+                    onChange={(event) => setEmailLoginEmail(event.target.value)}
                   />
-                ) : (
-                  <span className="login-status__message">구글 로그인 준비 중...</span>
+                  <button type="submit">인증 코드 받기</button>
+                </form>
+                {emailLoginPhase === 'code-sent' && (
+                  <form className="stacked-form" onSubmit={handleEmailLoginVerify}>
+                    <label htmlFor="loginCode">인증 코드</label>
+                    <input
+                      id="loginCode"
+                      placeholder="6자리 인증 코드"
+                      value={emailLoginCode}
+                      onChange={(event) => setEmailLoginCode(event.target.value)}
+                    />
+                    <button type="submit">인증 완료</button>
+                  </form>
                 )}
-              </div>
+                {emailLoginMessage && (
+                  <p className="login-status__message">{emailLoginMessage}</p>
+                )}
+                {emailLoginDebugCode && (
+                  <p className="login-status__message">테스트용 코드: {emailLoginDebugCode}</p>
+                )}
+                {emailLoginError && (
+                  <p className="login-status__message error">{emailLoginError}</p>
+                )}
+              </>
             )}
           </div>
-          <label htmlFor="email">이메일</label>
-          <input id="email" value={email} readOnly placeholder="로그인 후 자동 입력" />
-          <label htmlFor="displayName">표시 이름</label>
-          <input id="displayName" value={displayName} readOnly placeholder="로그인 후 자동 입력" />
-          <button type="button" onClick={fetchArtists} disabled={!isAuthenticated}>
+          {isAuthenticated && (
+            <form className="stacked-form" onSubmit={handleNicknameSubmit}>
+              <label htmlFor="nickname">닉네임 설정</label>
+              <input
+                id="nickname"
+                placeholder="닉네임을 입력하세요"
+                value={nicknameInput}
+                onChange={(event) => setNicknameInput(event.target.value)}
+              />
+              <button type="submit" disabled={!isAuthenticated}>닉네임 저장</button>
+              {nicknameStatus && <p className="login-status__message">{nicknameStatus}</p>}
+              {nicknameError && <p className="login-status__message error">{nicknameError}</p>}
+            </form>
+          )}
+          {isLoadingUser && <p className="login-status__message">사용자 정보를 불러오는 중...</p>}
+          <button type="button" onClick={fetchArtists} disabled={!isAuthenticated || isLoadingUser}>
             나의 아티스트 새로고침
           </button>
         </section>
