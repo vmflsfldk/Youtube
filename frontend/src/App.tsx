@@ -157,7 +157,7 @@ interface UserResponse {
   displayName: string | null;
 }
 
-type EmailLoginPhase = 'idle' | 'code-sent';
+type EmailRegisterPhase = 'idle' | 'code-sent';
 
 const decodeGoogleToken = (token: string): GoogleIdTokenPayload | null => {
   try {
@@ -190,12 +190,18 @@ export default function App() {
   const [clipForm, setClipForm] = useState({ title: '', startSec: 0, endSec: 0, tags: '' });
   const [autoDetectMode, setAutoDetectMode] = useState('chapters');
   const [isGoogleReady, setIsGoogleReady] = useState(false);
-  const [emailLoginEmail, setEmailLoginEmail] = useState('');
-  const [emailLoginCode, setEmailLoginCode] = useState('');
-  const [emailLoginPhase, setEmailLoginPhase] = useState<EmailLoginPhase>('idle');
-  const [emailLoginMessage, setEmailLoginMessage] = useState<string | null>(null);
-  const [emailLoginError, setEmailLoginError] = useState<string | null>(null);
-  const [emailLoginDebugCode, setEmailLoginDebugCode] = useState<string | null>(null);
+  const [emailRegisterEmail, setEmailRegisterEmail] = useState('');
+  const [emailRegisterCode, setEmailRegisterCode] = useState('');
+  const [emailRegisterPassword, setEmailRegisterPassword] = useState('');
+  const [emailRegisterPasswordConfirm, setEmailRegisterPasswordConfirm] = useState('');
+  const [emailRegisterPhase, setEmailRegisterPhase] = useState<EmailRegisterPhase>('idle');
+  const [emailRegisterMessage, setEmailRegisterMessage] = useState<string | null>(null);
+  const [emailRegisterError, setEmailRegisterError] = useState<string | null>(null);
+  const [emailRegisterDebugCode, setEmailRegisterDebugCode] = useState<string | null>(null);
+  const [passwordLoginEmail, setPasswordLoginEmail] = useState('');
+  const [passwordLoginPassword, setPasswordLoginPassword] = useState('');
+  const [passwordLoginMessage, setPasswordLoginMessage] = useState<string | null>(null);
+  const [passwordLoginError, setPasswordLoginError] = useState<string | null>(null);
   const [nicknameInput, setNicknameInput] = useState('');
   const [nicknameStatus, setNicknameStatus] = useState<string | null>(null);
   const [nicknameError, setNicknameError] = useState<string | null>(null);
@@ -241,9 +247,15 @@ export default function App() {
       return;
     }
     setAuthToken(credential);
-    setEmailLoginPhase('idle');
-    setEmailLoginMessage(null);
-    setEmailLoginError(null);
+    setEmailRegisterPhase('idle');
+    setEmailRegisterMessage(null);
+    setEmailRegisterError(null);
+    setEmailRegisterDebugCode(null);
+    setEmailRegisterCode('');
+    setEmailRegisterPassword('');
+    setEmailRegisterPasswordConfirm('');
+    setPasswordLoginMessage(null);
+    setPasswordLoginError(null);
   }, []);
 
   const handleSignOut = () => {
@@ -258,12 +270,18 @@ export default function App() {
     setSelectedVideo(null);
     setVideoForm({ url: '', artistId: '', description: '', captionsJson: '' });
     setClipForm({ title: '', startSec: 0, endSec: 0, tags: '' });
-    setEmailLoginEmail('');
-    setEmailLoginCode('');
-    setEmailLoginPhase('idle');
-    setEmailLoginMessage(null);
-    setEmailLoginError(null);
-    setEmailLoginDebugCode(null);
+    setEmailRegisterEmail('');
+    setEmailRegisterCode('');
+    setEmailRegisterPassword('');
+    setEmailRegisterPasswordConfirm('');
+    setEmailRegisterPhase('idle');
+    setEmailRegisterMessage(null);
+    setEmailRegisterError(null);
+    setEmailRegisterDebugCode(null);
+    setPasswordLoginEmail('');
+    setPasswordLoginPassword('');
+    setPasswordLoginMessage(null);
+    setPasswordLoginError(null);
     setNicknameInput('');
     setNicknameStatus(null);
     setNicknameError(null);
@@ -305,77 +323,137 @@ export default function App() {
     };
   }, [authToken, authHeaders]);
 
-  const handleEmailLoginRequest = useCallback(
+  const handleEmailRegisterRequest = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
-      const trimmedEmail = emailLoginEmail.trim();
+      const trimmedEmail = emailRegisterEmail.trim();
       if (!trimmedEmail) {
-        setEmailLoginError('이메일을 입력해주세요.');
+        setEmailRegisterError('이메일을 입력해주세요.');
         return;
       }
-      setEmailLoginError(null);
-      setEmailLoginMessage(null);
-      setEmailLoginDebugCode(null);
+      setEmailRegisterError(null);
+      setEmailRegisterMessage(null);
+      setEmailRegisterDebugCode(null);
       try {
         const response = await authHttp.post<{ message?: string; debugCode?: string }>(
-          '/email/request',
+          '/email/register/request',
           { email: trimmedEmail }
         );
-        setEmailLoginPhase('code-sent');
-        setEmailLoginMessage(response.data.message ?? '인증 코드가 전송되었습니다.');
+        setEmailRegisterPhase('code-sent');
+        setEmailRegisterMessage(response.data.message ?? '인증 코드가 전송되었습니다.');
         if (response.data.debugCode) {
-          setEmailLoginDebugCode(response.data.debugCode);
+          setEmailRegisterDebugCode(response.data.debugCode);
         }
       } catch (error) {
-        console.error('Failed to request email login code', error);
+        console.error('Failed to request email registration code', error);
         if (axios.isAxiosError(error) && error.response?.data && typeof error.response.data === 'object') {
           const data = error.response.data as { error?: string; message?: string };
-          setEmailLoginError(data.error ?? data.message ?? '인증 코드 발송에 실패했습니다.');
+          setEmailRegisterError(data.error ?? data.message ?? '인증 코드 발송에 실패했습니다.');
         } else {
-          setEmailLoginError('인증 코드 발송에 실패했습니다.');
+          setEmailRegisterError('인증 코드 발송에 실패했습니다.');
         }
       }
     },
-    [emailLoginEmail]
+    [emailRegisterEmail]
   );
 
-  const handleEmailLoginVerify = useCallback(
+  const handleEmailRegisterVerify = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
-      if (emailLoginPhase !== 'code-sent') {
+      if (emailRegisterPhase !== 'code-sent') {
         return;
       }
-      const trimmedEmail = emailLoginEmail.trim();
-      const trimmedCode = emailLoginCode.trim();
+      const trimmedEmail = emailRegisterEmail.trim();
+      const trimmedCode = emailRegisterCode.trim();
+      const trimmedPassword = emailRegisterPassword;
+      const trimmedConfirm = emailRegisterPasswordConfirm;
       if (!trimmedCode) {
-        setEmailLoginError('인증 코드를 입력해주세요.');
+        setEmailRegisterError('인증 코드를 입력해주세요.');
         return;
       }
-      setEmailLoginError(null);
-      setEmailLoginMessage(null);
-      setEmailLoginDebugCode(null);
+      if (!trimmedPassword) {
+        setEmailRegisterError('비밀번호를 입력해주세요.');
+        return;
+      }
+      if (trimmedPassword !== trimmedConfirm) {
+        setEmailRegisterError('비밀번호 확인이 일치하지 않습니다.');
+        return;
+      }
+      setEmailRegisterError(null);
+      setEmailRegisterMessage(null);
+      setEmailRegisterDebugCode(null);
       try {
         const response = await authHttp.post<{ token: string; user: UserResponse }>(
-          '/email/verify',
-          { email: trimmedEmail, code: trimmedCode }
+          '/email/register/verify',
+          {
+            email: trimmedEmail,
+            code: trimmedCode,
+            password: trimmedPassword,
+            passwordConfirm: trimmedConfirm
+          }
         );
         setAuthToken(response.data.token);
         setCurrentUser(response.data.user);
         setNicknameInput(response.data.user.displayName ?? '');
-        setEmailLoginMessage('이메일 인증이 완료되었습니다.');
-        setEmailLoginPhase('idle');
-        setEmailLoginCode('');
+        setEmailRegisterMessage('회원가입과 로그인이 완료되었습니다.');
+        setEmailRegisterPhase('idle');
+        setEmailRegisterCode('');
+        setEmailRegisterPassword('');
+        setEmailRegisterPasswordConfirm('');
       } catch (error) {
-        console.error('Failed to verify email login code', error);
-        let message = '인증 코드 확인에 실패했습니다.';
+        console.error('Failed to verify email registration code', error);
+        let message = '회원가입에 실패했습니다.';
         if (axios.isAxiosError(error) && error.response?.data && typeof error.response.data === 'object') {
           const data = error.response.data as { error?: string; message?: string };
           message = data.error ?? data.message ?? message;
         }
-        setEmailLoginError(message);
+        setEmailRegisterError(message);
       }
     },
-    [emailLoginPhase, emailLoginEmail, emailLoginCode]
+    [
+      emailRegisterPhase,
+      emailRegisterEmail,
+      emailRegisterCode,
+      emailRegisterPassword,
+      emailRegisterPasswordConfirm
+    ]
+  );
+
+  const handlePasswordLogin = useCallback(
+    async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      const trimmedEmail = passwordLoginEmail.trim();
+      if (!trimmedEmail) {
+        setPasswordLoginError('이메일을 입력해주세요.');
+        return;
+      }
+      if (!passwordLoginPassword) {
+        setPasswordLoginError('비밀번호를 입력해주세요.');
+        return;
+      }
+      setPasswordLoginError(null);
+      setPasswordLoginMessage(null);
+      try {
+        const response = await authHttp.post<{ token: string; user: UserResponse }>(
+          '/email/login',
+          { email: trimmedEmail, password: passwordLoginPassword }
+        );
+        setAuthToken(response.data.token);
+        setCurrentUser(response.data.user);
+        setNicknameInput(response.data.user.displayName ?? '');
+        setPasswordLoginMessage('이메일 로그인에 성공했습니다.');
+        setPasswordLoginPassword('');
+      } catch (error) {
+        console.error('Failed to login with email and password', error);
+        let message = '로그인에 실패했습니다.';
+        if (axios.isAxiosError(error) && error.response?.data && typeof error.response.data === 'object') {
+          const data = error.response.data as { error?: string; message?: string };
+          message = data.error ?? data.message ?? message;
+        }
+        setPasswordLoginError(message);
+      }
+    },
+    [passwordLoginEmail, passwordLoginPassword]
   );
 
   const handleNicknameSubmit = async (event: FormEvent) => {
@@ -671,37 +749,78 @@ export default function App() {
                     <span className="login-status__message">구글 로그인 준비 중...</span>
                   )}
                 </div>
-                <form className="stacked-form" onSubmit={handleEmailLoginRequest}>
-                  <label htmlFor="loginEmail">이메일 로그인</label>
+                <form className="stacked-form" onSubmit={handleEmailRegisterRequest}>
+                  <label htmlFor="registerEmail">이메일 회원가입</label>
                   <input
-                    id="loginEmail"
+                    id="registerEmail"
                     type="email"
                     placeholder="이메일 주소"
-                    value={emailLoginEmail}
-                    onChange={(event) => setEmailLoginEmail(event.target.value)}
+                    value={emailRegisterEmail}
+                    onChange={(event) => setEmailRegisterEmail(event.target.value)}
                   />
                   <button type="submit">인증 코드 받기</button>
                 </form>
-                {emailLoginPhase === 'code-sent' && (
-                  <form className="stacked-form" onSubmit={handleEmailLoginVerify}>
-                    <label htmlFor="loginCode">인증 코드</label>
+                {emailRegisterPhase === 'code-sent' && (
+                  <form className="stacked-form" onSubmit={handleEmailRegisterVerify}>
+                    <label htmlFor="registerCode">인증 코드</label>
                     <input
-                      id="loginCode"
+                      id="registerCode"
                       placeholder="6자리 인증 코드"
-                      value={emailLoginCode}
-                      onChange={(event) => setEmailLoginCode(event.target.value)}
+                      value={emailRegisterCode}
+                      onChange={(event) => setEmailRegisterCode(event.target.value)}
                     />
-                    <button type="submit">인증 완료</button>
+                    <label htmlFor="registerPassword">비밀번호</label>
+                    <input
+                      id="registerPassword"
+                      type="password"
+                      placeholder="비밀번호 (8자 이상)"
+                      value={emailRegisterPassword}
+                      onChange={(event) => setEmailRegisterPassword(event.target.value)}
+                    />
+                    <label htmlFor="registerPasswordConfirm">비밀번호 확인</label>
+                    <input
+                      id="registerPasswordConfirm"
+                      type="password"
+                      placeholder="비밀번호 다시 입력"
+                      value={emailRegisterPasswordConfirm}
+                      onChange={(event) => setEmailRegisterPasswordConfirm(event.target.value)}
+                    />
+                    <button type="submit">회원가입 완료</button>
                   </form>
                 )}
-                {emailLoginMessage && (
-                  <p className="login-status__message">{emailLoginMessage}</p>
+                {emailRegisterMessage && (
+                  <p className="login-status__message">{emailRegisterMessage}</p>
                 )}
-                {emailLoginDebugCode && (
-                  <p className="login-status__message">테스트용 코드: {emailLoginDebugCode}</p>
+                {emailRegisterDebugCode && (
+                  <p className="login-status__message">테스트용 코드: {emailRegisterDebugCode}</p>
                 )}
-                {emailLoginError && (
-                  <p className="login-status__message error">{emailLoginError}</p>
+                {emailRegisterError && (
+                  <p className="login-status__message error">{emailRegisterError}</p>
+                )}
+                <form className="stacked-form" onSubmit={handlePasswordLogin}>
+                  <label htmlFor="loginEmailInput">이메일 로그인</label>
+                  <input
+                    id="loginEmailInput"
+                    type="email"
+                    placeholder="이메일 주소"
+                    value={passwordLoginEmail}
+                    onChange={(event) => setPasswordLoginEmail(event.target.value)}
+                  />
+                  <label htmlFor="loginPassword">비밀번호</label>
+                  <input
+                    id="loginPassword"
+                    type="password"
+                    placeholder="비밀번호"
+                    value={passwordLoginPassword}
+                    onChange={(event) => setPasswordLoginPassword(event.target.value)}
+                  />
+                  <button type="submit">로그인</button>
+                </form>
+                {passwordLoginMessage && (
+                  <p className="login-status__message">{passwordLoginMessage}</p>
+                )}
+                {passwordLoginError && (
+                  <p className="login-status__message error">{passwordLoginError}</p>
                 )}
               </>
             )}
