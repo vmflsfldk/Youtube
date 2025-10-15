@@ -190,6 +190,7 @@ interface ArtistRow {
 
 interface TableInfoRow {
   name: string | null;
+  notnull?: number | null;
 }
 
 interface EmailVerificationRow {
@@ -512,12 +513,23 @@ async function ensureUserPasswordColumns(db: D1Database): Promise<void> {
     return;
   }
 
-  const refreshColumns = async (): Promise<Set<string>> => {
+  const refreshColumns = async (): Promise<{ columns: Set<string>; rows: TableInfoRow[] }> => {
     const { results } = await db.prepare("PRAGMA table_info(users)").all<TableInfoRow>();
-    return new Set((results ?? []).map((column) => column.name?.toLowerCase()).filter(Boolean));
+    const rows = results ?? [];
+    const columns = new Set(rows.map((column) => column.name?.toLowerCase()).filter(Boolean));
+    return { columns, rows };
   };
 
-  let existing = await refreshColumns();
+  let snapshot = await refreshColumns();
+  let existing = snapshot.columns;
+
+  const displayNameColumn = snapshot.rows.find((column) => column.name?.toLowerCase() === "display_name");
+  if (displayNameColumn && Number(displayNameColumn.notnull) === 1) {
+    await rebuildUsersTableWithPasswordColumns(db, existing);
+    snapshot = await refreshColumns();
+    existing = snapshot.columns;
+  }
+
   const operations: Array<{ column: string; sql: string }> = [
     { column: "password_hash", sql: "ALTER TABLE users ADD COLUMN password_hash TEXT" },
     { column: "password_salt", sql: "ALTER TABLE users ADD COLUMN password_salt TEXT" },
@@ -543,7 +555,8 @@ async function ensureUserPasswordColumns(db: D1Database): Promise<void> {
 
     await rebuildUsersTableWithPasswordColumns(db, existing);
     attemptedRebuild = true;
-    existing = await refreshColumns();
+    snapshot = await refreshColumns();
+    existing = snapshot.columns;
 
     if (!existing.has(column)) {
       throw new Error(alterResult.error ?? `Failed to add ${column} column to users table`);
