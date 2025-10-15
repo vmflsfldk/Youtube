@@ -484,10 +484,13 @@ async function createArtist(
 
   await ensureArtistDisplayNameColumn(env.DB);
 
-  const result = await env.DB.prepare(
-    "INSERT INTO artists (name, display_name, youtube_channel_id, created_by) VALUES (?, ?, ?, ?)"
-  ).bind(name, displayName, youtubeChannelId, user.id).run();
-  const artistId = numberFromRowId(result.meta.last_row_id);
+  const inserted = await env.DB.prepare(
+    "INSERT INTO artists (name, display_name, youtube_channel_id, created_by) VALUES (?, ?, ?, ?) RETURNING id"
+  )
+    .bind(name, displayName, youtubeChannelId, user.id)
+    .first<{ id: number }>();
+  if (!inserted) throw new HttpError(500, "Failed to insert artist");
+  const artistId = inserted.id;
   return jsonResponse(
     { id: artistId, name, displayName, youtubeChannelId } satisfies ArtistResponse,
     201,
@@ -599,21 +602,23 @@ async function createVideo(
     return jsonResponse(toVideoResponse(row), 200, cors);
   }
 
-  const result = await env.DB.prepare(
+  const inserted = await env.DB.prepare(
     `INSERT INTO videos (artist_id, youtube_video_id, title, duration_sec, thumbnail_url, channel_id, description, captions_json)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-  ).bind(
-    artistId,
-    videoId,
-    metadata.title ?? "Untitled",
-    metadata.durationSec,
-    metadata.thumbnailUrl,
-    metadata.channelId,
-    description,
-    captionsJson
-  ).run();
-
-  const insertedId = numberFromRowId(result.meta.last_row_id);
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`
+  )
+    .bind(
+      artistId,
+      videoId,
+      metadata.title ?? "Untitled",
+      metadata.durationSec,
+      metadata.thumbnailUrl,
+      metadata.channelId,
+      description,
+      captionsJson
+    )
+    .first<{ id: number }>();
+  if (!inserted) throw new HttpError(500, "Failed to insert video");
+  const insertedId = inserted.id;
   const row = await env.DB.prepare("SELECT * FROM videos WHERE id = ?")
     .bind(insertedId)
     .first<VideoRow>();
@@ -664,10 +669,13 @@ async function createClip(
   }
   await ensureVideo(env, videoId, user.id);
 
-  const result = await env.DB.prepare(
-    `INSERT INTO clips (video_id, title, start_sec, end_sec) VALUES (?, ?, ?, ?)`
-  ).bind(videoId, title, startSec, endSec).run();
-  const clipId = numberFromRowId(result.meta.last_row_id);
+  const inserted = await env.DB.prepare(
+    `INSERT INTO clips (video_id, title, start_sec, end_sec) VALUES (?, ?, ?, ?) RETURNING id`
+  )
+    .bind(videoId, title, startSec, endSec)
+    .first<{ id: number }>();
+  if (!inserted) throw new HttpError(500, "Failed to insert clip");
+  const clipId = inserted.id;
 
   const normalizedTags = tags
     .map((tag) => (typeof tag === "string" ? tag.trim() : ""))
@@ -794,11 +802,13 @@ async function upsertUser(env: Env, email: string, displayName: string): Promise
     }
     return { id: existing.id, email: existing.email, displayName: existing.display_name };
   }
-  const result = await env.DB.prepare(
-    "INSERT INTO users (email, display_name) VALUES (?, ?)"
-  ).bind(email, displayName).run();
-  const userId = numberFromRowId(result.meta.last_row_id);
-  return { id: userId, email, displayName };
+  const inserted = await env.DB.prepare(
+    "INSERT INTO users (email, display_name) VALUES (?, ?) RETURNING id"
+  )
+    .bind(email, displayName)
+    .first<{ id: number }>();
+  if (!inserted) throw new HttpError(500, "Failed to insert user");
+  return { id: inserted.id, email, displayName };
 }
 
 async function ensureArtist(env: Env, artistId: number, userId: number): Promise<void> {
