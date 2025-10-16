@@ -17,20 +17,35 @@ public class ArtistService {
 
     private final ArtistRepository artistRepository;
     private final UserAccountRepository userAccountRepository;
+    private final YouTubeChannelMetadataProvider channelMetadataProvider;
 
-    public ArtistService(ArtistRepository artistRepository, UserAccountRepository userAccountRepository) {
+    public ArtistService(ArtistRepository artistRepository,
+                         UserAccountRepository userAccountRepository,
+                         YouTubeChannelMetadataProvider channelMetadataProvider) {
         this.artistRepository = artistRepository;
         this.userAccountRepository = userAccountRepository;
+        this.channelMetadataProvider = channelMetadataProvider;
     }
 
     @Transactional
     public ArtistResponse createArtist(ArtistRequest request, UserAccount creator) {
+        ChannelMetadata channelMetadata = channelMetadataProvider.fetch(request.youtubeChannelId());
+
         String displayName = request.displayName();
         if (displayName == null || displayName.isBlank()) {
-            displayName = request.name();
+            String metadataTitle = channelMetadata.title();
+            if (metadataTitle != null && !metadataTitle.isBlank()) {
+                displayName = metadataTitle;
+            } else {
+                displayName = request.name();
+            }
         }
 
         Artist artist = new Artist(request.name(), displayName, request.youtubeChannelId(), creator);
+        String profileImageUrl = channelMetadata.profileImageUrl();
+        if (profileImageUrl != null && !profileImageUrl.isBlank()) {
+            artist.setProfileImageUrl(profileImageUrl);
+        }
         Artist saved = artistRepository.save(artist);
         return map(saved);
     }
@@ -62,6 +77,11 @@ public class ArtistService {
     }
 
     private ArtistResponse map(Artist artist) {
-        return new ArtistResponse(artist.getId(), artist.getName(), artist.getDisplayName(), artist.getYoutubeChannelId());
+        return new ArtistResponse(
+                artist.getId(),
+                artist.getName(),
+                artist.getDisplayName(),
+                artist.getYoutubeChannelId(),
+                artist.getProfileImageUrl());
     }
 }

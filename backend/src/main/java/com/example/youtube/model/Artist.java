@@ -19,6 +19,9 @@ public class Artist {
     @Column(name = "youtube_channel_id", nullable = false)
     private String youtubeChannelId;
 
+    @Column(name = "profile_image_url")
+    private String profileImageUrl;
+
     @ManyToOne(optional = false)
     @JoinColumn(name = "created_by")
     private UserAccount createdBy;
@@ -67,5 +70,13 @@ public class Artist {
 
     public void setCreatedBy(UserAccount createdBy) {
         this.createdBy = createdBy;
+    }
+
+    public String getProfileImageUrl() {
+        return profileImageUrl;
+    }
+
+    public void setProfileImageUrl(String profileImageUrl) {
+        this.profileImageUrl = profileImageUrl;
     }
 }

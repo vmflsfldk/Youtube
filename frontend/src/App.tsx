@@ -34,6 +34,7 @@ interface ArtistResponse {
   name: string;
   displayName: string;
   youtubeChannelId: string;
+  profileImageUrl?: string | null;
 }
 
 interface VideoResponse {
@@ -1392,12 +1393,22 @@ export default function App() {
                             className={`artist-directory__item${isActive ? ' active' : ''}`}
                             onClick={() => handleArtistClick(artist.id)}
                           >
-                            <span className="artist-directory__icon" aria-hidden="true">
-                              <svg viewBox="0 0 24 24" role="presentation">
-                                <path d="M21.8 8.001a2.5 2.5 0 0 0-1.758-1.77C18.25 6 12 6 12 6s-6.25 0-8.042.231a2.5 2.5 0 0 0-1.758 1.77C2 9.801 2 12 2 12s0 2.199.2 3.999a2.5 2.5 0 0 0 1.758 1.77C5.75 18 12 18 12 18s6.25 0 8.042-.231a2.5 2.5 0 0 0 1.758-1.77C22 14.199 22 12 22 12s0-2.199-.2-3.999Z" />
-                                <path d="M10 14.5v-5l4.5 2.5Z" fill="currentColor" />
-                              </svg>
-                            </span>
+                            <div className="artist-directory__avatar">
+                              {artist.profileImageUrl ? (
+                                <img
+                                  src={artist.profileImageUrl}
+                                  alt={`${artist.displayName || artist.name} 채널 프로필 이미지`}
+                                  loading="lazy"
+                                />
+                              ) : (
+                                <span className="artist-directory__icon" aria-hidden="true">
+                                  <svg viewBox="0 0 24 24" role="presentation">
+                                    <path d="M21.8 8.001a2.5 2.5 0 0 0-1.758-1.77C18.25 6 12 6 12 6s-6.25 0-8.042.231a2.5 2.5 0 0 0-1.758 1.77C2 9.801 2 12 2 12s0 2.199.2 3.999a2.5 2.5 0 0 0 1.758 1.77C5.75 18 12 18 12 18s6.25 0 8.042-.231a2.5 2.5 0 0 0 1.758-1.77C22 14.199 22 12 22 12s0-2.199-.2-3.999Z" />
+                                    <path d="M10 14.5v-5l4.5 2.5Z" fill="currentColor" />
+                                  </svg>
+                                </span>
+                              )}
+                            </div>
                             <div className="artist-directory__meta">
                               <span className="artist-directory__name">{artist.displayName || artist.name}</span>
                               <span className="artist-directory__channel">{artist.youtubeChannelId}</span>
