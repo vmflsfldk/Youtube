@@ -67,6 +67,48 @@ interface ClipCandidateResponse {
 
 type ClipLike = Omit<ClipResponse, 'tags'> & { tags?: unknown };
 
+interface ArtistPreviewDebug {
+  input: string;
+  identifier: {
+    channelId: string | null;
+    username: string | null;
+    handle: string | null;
+  };
+  htmlCandidates: string[];
+  attemptedHtml: boolean;
+  attemptedApi: boolean;
+  apiStatus: number | null;
+  usedHtmlFallback: boolean;
+  usedApi: boolean;
+  htmlChannelId: string | null;
+  htmlTitle: string | null;
+  htmlThumbnail: string | null;
+  resolvedChannelId: string | null;
+  warnings: string[];
+}
+
+interface ArtistPreviewResponse {
+  channelId: string | null;
+  profileImageUrl: string | null;
+  title: string | null;
+  channelUrl: string | null;
+  debug: ArtistPreviewDebug | null;
+}
+
+type ArtistDebugLogEntryType = 'preview-success' | 'preview-error' | 'create-success' | 'create-error';
+
+interface ArtistDebugLogEntry {
+  id: string;
+  timestamp: string;
+  type: ArtistDebugLogEntryType;
+  request: {
+    channelId: string;
+    name?: string;
+  };
+  response?: unknown;
+  error?: string;
+}
+
 const normalizeClip = (clip: ClipLike): ClipResponse => {
   const rawTags = clip.tags;
   const normalizedTags = Array.isArray(rawTags)
@@ -198,6 +240,78 @@ export default function App() {
   const [emailRegisterEmail, setEmailRegisterEmail] = useState('');
   const [emailRegisterCode, setEmailRegisterCode] = useState('');
   const [emailRegisterPassword, setEmailRegisterPassword] = useState('');
+  const [artistPreview, setArtistPreview] = useState<{
+    inputChannel: string;
+    data: ArtistPreviewResponse;
+    fetchedAt: string;
+  } | null>(null);
+  const [artistPreviewReady, setArtistPreviewReady] = useState(false);
+  const [isArtistPreviewLoading, setArtistPreviewLoading] = useState(false);
+  const [artistPreviewError, setArtistPreviewError] = useState<string | null>(null);
+  const [isArtistDebugVisible, setArtistDebugVisible] = useState(false);
+  const [artistDebugLog, setArtistDebugLog] = useState<ArtistDebugLogEntry[]>([]);
+
+  const appendArtistDebugLog = useCallback((entry: Omit<ArtistDebugLogEntry, 'id'>) => {
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    setArtistDebugLog((prev) => [{ ...entry, id }, ...prev].slice(0, 50));
+  }, []);
+
+  useEffect(() => {
+    const trimmedChannel = artistForm.channelId.trim();
+    if (!artistPreview) {
+      setArtistPreviewReady(false);
+      return;
+    }
+    if (artistPreview.inputChannel !== trimmedChannel) {
+      setArtistPreview(null);
+      setArtistPreviewReady(false);
+      setArtistPreviewError(null);
+    }
+  }, [artistForm.channelId, artistPreview]);
+
+  const artistSubmitLabel = useMemo(() => {
+    if (artistPreviewReady && artistPreview) {
+      return '아티스트 등록 확정';
+    }
+    return '아티스트 등록';
+  }, [artistPreviewReady, artistPreview]);
+
+  const artistPreviewSource = useMemo(() => {
+    const debug = artistPreview?.data.debug;
+    if (!debug) {
+      return null;
+    }
+    if (debug.usedApi) {
+      return 'YouTube Data API';
+    }
+    if (debug.usedHtmlFallback) {
+      return '채널 페이지 HTML';
+    }
+    return '사용자 입력';
+  }, [artistPreview]);
+
+  const formatDebugLabel = useCallback((type: ArtistDebugLogEntryType) => {
+    switch (type) {
+      case 'preview-success':
+        return '미리보기 성공';
+      case 'preview-error':
+        return '미리보기 실패';
+      case 'create-success':
+        return '등록 성공';
+      case 'create-error':
+        return '등록 실패';
+      default:
+        return type;
+    }
+  }, []);
+
+  const formatTimestamp = useCallback((iso: string) => {
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) {
+      return iso;
+    }
+    return `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
+  }, []);
   const [emailRegisterPasswordConfirm, setEmailRegisterPasswordConfirm] = useState('');
   const [emailRegisterPhase, setEmailRegisterPhase] = useState<EmailRegisterPhase>('idle');
   const [emailRegisterMessage, setEmailRegisterMessage] = useState<string | null>(null);
@@ -616,16 +730,100 @@ export default function App() {
       console.warn('Authentication is required to create artists.');
       return;
     }
+    const trimmedName = artistForm.name.trim();
+    const trimmedChannelId = artistForm.channelId.trim();
+    if (!trimmedName || !trimmedChannelId) {
+      return;
+    }
+
+    if (!artistPreviewReady || !artistPreview || artistPreview.inputChannel !== trimmedChannelId) {
+      setArtistPreviewLoading(true);
+      setArtistPreviewError(null);
+      try {
+        const response = await http.post<ArtistPreviewResponse>(
+          '/artists/preview',
+          { youtubeChannelId: trimmedChannelId },
+          { headers: authHeaders }
+        );
+        const fetchedAt = new Date().toISOString();
+        setArtistPreview({ inputChannel: trimmedChannelId, data: response.data, fetchedAt });
+        setArtistPreviewReady(true);
+        appendArtistDebugLog({
+          timestamp: fetchedAt,
+          type: 'preview-success',
+          request: { channelId: trimmedChannelId, name: trimmedName },
+          response: response.data
+        });
+      } catch (error) {
+        let message = '채널 정보를 불러오지 못했습니다.';
+        let responseData: unknown = null;
+        if (axios.isAxiosError(error)) {
+          responseData = error.response?.data;
+          const detail =
+            typeof error.response?.data === 'object' && error.response?.data !== null
+              ? (error.response?.data as { error?: string; message?: string }).error ||
+                (error.response?.data as { error?: string; message?: string }).message
+              : null;
+          if (typeof detail === 'string' && detail.trim()) {
+            message = detail.trim();
+          }
+        }
+        setArtistPreview(null);
+        setArtistPreviewReady(false);
+        setArtistPreviewError(message);
+        appendArtistDebugLog({
+          timestamp: new Date().toISOString(),
+          type: 'preview-error',
+          request: { channelId: trimmedChannelId, name: trimmedName },
+          error: message,
+          response: responseData
+        });
+      } finally {
+        setArtistPreviewLoading(false);
+      }
+      return;
+    }
+
     try {
-      await http.post<ArtistResponse>(
+      const response = await http.post<ArtistResponse>(
         '/artists',
-        { name: artistForm.name, displayName: artistForm.name, youtubeChannelId: artistForm.channelId },
+        { name: trimmedName, displayName: trimmedName, youtubeChannelId: trimmedChannelId },
         { headers: authHeaders }
       );
       setArtistForm({ name: '', channelId: '' });
+      setArtistPreview(null);
+      setArtistPreviewReady(false);
+      setArtistPreviewError(null);
+      appendArtistDebugLog({
+        timestamp: new Date().toISOString(),
+        type: 'create-success',
+        request: { channelId: trimmedChannelId, name: trimmedName },
+        response: response.data
+      });
       await fetchArtists();
     } catch (error) {
       console.error('Failed to create artist', error);
+      let message = '아티스트 등록에 실패했습니다.';
+      let responseData: unknown = null;
+      if (axios.isAxiosError(error)) {
+        responseData = error.response?.data;
+        const detail =
+          typeof error.response?.data === 'object' && error.response?.data !== null
+            ? (error.response?.data as { error?: string; message?: string }).error ||
+              (error.response?.data as { error?: string; message?: string }).message
+            : null;
+        if (typeof detail === 'string' && detail.trim()) {
+          message = detail.trim();
+        }
+      }
+      setArtistPreviewError(message);
+      appendArtistDebugLog({
+        timestamp: new Date().toISOString(),
+        type: 'create-error',
+        request: { channelId: trimmedChannelId, name: trimmedName },
+        error: message,
+        response: responseData
+      });
     }
   };
 
@@ -1245,29 +1443,129 @@ export default function App() {
                 {activeManagementTab === 'artists' && (
                   <div className="management-section">
                     <h3>아티스트 등록</h3>
-                    <form onSubmit={handleArtistSubmit} className="stacked-form">
-                      <label htmlFor="artistName">아티스트 이름</label>
-                      <input
-                        id="artistName"
-                        placeholder="아티스트 이름"
-                        value={artistForm.name}
-                        onChange={(event) => setArtistForm((prev) => ({ ...prev, name: event.target.value }))}
-                        required
-                        disabled={creationDisabled}
-                      />
-                      <label htmlFor="artistChannelId">YouTube 채널 ID</label>
-                      <input
-                        id="artistChannelId"
-                        placeholder="UC..."
-                        value={artistForm.channelId}
-                        onChange={(event) => setArtistForm((prev) => ({ ...prev, channelId: event.target.value }))}
-                        required
-                        disabled={creationDisabled}
-                      />
-                      <button type="submit" disabled={creationDisabled}>
-                        아티스트 등록
-                      </button>
-                    </form>
+                    <div className="artist-registration">
+                      <form onSubmit={handleArtistSubmit} className="stacked-form artist-registration__form">
+                        <label htmlFor="artistName">아티스트 이름</label>
+                        <input
+                          id="artistName"
+                          placeholder="아티스트 이름"
+                          value={artistForm.name}
+                          onChange={(event) => setArtistForm((prev) => ({ ...prev, name: event.target.value }))}
+                          required
+                          disabled={creationDisabled}
+                        />
+                        <label htmlFor="artistChannelId">YouTube 채널 ID</label>
+                        <input
+                          id="artistChannelId"
+                          placeholder="UC..."
+                          value={artistForm.channelId}
+                          onChange={(event) => setArtistForm((prev) => ({ ...prev, channelId: event.target.value }))}
+                          required
+                          disabled={creationDisabled}
+                        />
+                        <button type="submit" disabled={creationDisabled || isArtistPreviewLoading}>
+                          {isArtistPreviewLoading ? '채널 확인 중...' : artistSubmitLabel}
+                        </button>
+                        {artistPreviewReady && artistPreview && (
+                          <p className="artist-preview__hint">채널 정보를 확인하셨다면 다시 등록 버튼을 눌러 완료하세요.</p>
+                        )}
+                        {artistPreviewError && (
+                          <p className="artist-preview__error" role="alert">
+                            {artistPreviewError}
+                          </p>
+                        )}
+                      </form>
+                      <aside className="artist-preview-panel" aria-live="polite">
+                        <div className="artist-preview-panel__header">
+                          <h4>채널 미리보기</h4>
+                          <button
+                            type="button"
+                            className="artist-debug-toggle"
+                            onClick={() => setArtistDebugVisible((prev) => !prev)}
+                          >
+                            {isArtistDebugVisible ? '디버그 숨기기' : '디버그 보기'}
+                          </button>
+                        </div>
+                        <div className="artist-preview-panel__body">
+                          {isArtistPreviewLoading ? (
+                            <p className="artist-preview__status">채널 정보를 불러오는 중...</p>
+                          ) : artistPreview ? (
+                            <div className="artist-preview__content">
+                              {artistPreview.data.profileImageUrl ? (
+                                <img
+                                  className="artist-preview__thumbnail"
+                                  src={artistPreview.data.profileImageUrl}
+                                  alt={
+                                    artistPreview.data.title
+                                      ? `${artistPreview.data.title} 채널 썸네일`
+                                      : '채널 썸네일'
+                                  }
+                                />
+                              ) : (
+                                <div className="artist-preview__thumbnail artist-preview__thumbnail--placeholder">
+                                  썸네일 없음
+                                </div>
+                              )}
+                              <div className="artist-preview__meta">
+                                <p className="artist-preview__title">
+                                  {artistPreview.data.title ?? '채널 제목을 확인할 수 없습니다.'}
+                                </p>
+                                {artistPreview.data.channelUrl && (
+                                  <a
+                                    className="artist-preview__link"
+                                    href={artistPreview.data.channelUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                  >
+                                    채널 바로가기
+                                  </a>
+                                )}
+                                {artistPreview.data.channelId && (
+                                  <p className="artist-preview__channel-id">{artistPreview.data.channelId}</p>
+                                )}
+                                {artistPreviewSource && (
+                                  <p className="artist-preview__source">데이터 출처: {artistPreviewSource}</p>
+                                )}
+                                {artistPreview.data.debug?.apiStatus !== undefined &&
+                                  artistPreview.data.debug?.apiStatus !== null && (
+                                    <p className="artist-preview__api-status">
+                                      API 응답 상태: {artistPreview.data.debug.apiStatus}
+                                    </p>
+                                  )}
+                              </div>
+                            </div>
+                          ) : (
+                            <p className="artist-preview__empty">
+                              채널 ID를 입력한 뒤 등록 버튼을 눌러 미리보기를 확인하세요.
+                            </p>
+                          )}
+                        </div>
+                        {isArtistDebugVisible && (
+                          <div className="artist-debug-log">
+                            {artistDebugLog.length === 0 ? (
+                              <p className="artist-debug-log__empty">최근 디버그 로그가 없습니다.</p>
+                            ) : (
+                              <ul className="artist-debug-log__list">
+                                {artistDebugLog.map((entry) => (
+                                  <li key={entry.id} className="artist-debug-log__entry">
+                                    <div className="artist-debug-log__entry-header">
+                                      <span className="artist-debug-log__label">{formatDebugLabel(entry.type)}</span>
+                                      <span className="artist-debug-log__timestamp">
+                                        {formatTimestamp(entry.timestamp)}
+                                      </span>
+                                    </div>
+                                    <details className="artist-debug-log__details">
+                                      <summary>세부 정보</summary>
+                                      <pre>{JSON.stringify({ request: entry.request, response: entry.response, error: entry.error }, null, 2)}</pre>
+                                    </details>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
+                        )}
+                      </aside>
+                    </div>
                   </div>
                 )}
               </div>
