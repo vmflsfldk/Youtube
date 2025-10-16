@@ -6,11 +6,21 @@ CREATE TABLE users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     email TEXT NOT NULL UNIQUE,
     display_name TEXT,
+    password_hash TEXT,
+    password_salt TEXT,
+    password_updated_at TEXT,
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
-INSERT INTO users (id, email, display_name, created_at)
-SELECT id, email, display_name, created_at
+INSERT INTO users (id, email, display_name, password_hash, password_salt, password_updated_at, created_at)
+SELECT
+    id,
+    email,
+    display_name,
+    NULL,
+    NULL,
+    NULL,
+    created_at
   FROM users_old;
 
 DROP TABLE users_old;
