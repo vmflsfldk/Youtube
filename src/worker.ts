@@ -35,6 +35,24 @@ interface ArtistResponse {
   profileImageUrl?: string | null;
 }
 
+const VIDEO_CONTENT_TYPES = ["OFFICIAL", "CLIP_SOURCE"] as const;
+type VideoContentType = (typeof VIDEO_CONTENT_TYPES)[number];
+
+const isVideoContentType = (value: unknown): value is VideoContentType => {
+  if (typeof value !== "string") {
+    return false;
+  }
+  return (VIDEO_CONTENT_TYPES as readonly string[]).includes(value as VideoContentType);
+};
+
+const normalizeVideoContentType = (value: string | null | undefined): VideoContentType | null => {
+  if (!value) {
+    return null;
+  }
+  const normalized = value.trim().toUpperCase();
+  return isVideoContentType(normalized) ? (normalized as VideoContentType) : null;
+};
+
 interface VideoResponse {
   id: number;
   artistId: number;
@@ -43,6 +61,7 @@ interface VideoResponse {
   durationSec?: number | null;
   thumbnailUrl?: string | null;
   channelId?: string | null;
+  contentType: VideoContentType;
 }
 
 interface ClipResponse {
@@ -218,6 +237,7 @@ let hasEnsuredArtistDisplayNameColumn = false;
 let hasEnsuredArtistProfileImageColumn = false;
 let hasEnsuredArtistUpdatedAtColumn = false;
 let hasEnsuredUserPasswordColumns = false;
+let hasEnsuredVideoContentTypeColumn = false;
 let hasWarnedMissingYouTubeApiKey = false;
 
 const warnMissingYouTubeApiKey = (): void => {
@@ -426,6 +446,7 @@ async function ensureDatabaseSchema(db: D1Database): Promise<void> {
         channel_id TEXT,
         description TEXT,
         captions_json TEXT,
+        content_type TEXT NOT NULL DEFAULT ('OFFICIAL'),
         created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
         updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
         FOREIGN KEY (artist_id) REFERENCES artists(id) ON DELETE CASCADE
@@ -591,6 +612,35 @@ async function ensureArtistUpdatedAtColumn(db: D1Database): Promise<void> {
   hasEnsuredArtistUpdatedAtColumn = true;
 }
 
+async function ensureVideoContentTypeColumn(db: D1Database): Promise<void> {
+  if (hasEnsuredVideoContentTypeColumn) {
+    return;
+  }
+
+  const { results } = await db.prepare("PRAGMA table_info(videos)").all<TableInfoRow>();
+  const hasColumn = (results ?? []).some((column) => column.name?.toLowerCase() === "content_type");
+
+  if (!hasColumn) {
+    const alterResult = await db
+      .prepare("ALTER TABLE videos ADD COLUMN content_type TEXT NOT NULL DEFAULT 'OFFICIAL'")
+      .run();
+    if (!alterResult.success && !isDuplicateColumnError(alterResult.error)) {
+      throw new Error(alterResult.error ?? "Failed to add content_type column to videos table");
+    }
+  }
+
+  const backfillResult = await db
+    .prepare(
+      "UPDATE videos SET content_type = COALESCE(NULLIF(content_type, ''), 'OFFICIAL')"
+    )
+    .run();
+  if (!backfillResult.success) {
+    throw new Error(backfillResult.error ?? "Failed to backfill video content_type values");
+  }
+
+  hasEnsuredVideoContentTypeColumn = true;
+}
+
 async function ensureUserPasswordColumns(db: D1Database): Promise<void> {
   if (hasEnsuredUserPasswordColumns) {
     return;
@@ -735,6 +785,7 @@ interface VideoRow {
   channel_id: string | null;
   description: string | null;
   captions_json: string | null;
+  content_type: string | null;
 }
 
 interface ClipRow {
@@ -1256,6 +1307,7 @@ async function createVideo(
     throw new HttpError(400, "artistId must be a number");
   }
   await ensureArtist(env, artistId, user.id);
+  await ensureVideoContentTypeColumn(env.DB);
 
   const videoUrl = typeof body.videoUrl === "string" ? body.videoUrl : "";
   const description = typeof body.description === "string" ? body.description : null;
@@ -1267,8 +1319,10 @@ async function createVideo(
 
   const metadata = await fetchVideoMetadata(env, videoId);
   const existing = await env.DB.prepare(
-    "SELECT id FROM videos WHERE youtube_video_id = ?"
-  ).bind(videoId).first<{ id: number }>();
+    "SELECT id, content_type FROM videos WHERE youtube_video_id = ?"
+  )
+    .bind(videoId)
+    .first<Pick<VideoRow, "id" | "content_type">>();
 
   if (existing) {
     await env.DB.prepare(
@@ -1279,7 +1333,8 @@ async function createVideo(
               thumbnail_url = ?,
               channel_id = ?,
               description = ?,
-              captions_json = ?
+              captions_json = ?,
+              content_type = ?
         WHERE id = ?`
     ).bind(
       artistId,
@@ -1289,6 +1344,7 @@ async function createVideo(
       metadata.channelId,
       description,
       captionsJson,
+      "OFFICIAL",
       existing.id
     ).run();
     const row = await env.DB.prepare("SELECT * FROM videos WHERE id = ?")
@@ -1301,8 +1357,8 @@ async function createVideo(
   }
 
   const insertResult = await env.DB.prepare(
-    `INSERT INTO videos (artist_id, youtube_video_id, title, duration_sec, thumbnail_url, channel_id, description, captions_json)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO videos (artist_id, youtube_video_id, title, duration_sec, thumbnail_url, channel_id, description, captions_json, content_type)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
     .bind(
       artistId,
@@ -1312,7 +1368,8 @@ async function createVideo(
       metadata.thumbnailUrl,
       metadata.channelId,
       description,
-      captionsJson
+      captionsJson,
+      "OFFICIAL"
     )
     .run();
   if (!insertResult.success) {
@@ -1335,9 +1392,22 @@ async function listVideos(url: URL, env: Env, user: UserContext, cors: CorsConfi
     throw new HttpError(400, "artistId query parameter is required");
   }
   await ensureArtist(env, artistId, user.id);
-  const { results } = await env.DB.prepare(
-    `SELECT * FROM videos WHERE artist_id = ? ORDER BY id DESC`
-  ).bind(artistId).all<VideoRow>();
+  await ensureVideoContentTypeColumn(env.DB);
+
+  const requestedContentType = normalizeVideoContentType(url.searchParams.get("contentType"));
+
+  let statement: D1PreparedStatement;
+  if (requestedContentType) {
+    statement = env.DB.prepare(
+      `SELECT * FROM videos WHERE artist_id = ? AND content_type = ? ORDER BY id DESC`
+    ).bind(artistId, requestedContentType);
+  } else {
+    statement = env.DB.prepare(
+      `SELECT * FROM videos WHERE artist_id = ? ORDER BY id DESC`
+    ).bind(artistId);
+  }
+
+  const { results } = await statement.all<VideoRow>();
   const videos = (results ?? []).map(toVideoResponse);
   return jsonResponse(videos, 200, cors);
 }
@@ -1349,15 +1419,14 @@ async function createClip(
   cors: CorsConfig
 ): Promise<Response> {
   const body = await readJson(request);
-  const videoId = Number(body.videoId);
+  const rawVideoId = Number(body.videoId);
+  const videoUrl = typeof body.videoUrl === "string" ? body.videoUrl.trim() : "";
+  const artistIdParam = Number(body.artistId);
   const title = typeof body.title === "string" ? body.title.trim() : "";
   const startSec = Number(body.startSec);
   const endSec = Number(body.endSec);
   const tags = Array.isArray(body.tags) ? body.tags : [];
 
-  if (!Number.isFinite(videoId)) {
-    throw new HttpError(400, "videoId must be a number");
-  }
   if (!title) {
     throw new HttpError(400, "title is required");
   }
@@ -1367,12 +1436,84 @@ async function createClip(
   if (endSec <= startSec) {
     throw new HttpError(400, "endSec must be greater than startSec");
   }
-  await ensureVideo(env, videoId, user.id);
+  await ensureVideoContentTypeColumn(env.DB);
+
+  let resolvedVideoId: number | null = Number.isFinite(rawVideoId) ? rawVideoId : null;
+
+  if (!resolvedVideoId && !videoUrl) {
+    throw new HttpError(400, "videoId or videoUrl is required to create a clip");
+  }
+
+  if (videoUrl) {
+    if (!Number.isFinite(artistIdParam)) {
+      throw new HttpError(400, "artistId must be provided when registering a clip source");
+    }
+    await ensureArtist(env, artistIdParam, user.id);
+
+    const extractedVideoId = extractVideoId(videoUrl);
+    if (!extractedVideoId) {
+      throw new HttpError(400, "Unable to parse videoId from URL");
+    }
+
+    const existingVideo = await env.DB
+      .prepare("SELECT * FROM videos WHERE youtube_video_id = ?")
+      .bind(extractedVideoId)
+      .first<VideoRow>();
+
+    if (existingVideo) {
+      if (existingVideo.artist_id !== artistIdParam) {
+        throw new HttpError(400, "Video is already registered for a different artist");
+      }
+      resolvedVideoId = existingVideo.id;
+      if (normalizeVideoContentType(existingVideo.content_type) !== "CLIP_SOURCE") {
+        await env.DB.prepare("UPDATE videos SET content_type = ? WHERE id = ?")
+          .bind("CLIP_SOURCE", existingVideo.id)
+          .run();
+      }
+    } else {
+      const metadata = await fetchVideoMetadata(env, extractedVideoId);
+      const insertClipSource = await env.DB
+        .prepare(
+          `INSERT INTO videos (artist_id, youtube_video_id, title, duration_sec, thumbnail_url, channel_id, description, captions_json, content_type)
+           VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, ?)`
+        )
+        .bind(
+          artistIdParam,
+          extractedVideoId,
+          metadata.title ?? "Untitled",
+          metadata.durationSec,
+          metadata.thumbnailUrl,
+          metadata.channelId,
+          "CLIP_SOURCE"
+        )
+        .run();
+      if (!insertClipSource.success) {
+        throw new HttpError(500, insertClipSource.error ?? "Failed to register clip source video");
+      }
+      resolvedVideoId = numberFromRowId(insertClipSource.meta.last_row_id);
+    }
+  }
+
+  if (resolvedVideoId === null) {
+    throw new HttpError(400, "Unable to determine video for clip creation");
+  }
+
+  await ensureVideo(env, resolvedVideoId, user.id);
+
+  const existingContentType = await env.DB
+    .prepare("SELECT content_type FROM videos WHERE id = ?")
+    .bind(resolvedVideoId)
+    .first<{ content_type: string | null }>();
+  if (normalizeVideoContentType(existingContentType?.content_type ?? null) !== "CLIP_SOURCE") {
+    await env.DB.prepare("UPDATE videos SET content_type = ? WHERE id = ?")
+      .bind("CLIP_SOURCE", resolvedVideoId)
+      .run();
+  }
 
   const insertResult = await env.DB.prepare(
     `INSERT INTO clips (video_id, title, start_sec, end_sec) VALUES (?, ?, ?, ?)`
   )
-    .bind(videoId, title, startSec, endSec)
+    .bind(resolvedVideoId, title, startSec, endSec)
     .run();
   if (!insertResult.success) {
     throw new HttpError(500, insertResult.error ?? "Failed to insert clip");
@@ -1927,7 +2068,8 @@ function toVideoResponse(row: VideoRow): VideoResponse {
     title: row.title,
     durationSec: row.duration_sec ?? null,
     thumbnailUrl: row.thumbnail_url ?? null,
-    channelId: row.channel_id ?? null
+    channelId: row.channel_id ?? null,
+    contentType: normalizeVideoContentType(row.content_type) ?? "OFFICIAL"
   };
 }
 

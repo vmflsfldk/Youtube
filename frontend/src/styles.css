@@ -531,6 +531,12 @@ button:disabled:hover {
   gap: 14px;
 }
 
+.form-hint {
+  margin: -6px 0 4px;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
 .number-row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1524,6 +1530,27 @@ button:disabled:hover {
   gap: 16px;
 }
 
+.artist-detail__video-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.artist-detail__video-section:first-of-type {
+  padding-top: 0;
+  border-top: none;
+}
+
+.artist-detail__video-section h6 {
+  margin: 0;
+  font-size: 0.85rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
 .artist-detail__videos-header {
   display: flex;
   justify-content: space-between;
@@ -1572,6 +1599,43 @@ button:disabled:hover {
   margin: 0;
   font-size: 1rem;
   color: var(--color-text-primary);
+}
+
+.video-item__info-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.video-item__badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: rgba(148, 163, 184, 0.16);
+  color: var(--accent-secondary);
+}
+
+.video-item__badge--official {
+  background: rgba(59, 130, 246, 0.18);
+  color: #bfdbfe;
+}
+
+.video-item__badge--clip_source {
+  background: rgba(34, 211, 238, 0.18);
+  color: var(--accent-secondary);
+}
+
+.video-item__badge--unknown {
+  background: rgba(148, 163, 184, 0.16);
+  color: var(--color-text-muted);
+}
+
+.video-item.active .video-item__badge {
+  box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.24);
 }
 
 .video-item p {
