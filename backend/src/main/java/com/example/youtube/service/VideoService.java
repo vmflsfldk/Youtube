@@ -2,14 +2,21 @@ package com.example.youtube.service;
 
 import com.example.youtube.dto.VideoCreateRequest;
 import com.example.youtube.dto.VideoResponse;
+import com.example.youtube.dto.VideoSectionResponse;
 import com.example.youtube.model.Artist;
 import com.example.youtube.model.Video;
+import com.example.youtube.model.VideoSection;
 import com.example.youtube.repository.ArtistRepository;
 import com.example.youtube.repository.VideoRepository;
+import com.example.youtube.repository.VideoSectionRepository;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.validation.ValidationException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -24,14 +31,20 @@ public class VideoService {
 
     private final ArtistRepository artistRepository;
     private final VideoRepository videoRepository;
+    private final VideoSectionRepository videoSectionRepository;
     private final YouTubeMetadataProvider metadataProvider;
+    private final YouTubeVideoSectionProvider sectionProvider;
 
     public VideoService(ArtistRepository artistRepository,
                         VideoRepository videoRepository,
-                        YouTubeMetadataProvider metadataProvider) {
+                        VideoSectionRepository videoSectionRepository,
+                        YouTubeMetadataProvider metadataProvider,
+                        YouTubeVideoSectionProvider sectionProvider) {
         this.artistRepository = artistRepository;
         this.videoRepository = videoRepository;
+        this.videoSectionRepository = videoSectionRepository;
         this.metadataProvider = metadataProvider;
+        this.sectionProvider = sectionProvider;
     }
 
     @Transactional
@@ -50,11 +63,27 @@ public class VideoService {
         video.setDurationSec(metadata.durationSec());
         video.setThumbnailUrl(metadata.thumbnailUrl());
         video.setChannelId(metadata.channelId());
-        video.setDescription(request.description());
+        String description = request.description();
+        if ((description == null || description.isBlank()) && metadata.description() != null) {
+            description = metadata.description();
+        }
+        video.setDescription(description);
         video.setCaptionsJson(request.captionsJson());
 
+        List<YouTubeVideoSectionProvider.VideoSectionData> sectionData = sectionProvider.fetch(videoId, description,
+                metadata.durationSec());
+
         Video saved = videoRepository.save(video);
-        return map(saved);
+
+        videoSectionRepository.deleteByVideo(saved);
+        List<VideoSection> sections = sectionData.stream()
+                .map(data -> new VideoSection(saved, data.title(), data.startSec(), data.endSec(), data.source()))
+                .collect(Collectors.toList());
+        if (!sections.isEmpty()) {
+            videoSectionRepository.saveAll(sections);
+        }
+
+        return map(saved, sections);
     }
 
     @Transactional(readOnly = true)
@@ -64,22 +93,42 @@ public class VideoService {
     }
 
     @Transactional(readOnly = true)
-    public java.util.List<VideoResponse> listByArtist(Long artistId) {
+    public List<VideoResponse> listByArtist(Long artistId) {
         Artist artist = artistRepository.findById(artistId)
                 .orElseThrow(() -> new EntityNotFoundException("Artist not found: " + artistId));
-        return videoRepository.findByArtist(artist).stream()
-                .map(this::map)
+        List<Video> videos = videoRepository.findByArtist(artist);
+        if (videos.isEmpty()) {
+            return List.of();
+        }
+        Map<Long, List<VideoSection>> sectionsByVideo = videoSectionRepository.findByVideoIn(videos).stream()
+                .collect(Collectors.groupingBy(section -> section.getVideo().getId()));
+        return videos.stream()
+                .map(video -> map(video, sectionsByVideo.getOrDefault(video.getId(), Collections.emptyList())))
                 .collect(Collectors.toList());
     }
 
     private VideoResponse map(Video video) {
+        List<VideoSection> sections = videoSectionRepository.findByVideo(video);
+        return map(video, sections);
+    }
+
+    private VideoResponse map(Video video, List<VideoSection> sections) {
+        List<VideoSectionResponse> sectionResponses = sections.stream()
+                .sorted(Comparator.comparingInt(VideoSection::getStartSec))
+                .map(section -> new VideoSectionResponse(section.getTitle(),
+                        section.getStartSec(),
+                        section.getEndSec(),
+                        section.getSource().name()))
+                .collect(Collectors.toList());
+
         return new VideoResponse(video.getId(),
                 video.getArtist().getId(),
                 video.getYoutubeVideoId(),
                 video.getTitle(),
                 video.getDurationSec(),
                 video.getThumbnailUrl(),
-                video.getChannelId());
+                video.getChannelId(),
+                sectionResponses);
     }
 
     private Optional<String> extractVideoId(String url) {
