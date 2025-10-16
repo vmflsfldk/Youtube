@@ -41,7 +41,14 @@ public class ArtistService {
             }
         }
 
-        Artist artist = new Artist(request.name(), displayName, request.youtubeChannelId(), creator);
+        Artist artist = new Artist(
+                request.name(),
+                displayName,
+                request.youtubeChannelId(),
+                creator,
+                request.availableKo(),
+                request.availableEn(),
+                request.availableJp());
         String profileImageUrl = channelMetadata.profileImageUrl();
         if (profileImageUrl != null && !profileImageUrl.isBlank()) {
             artist.setProfileImageUrl(profileImageUrl);
@@ -83,7 +90,10 @@ public class ArtistService {
                 resolved.getName(),
                 resolved.getDisplayName(),
                 resolved.getYoutubeChannelId(),
-                resolved.getProfileImageUrl());
+                resolved.getProfileImageUrl(),
+                resolved.isAvailableKo(),
+                resolved.isAvailableEn(),
+                resolved.isAvailableJp());
     }
 
     private Artist refreshMetadataIfNeeded(Artist artist) {

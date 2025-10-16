@@ -60,12 +60,27 @@ const describeSectionSource = (source?: string): string => {
 
 const VIDEO_FILTER_KEYWORDS = ['cover', 'original', 'official'];
 
+type ArtistCountryKey = 'availableKo' | 'availableEn' | 'availableJp';
+
+const ARTIST_COUNTRY_METADATA: ReadonlyArray<{
+  key: ArtistCountryKey;
+  code: string;
+  label: string;
+}> = [
+  { key: 'availableKo', code: 'KO', label: '한국' },
+  { key: 'availableEn', code: 'EN', label: '영어권' },
+  { key: 'availableJp', code: 'JP', label: '일본' }
+];
+
 interface ArtistResponse {
   id: number;
   name: string;
   displayName: string;
   youtubeChannelId: string;
   profileImageUrl?: string | null;
+  availableKo: boolean;
+  availableEn: boolean;
+  availableJp: boolean;
 }
 
 interface VideoSectionResponse {
@@ -105,6 +120,30 @@ interface ClipCandidateResponse {
 }
 
 type ClipLike = Omit<ClipResponse, 'tags'> & { tags?: unknown };
+
+type ArtistFormState = {
+  name: string;
+  channelId: string;
+  countries: {
+    ko: boolean;
+    en: boolean;
+    jp: boolean;
+  };
+};
+
+const resolveArtistCountryBadges = (artist: ArtistResponse) =>
+  ARTIST_COUNTRY_METADATA.filter((country) => artist[country.key])
+    .map((country) => ({ code: country.code, label: country.label }));
+
+const createInitialArtistFormState = (): ArtistFormState => ({
+  name: '',
+  channelId: '',
+  countries: {
+    ko: true,
+    en: false,
+    jp: false
+  }
+});
 
 interface ArtistPreviewDebug {
   input: string;
@@ -288,7 +327,8 @@ export default function App() {
   const [videoSectionPreview, setVideoSectionPreview] = useState<VideoSectionResponse[]>([]);
   const [videoSectionPreviewError, setVideoSectionPreviewError] = useState<string | null>(null);
   const [hasAttemptedVideoSectionPreview, setHasAttemptedVideoSectionPreview] = useState(false);
-  const [artistForm, setArtistForm] = useState({ name: '', channelId: '' });
+  const [artistForm, setArtistForm] = useState<ArtistFormState>(() => createInitialArtistFormState());
+  const [artistSearchQuery, setArtistSearchQuery] = useState('');
   const [videoForm, setVideoForm] = useState({ url: '', artistId: '', description: '', captionsJson: '' });
   const [clipForm, setClipForm] = useState({ title: '', startSec: 0, endSec: 0, tags: '' });
   const [autoDetectMode, setAutoDetectMode] = useState('chapters');
@@ -362,6 +402,21 @@ export default function App() {
     }
     return artistPreview.data.videos.slice(0, 12);
   }, [artistPreview]);
+
+  const filteredArtists = useMemo(() => {
+    const query = artistSearchQuery.trim().toLowerCase();
+    if (!query) {
+      return artists;
+    }
+
+    return artists.filter((artist) => {
+      const searchable = [artist.name, artist.displayName, artist.youtubeChannelId]
+        .filter((value): value is string => Boolean(value))
+        .join(' ')
+        .toLowerCase();
+      return searchable.includes(query);
+    });
+  }, [artistSearchQuery, artists]);
 
   const previewVideoKeywords = useMemo(() => {
     const rawKeywords = artistPreview?.data?.debug?.videoFilterKeywords ?? [];
@@ -829,13 +884,25 @@ export default function App() {
     }
     const trimmedName = artistForm.name.trim();
     const trimmedChannelId = artistForm.channelId.trim();
+    const { ko, en, jp } = artistForm.countries;
+    const hasCountrySelection = ko || en || jp;
+    setArtistPreviewError(null);
     if (!trimmedName || !trimmedChannelId) {
+      return;
+    }
+    const requestContext = {
+      channelId: trimmedChannelId,
+      name: trimmedName,
+      countries: { ko, en, jp }
+    } as const;
+    if (!hasCountrySelection) {
+      setArtistPreviewReady(false);
+      setArtistPreviewError('서비스 국가를 최소 한 개 이상 선택해주세요.');
       return;
     }
 
     if (!artistPreviewReady || !artistPreview || artistPreview.inputChannel !== trimmedChannelId) {
       setArtistPreviewLoading(true);
-      setArtistPreviewError(null);
       try {
         const response = await http.post<ArtistPreviewResponse>(
           '/artists/preview',
@@ -848,7 +915,7 @@ export default function App() {
         appendArtistDebugLog({
           timestamp: fetchedAt,
           type: 'preview-success',
-          request: { channelId: trimmedChannelId, name: trimmedName },
+          request: requestContext,
           response: response.data
         });
       } catch (error) {
@@ -871,7 +938,7 @@ export default function App() {
         appendArtistDebugLog({
           timestamp: new Date().toISOString(),
           type: 'preview-error',
-          request: { channelId: trimmedChannelId, name: trimmedName },
+          request: requestContext,
           error: message,
           response: responseData
         });
@@ -884,10 +951,17 @@ export default function App() {
     try {
       const response = await http.post<ArtistResponse>(
         '/artists',
-        { name: trimmedName, displayName: trimmedName, youtubeChannelId: trimmedChannelId },
+        {
+          name: trimmedName,
+          displayName: trimmedName,
+          youtubeChannelId: trimmedChannelId,
+          availableKo: ko,
+          availableEn: en,
+          availableJp: jp
+        },
         { headers: authHeaders }
       );
-      setArtistForm({ name: '', channelId: '' });
+      setArtistForm(createInitialArtistFormState());
       setArtistPreview(null);
       setArtistPreviewReady(false);
       setArtistPreviewError(null);
@@ -895,7 +969,7 @@ export default function App() {
       appendArtistDebugLog({
         timestamp: new Date().toISOString(),
         type: 'create-success',
-        request: { channelId: trimmedChannelId, name: trimmedName },
+        request: requestContext,
         response: response.data
       });
       await fetchArtists();
@@ -918,7 +992,7 @@ export default function App() {
       appendArtistDebugLog({
         timestamp: new Date().toISOString(),
         type: 'create-error',
-        request: { channelId: trimmedChannelId, name: trimmedName },
+        request: requestContext,
         error: message,
         response: responseData
       });
@@ -1173,6 +1247,9 @@ export default function App() {
   };
 
   const selectedArtist = artists.find((artist) => artist.id === Number(videoForm.artistId));
+  const noArtistsRegistered = artists.length === 0;
+  const noFilteredArtists = !noArtistsRegistered && filteredArtists.length === 0;
+  const selectedArtistBadges = selectedArtist ? resolveArtistCountryBadges(selectedArtist) : [];
   const selectedVideoData = selectedVideo ? videos.find((video) => video.id === selectedVideo) : null;
   const displayedClips = isAuthenticated ? clips : publicClips;
   const playlistHeading = isAuthenticated ? '유저가 저장한 플레이리스트' : '공개된 클립 모음';
@@ -1687,6 +1764,63 @@ export default function App() {
                           required
                           disabled={creationDisabled}
                         />
+                        <fieldset className="artist-registration__countries">
+                          <legend>서비스 국가</legend>
+                          <p className="artist-registration__countries-hint">복수 선택 가능</p>
+                          <div className="artist-registration__country-options">
+                            <label className="artist-registration__country-option">
+                              <input
+                                type="checkbox"
+                                checked={artistForm.countries.ko}
+                                onChange={(event) =>
+                                  setArtistForm((prev) => ({
+                                    ...prev,
+                                    countries: { ...prev.countries, ko: event.target.checked }
+                                  }))
+                                }
+                                disabled={creationDisabled}
+                              />
+                              <span className="artist-registration__country-label">
+                                <span className="artist-registration__country-code">KO</span>
+                                한국
+                              </span>
+                            </label>
+                            <label className="artist-registration__country-option">
+                              <input
+                                type="checkbox"
+                                checked={artistForm.countries.en}
+                                onChange={(event) =>
+                                  setArtistForm((prev) => ({
+                                    ...prev,
+                                    countries: { ...prev.countries, en: event.target.checked }
+                                  }))
+                                }
+                                disabled={creationDisabled}
+                              />
+                              <span className="artist-registration__country-label">
+                                <span className="artist-registration__country-code">EN</span>
+                                영어권
+                              </span>
+                            </label>
+                            <label className="artist-registration__country-option">
+                              <input
+                                type="checkbox"
+                                checked={artistForm.countries.jp}
+                                onChange={(event) =>
+                                  setArtistForm((prev) => ({
+                                    ...prev,
+                                    countries: { ...prev.countries, jp: event.target.checked }
+                                  }))
+                                }
+                                disabled={creationDisabled}
+                              />
+                              <span className="artist-registration__country-label">
+                                <span className="artist-registration__country-code">JP</span>
+                                일본
+                              </span>
+                            </label>
+                          </div>
+                        </fieldset>
                         <button type="submit" disabled={creationDisabled || isArtistPreviewLoading}>
                           {isArtistPreviewLoading ? '채널 확인 중...' : artistSubmitLabel}
                         </button>
@@ -1989,16 +2123,42 @@ export default function App() {
                     )}
                   </div>
                   <div className="artist-explorer__content">
-                    <div className="artist-explorer__list" role="listbox" aria-label="아티스트 목록">
-                      {artists.length === 0 ? (
+                    <div className="artist-explorer__list">
+                      <div className="artist-directory__search">
+                        <label htmlFor="artistSearch">아티스트 검색</label>
+                        <div className="artist-directory__search-input-wrapper">
+                          <input
+                            id="artistSearch"
+                            type="search"
+                            value={artistSearchQuery}
+                            onChange={(event) => setArtistSearchQuery(event.target.value)}
+                            placeholder="이름 또는 채널 ID 검색"
+                            autoComplete="off"
+                          />
+                          {artistSearchQuery && (
+                            <button
+                              type="button"
+                              className="artist-directory__search-clear"
+                              onClick={() => setArtistSearchQuery('')}
+                              aria-label="검색어 지우기"
+                            >
+                              지우기
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      {noArtistsRegistered ? (
                         <div className="artist-empty">등록된 아티스트가 없습니다.</div>
+                      ) : noFilteredArtists ? (
+                        <div className="artist-empty">검색 결과가 없습니다.</div>
                       ) : (
-                        <ul className="artist-directory__list">
-                          {artists.map((artist) => {
+                        <ul className="artist-directory__list" role="listbox" aria-label="아티스트 목록">
+                          {filteredArtists.map((artist) => {
                             const isActive = selectedArtist?.id === artist.id;
                             const fallbackAvatarUrl = `https://ui-avatars.com/api/?background=111827&color=e2e8f0&name=${encodeURIComponent(
                               artist.displayName || artist.name
                             )}`;
+                            const countryBadges = resolveArtistCountryBadges(artist);
                             return (
                               <li
                                 key={artist.id}
@@ -2033,6 +2193,16 @@ export default function App() {
                                 <div className="artist-directory__meta">
                                   <span className="artist-directory__name">{artist.displayName || artist.name}</span>
                                   <span className="artist-directory__channel">{artist.youtubeChannelId}</span>
+                                  {countryBadges.length > 0 && (
+                                    <div className="artist-directory__countries">
+                                      {countryBadges.map((badge) => (
+                                        <span key={badge.code} className="artist-country-badge">
+                                          <span className="artist-country-badge__code">{badge.code}</span>
+                                          {badge.label}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  )}
                                 </div>
                               </li>
                             );
@@ -2088,6 +2258,21 @@ export default function App() {
                                 </a>
                               )}
                             </div>
+                          </div>
+                          <div className="artist-detail__availability">
+                            <h5>서비스 국가</h5>
+                            {selectedArtistBadges.length > 0 ? (
+                              <div className="artist-detail__badge-list">
+                                {selectedArtistBadges.map((badge) => (
+                                  <span key={badge.code} className="artist-country-badge">
+                                    <span className="artist-country-badge__code">{badge.code}</span>
+                                    {badge.label}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="artist-detail__availability-empty">등록된 서비스 국가가 없습니다.</p>
+                            )}
                           </div>
                           <div className="artist-detail__videos">
                             <div className="artist-detail__videos-header">
