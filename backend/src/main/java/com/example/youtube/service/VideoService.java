@@ -21,8 +21,10 @@ import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class VideoService {
@@ -107,6 +109,22 @@ public class VideoService {
                 .collect(Collectors.toList());
     }
 
+    @Transactional(readOnly = true)
+    public List<VideoSectionResponse> previewSections(String videoUrl) {
+        if (videoUrl == null || videoUrl.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "videoUrl is required");
+        }
+        String trimmed = videoUrl.trim();
+        String videoId = extractVideoId(trimmed)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unable to parse videoId from URL"));
+
+        VideoMetadata metadata = metadataProvider.fetch(videoId);
+        List<YouTubeVideoSectionProvider.VideoSectionData> sectionData = sectionProvider.fetch(videoId,
+                metadata.description(),
+                metadata.durationSec());
+        return mapSectionData(sectionData);
+    }
+
     private VideoResponse map(Video video) {
         List<VideoSection> sections = videoSectionRepository.findByVideo(video);
         return map(video, sections);
@@ -129,6 +147,16 @@ public class VideoService {
                 video.getThumbnailUrl(),
                 video.getChannelId(),
                 sectionResponses);
+    }
+
+    private List<VideoSectionResponse> mapSectionData(List<YouTubeVideoSectionProvider.VideoSectionData> sectionData) {
+        if (sectionData == null || sectionData.isEmpty()) {
+            return List.of();
+        }
+        return sectionData.stream()
+                .sorted(Comparator.comparingInt(YouTubeVideoSectionProvider.VideoSectionData::startSec))
+                .map(data -> new VideoSectionResponse(data.title(), data.startSec(), data.endSec(), data.source().name()))
+                .collect(Collectors.toList());
     }
 
     private Optional<String> extractVideoId(String url) {
