@@ -212,6 +212,7 @@ interface EmailSessionRow {
 
 let hasEnsuredSchema = false;
 let hasEnsuredArtistDisplayNameColumn = false;
+let hasEnsuredArtistUpdatedAtColumn = false;
 let hasEnsuredUserPasswordColumns = false;
 
 const encoder = new TextEncoder();
@@ -355,6 +356,7 @@ async function ensureDatabaseSchema(db: D1Database): Promise<void> {
         youtube_channel_id TEXT NOT NULL,
         created_by INTEGER NOT NULL,
         created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+        updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
         display_name TEXT,
         FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
       )`,
@@ -425,6 +427,15 @@ async function ensureDatabaseSchema(db: D1Database): Promise<void> {
             UPDATE videos SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.id;
         END`,
       context: "trg_videos_updated_at"
+    },
+    {
+      sql: `CREATE TRIGGER IF NOT EXISTS trg_artists_updated_at
+        AFTER UPDATE ON artists
+        FOR EACH ROW
+        BEGIN
+          UPDATE artists SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.id;
+        END`,
+      context: "trg_artists_updated_at"
     },
     {
       sql: `CREATE TABLE IF NOT EXISTS clips (
@@ -506,6 +517,47 @@ async function ensureArtistDisplayNameColumn(db: D1Database): Promise<void> {
   }
 
   hasEnsuredArtistDisplayNameColumn = true;
+}
+
+async function ensureArtistUpdatedAtColumn(db: D1Database): Promise<void> {
+  if (hasEnsuredArtistUpdatedAtColumn) {
+    return;
+  }
+
+  const { results } = await db.prepare("PRAGMA table_info(artists)").all<TableInfoRow>();
+  const hasColumn = (results ?? []).some((column) => column.name?.toLowerCase() === "updated_at");
+
+  if (!hasColumn) {
+    const alterResult = await db.prepare("ALTER TABLE artists ADD COLUMN updated_at TEXT").run();
+    if (!alterResult.success && !isDuplicateColumnError(alterResult.error)) {
+      throw new Error(alterResult.error ?? "Failed to add updated_at column to artists table");
+    }
+  }
+
+  const backfillResult = await db
+    .prepare(
+      "UPDATE artists SET updated_at = COALESCE(updated_at, created_at, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))"
+    )
+    .run();
+  if (!backfillResult.success) {
+    throw new Error(backfillResult.error ?? "Failed to backfill artist updated_at values");
+  }
+
+  const triggerResult = await db
+    .prepare(
+      `CREATE TRIGGER IF NOT EXISTS trg_artists_updated_at
+        AFTER UPDATE ON artists
+        FOR EACH ROW
+        BEGIN
+          UPDATE artists SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.id;
+        END`
+    )
+    .run();
+  if (!triggerResult.success) {
+    throw new Error(triggerResult.error ?? "Failed to ensure trg_artists_updated_at trigger");
+  }
+
+  hasEnsuredArtistUpdatedAtColumn = true;
 }
 
 async function ensureUserPasswordColumns(db: D1Database): Promise<void> {
@@ -1007,6 +1059,7 @@ async function createArtist(
     throw new HttpError(400, "youtubeChannelId is required");
   }
 
+  await ensureArtistUpdatedAtColumn(env.DB);
   await ensureArtistDisplayNameColumn(env.DB);
 
   const insertResult = await env.DB.prepare(
@@ -1032,6 +1085,7 @@ async function listArtists(
   cors: CorsConfig
 ): Promise<Response> {
   const mine = url.searchParams.get("mine") === "true";
+  await ensureArtistUpdatedAtColumn(env.DB);
   await ensureArtistDisplayNameColumn(env.DB);
   let results: ArtistRow[] | null | undefined;
   if (mine) {
