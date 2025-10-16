@@ -50,14 +50,14 @@ public class ArtistService {
         return map(saved);
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public List<ArtistResponse> listMine(UserAccount user) {
         return user.getFavoriteArtists().stream()
                 .map(this::map)
                 .collect(Collectors.toList());
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public List<ArtistResponse> listCreatedBy(UserAccount user) {
         return artistRepository.findByCreatedBy(user).stream()
                 .map(this::map)
@@ -77,11 +77,51 @@ public class ArtistService {
     }
 
     private ArtistResponse map(Artist artist) {
+        Artist resolved = refreshMetadataIfNeeded(artist);
         return new ArtistResponse(
-                artist.getId(),
-                artist.getName(),
-                artist.getDisplayName(),
-                artist.getYoutubeChannelId(),
-                artist.getProfileImageUrl());
+                resolved.getId(),
+                resolved.getName(),
+                resolved.getDisplayName(),
+                resolved.getYoutubeChannelId(),
+                resolved.getProfileImageUrl());
+    }
+
+    private Artist refreshMetadataIfNeeded(Artist artist) {
+        boolean needsDisplayName = isBlank(artist.getDisplayName());
+        boolean needsProfileImage = isBlank(artist.getProfileImageUrl());
+
+        if (!needsDisplayName && !needsProfileImage) {
+            return artist;
+        }
+
+        String channelId = artist.getYoutubeChannelId();
+        if (isBlank(channelId)) {
+            return artist;
+        }
+
+        ChannelMetadata channelMetadata = channelMetadataProvider.fetch(channelId);
+        boolean updated = false;
+
+        if (needsDisplayName) {
+            String metadataTitle = channelMetadata.title();
+            if (!isBlank(metadataTitle)) {
+                artist.setDisplayName(metadataTitle);
+                updated = true;
+            }
+        }
+
+        if (needsProfileImage) {
+            String profileImageUrl = channelMetadata.profileImageUrl();
+            if (!isBlank(profileImageUrl)) {
+                artist.setProfileImageUrl(profileImageUrl);
+                updated = true;
+            }
+        }
+
+        return updated ? artistRepository.save(artist) : artist;
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 }
