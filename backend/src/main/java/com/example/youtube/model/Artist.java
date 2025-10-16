@@ -26,14 +26,32 @@ public class Artist {
     @JoinColumn(name = "created_by")
     private UserAccount createdBy;
 
+    @Column(name = "available_ko", nullable = false)
+    private boolean availableKo;
+
+    @Column(name = "available_en", nullable = false)
+    private boolean availableEn;
+
+    @Column(name = "available_jp", nullable = false)
+    private boolean availableJp;
+
     public Artist() {
     }
 
-    public Artist(String name, String displayName, String youtubeChannelId, UserAccount createdBy) {
+    public Artist(String name,
+                  String displayName,
+                  String youtubeChannelId,
+                  UserAccount createdBy,
+                  boolean availableKo,
+                  boolean availableEn,
+                  boolean availableJp) {
         this.name = name;
         this.displayName = displayName;
         this.youtubeChannelId = youtubeChannelId;
         this.createdBy = createdBy;
+        this.availableKo = availableKo;
+        this.availableEn = availableEn;
+        this.availableJp = availableJp;
     }
 
     public Long getId() {
@@ -78,5 +96,29 @@ public class Artist {
 
     public void setProfileImageUrl(String profileImageUrl) {
         this.profileImageUrl = profileImageUrl;
+    }
+
+    public boolean isAvailableKo() {
+        return availableKo;
+    }
+
+    public void setAvailableKo(boolean availableKo) {
+        this.availableKo = availableKo;
+    }
+
+    public boolean isAvailableEn() {
+        return availableEn;
+    }
+
+    public void setAvailableEn(boolean availableEn) {
+        this.availableEn = availableEn;
+    }
+
+    public boolean isAvailableJp() {
+        return availableJp;
+    }
+
+    public void setAvailableJp(boolean availableJp) {
+        this.availableJp = availableJp;
     }
 }

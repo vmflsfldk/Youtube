@@ -5,6 +5,9 @@ public record ArtistResponse(
         String name,
         String displayName,
         String youtubeChannelId,
-        String profileImageUrl
+        String profileImageUrl,
+        boolean availableKo,
+        boolean availableEn,
+        boolean availableJp
 ) {
 }
