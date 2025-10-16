@@ -2055,6 +2055,19 @@ interface YouTubeChannelsResponse {
   items?: YouTubeChannelItem[];
 }
 
+interface YouTubeSearchId {
+  channelId?: string;
+}
+
+interface YouTubeSearchItem {
+  id?: YouTubeSearchId;
+  snippet?: YouTubeSnippet;
+}
+
+interface YouTubeSearchResponse {
+  items?: YouTubeSearchItem[];
+}
+
 const ISO_8601_DURATION_PATTERN = /^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$/i;
 
 function parseIso8601Duration(value: string | undefined): number | null {
@@ -2347,13 +2360,55 @@ async function fetchChannelMetadata(env: Env, channelId: string): Promise<Channe
     return { title: null, profileImageUrl: null, channelId: resolvedChannelId, debug: baseDebug };
   }
 
+  let searchSnippet: YouTubeSnippet | null = null;
+  if (!effectiveChannelId && identifier.handle) {
+    const searchResult = await searchChannelByHandle(apiKey, identifier.handle);
+    if (searchResult) {
+      effectiveChannelId = searchResult.channelId ?? effectiveChannelId;
+      if (searchResult.snippet) {
+        searchSnippet = searchResult.snippet;
+      }
+      if (searchResult.channelId && !identifier.channelId) {
+        baseDebug.warnings.push(`Resolved channel ID via search API: ${searchResult.channelId}`);
+      }
+    }
+  }
+
+  const hasApiIdentifier = Boolean(effectiveChannelId || identifier.username || identifier.channelId);
+  if (!hasApiIdentifier) {
+    const htmlMetadata = await loadHtmlMetadata();
+    if (htmlMetadata) {
+      const resolvedChannelId = htmlMetadata.channelId ?? identifier.channelId ?? null;
+      baseDebug.usedHtmlFallback = true;
+      baseDebug.resolvedChannelId = resolvedChannelId;
+      return {
+        title: htmlMetadata.title,
+        profileImageUrl: htmlMetadata.thumbnailUrl,
+        channelId: resolvedChannelId,
+        debug: baseDebug
+      };
+    }
+    if (searchSnippet) {
+      const resolvedChannelId = identifier.channelId ?? null;
+      baseDebug.resolvedChannelId = resolvedChannelId;
+      return {
+        title: sanitizeSnippetTitle(searchSnippet),
+        profileImageUrl: selectThumbnailUrl(searchSnippet.thumbnails) ?? null,
+        channelId: resolvedChannelId,
+        debug: baseDebug
+      };
+    }
+    baseDebug.resolvedChannelId = identifier.channelId ?? null;
+    return { title: null, profileImageUrl: null, channelId: identifier.channelId ?? null, debug: baseDebug };
+  }
+
   const url = new URL("https://www.googleapis.com/youtube/v3/channels");
   if (effectiveChannelId) {
     url.searchParams.set("id", effectiveChannelId);
   } else if (identifier.username) {
     url.searchParams.set("forUsername", identifier.username);
-  } else {
-    url.searchParams.set("id", trimmedChannelId);
+  } else if (identifier.channelId) {
+    url.searchParams.set("id", identifier.channelId);
   }
   url.searchParams.set("part", "snippet");
   url.searchParams.set("key", apiKey);
@@ -2379,6 +2434,16 @@ async function fetchChannelMetadata(env: Env, channelId: string): Promise<Channe
         debug: baseDebug
       };
     }
+    if (searchSnippet) {
+      const resolvedChannelId = effectiveChannelId ?? identifier.channelId ?? null;
+      baseDebug.resolvedChannelId = resolvedChannelId;
+      return {
+        title: sanitizeSnippetTitle(searchSnippet),
+        profileImageUrl: selectThumbnailUrl(searchSnippet.thumbnails) ?? null,
+        channelId: resolvedChannelId,
+        debug: baseDebug
+      };
+    }
     const resolvedChannelId = effectiveChannelId ?? identifier.channelId ?? null;
     baseDebug.resolvedChannelId = resolvedChannelId;
     return { title: null, profileImageUrl: null, channelId: resolvedChannelId, debug: baseDebug };
@@ -2394,6 +2459,16 @@ async function fetchChannelMetadata(env: Env, channelId: string): Promise<Channe
       return {
         title: htmlMetadata.title,
         profileImageUrl: htmlMetadata.thumbnailUrl,
+        channelId: resolvedChannelId,
+        debug: baseDebug
+      };
+    }
+    if (searchSnippet) {
+      const resolvedChannelId = effectiveChannelId ?? identifier.channelId ?? null;
+      baseDebug.resolvedChannelId = resolvedChannelId;
+      return {
+        title: sanitizeSnippetTitle(searchSnippet),
+        profileImageUrl: selectThumbnailUrl(searchSnippet.thumbnails) ?? null,
         channelId: resolvedChannelId,
         debug: baseDebug
       };
@@ -2420,6 +2495,16 @@ async function fetchChannelMetadata(env: Env, channelId: string): Promise<Channe
         debug: baseDebug
       };
     }
+    if (searchSnippet) {
+      const resolvedChannelId = effectiveChannelId ?? identifier.channelId ?? null;
+      baseDebug.resolvedChannelId = resolvedChannelId;
+      return {
+        title: sanitizeSnippetTitle(searchSnippet),
+        profileImageUrl: selectThumbnailUrl(searchSnippet.thumbnails) ?? null,
+        channelId: resolvedChannelId,
+        debug: baseDebug
+      };
+    }
     const resolvedChannelId = effectiveChannelId ?? identifier.channelId ?? null;
     baseDebug.resolvedChannelId = resolvedChannelId;
     return { title: null, profileImageUrl: null, channelId: resolvedChannelId, debug: baseDebug };
@@ -2439,6 +2524,16 @@ async function fetchChannelMetadata(env: Env, channelId: string): Promise<Channe
         debug: baseDebug
       };
     }
+    if (searchSnippet) {
+      const resolvedChannelId = effectiveChannelId ?? identifier.channelId ?? null;
+      baseDebug.resolvedChannelId = resolvedChannelId;
+      return {
+        title: sanitizeSnippetTitle(searchSnippet),
+        profileImageUrl: selectThumbnailUrl(searchSnippet.thumbnails) ?? null,
+        channelId: resolvedChannelId,
+        debug: baseDebug
+      };
+    }
     const resolvedChannelId = effectiveChannelId ?? identifier.channelId ?? null;
     baseDebug.resolvedChannelId = resolvedChannelId;
     return { title: null, profileImageUrl: null, channelId: resolvedChannelId, debug: baseDebug };
@@ -2449,7 +2544,7 @@ async function fetchChannelMetadata(env: Env, channelId: string): Promise<Channe
 
   let title = typeof snippet?.title === "string" && snippet.title.trim().length > 0 ? snippet.title.trim() : null;
   if (!title) {
-    title = htmlMetadata?.title ?? null;
+    title = sanitizeSnippetTitle(searchSnippet) ?? htmlMetadata?.title ?? null;
     if (title) {
       baseDebug.usedHtmlFallback = true;
     }
@@ -2457,7 +2552,7 @@ async function fetchChannelMetadata(env: Env, channelId: string): Promise<Channe
 
   let profileImageUrl = selectThumbnailUrl(snippet?.thumbnails) ?? null;
   if (!profileImageUrl) {
-    profileImageUrl = htmlMetadata?.thumbnailUrl ?? null;
+    profileImageUrl = selectThumbnailUrl(searchSnippet?.thumbnails) ?? htmlMetadata?.thumbnailUrl ?? null;
     if (profileImageUrl) {
       baseDebug.usedHtmlFallback = true;
     }
@@ -2466,12 +2561,55 @@ async function fetchChannelMetadata(env: Env, channelId: string): Promise<Channe
   const resolvedChannelId =
     typeof item?.id === "string" && item.id.trim()
       ? item.id.trim()
-      : effectiveChannelId ?? htmlMetadata?.channelId ?? identifier.channelId ?? null;
+      : effectiveChannelId ?? htmlMetadata?.channelId ?? identifier.channelId ?? searchSnippet?.channelId ?? null;
 
   baseDebug.usedApi = true;
   baseDebug.resolvedChannelId = resolvedChannelId;
 
   return { title, profileImageUrl, channelId: resolvedChannelId, debug: baseDebug };
+}
+
+function sanitizeSnippetTitle(snippet: YouTubeSnippet | null): string | null {
+  if (!snippet?.title) {
+    return null;
+  }
+  const trimmed = snippet.title.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+async function searchChannelByHandle(
+  apiKey: string,
+  handle: string
+): Promise<{ channelId: string | null; snippet: YouTubeSnippet | null } | null> {
+  const normalizedHandle = handle.startsWith("@") ? handle : `@${handle}`;
+  const url = new URL("https://www.googleapis.com/youtube/v3/search");
+  url.searchParams.set("part", "snippet");
+  url.searchParams.set("type", "channel");
+  url.searchParams.set("maxResults", "1");
+  url.searchParams.set("q", normalizedHandle);
+  url.searchParams.set("key", apiKey);
+
+  try {
+    const response = await fetch(url.toString(), { method: "GET" });
+    if (!response.ok) {
+      console.warn(`[yt-clip] YouTube Data API search failed with status ${response.status} for handle ${handle}`);
+      return null;
+    }
+    const payload = (await response.json()) as YouTubeSearchResponse;
+    const item = Array.isArray(payload.items) ? payload.items.find((candidate) => !!candidate) ?? null : null;
+    if (!item) {
+      return null;
+    }
+    const resolvedChannelId = item.id?.channelId?.trim() ?? null;
+    const snippet = item.snippet ?? null;
+    if (!resolvedChannelId && !snippet) {
+      return null;
+    }
+    return { channelId: resolvedChannelId, snippet };
+  } catch (error) {
+    console.warn(`[yt-clip] Failed to resolve channel handle ${handle} via search API`, error);
+    return null;
+  }
 }
 
 function buildChannelUrlCandidates(
