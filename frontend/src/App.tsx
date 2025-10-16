@@ -193,6 +193,7 @@ export default function App() {
   const [videoForm, setVideoForm] = useState({ url: '', artistId: '', description: '', captionsJson: '' });
   const [clipForm, setClipForm] = useState({ title: '', startSec: 0, endSec: 0, tags: '' });
   const [autoDetectMode, setAutoDetectMode] = useState('chapters');
+  const [isArtistVideosLoading, setArtistVideosLoading] = useState(false);
   const [isGoogleReady, setIsGoogleReady] = useState(false);
   const [emailRegisterEmail, setEmailRegisterEmail] = useState('');
   const [emailRegisterCode, setEmailRegisterCode] = useState('');
@@ -603,10 +604,8 @@ export default function App() {
 
   useEffect(() => {
     if (!isAuthenticated) {
-      setVideos([]);
       setClips([]);
       setClipCandidates([]);
-      setSelectedVideo(null);
     }
     void fetchArtists();
   }, [isAuthenticated, fetchArtists]);
@@ -754,20 +753,15 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (!isAuthenticated) {
-      setVideos([]);
-      setSelectedVideo(null);
-      setClips([]);
-      setClipCandidates([]);
-      return;
-    }
     if (!videoForm.artistId) {
       setVideos([]);
       setSelectedVideo(null);
-      setClips([]);
-      setClipCandidates([]);
+      setArtistVideosLoading(false);
       return;
     }
+
+    let cancelled = false;
+    setArtistVideosLoading(true);
 
     (async () => {
       try {
@@ -775,6 +769,10 @@ export default function App() {
           headers: authHeaders,
           params: { artistId: Number(videoForm.artistId) }
         });
+
+        if (cancelled) {
+          return;
+        }
 
         const fetchedVideos = ensureArray(response.data);
         setVideos(fetchedVideos);
@@ -786,11 +784,21 @@ export default function App() {
         });
       } catch (error) {
         console.error('Failed to load videos', error);
-        setVideos([]);
-        setSelectedVideo(null);
+        if (!cancelled) {
+          setVideos([]);
+          setSelectedVideo(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setArtistVideosLoading(false);
+        }
       }
     })();
-  }, [videoForm.artistId, authHeaders, isAuthenticated]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [videoForm.artistId, authHeaders]);
 
   const handleArtistClick = (artistId: number) => {
     setVideoForm((prev) => ({ ...prev, artistId: String(artistId) }));
@@ -1378,73 +1386,167 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="media-card artist-directory">
-                  <h3>아티스트 디렉토리</h3>
-                  <p className="artist-directory__subtitle">전체 이용자가 확인할 수 있는 공개 목록입니다.</p>
-                  <ul className="artist-directory__list">
-                    {artists.length === 0 ? (
-                      <li className="artist-empty">등록된 아티스트가 없습니다.</li>
-                    ) : (
-                      artists.map((artist) => {
-                        const isActive = selectedArtist?.id === artist.id;
-                        return (
-                          <li
-                            key={artist.id}
-                            className={`artist-directory__item${isActive ? ' active' : ''}`}
-                            onClick={() => handleArtistClick(artist.id)}
-                          >
-                            <div className="artist-directory__avatar">
-                              {artist.profileImageUrl ? (
+                <div className="media-card artist-explorer">
+                  <div className="artist-explorer__header">
+                    <div>
+                      <h3>아티스트 디렉토리</h3>
+                      <p className="artist-directory__subtitle">전체 이용자가 확인할 수 있는 공개 목록입니다.</p>
+                    </div>
+                    {selectedArtist && (
+                      <div className="artist-explorer__header-meta">
+                        <span>선택된 아티스트</span>
+                        <strong>{selectedArtist.displayName || selectedArtist.name}</strong>
+                      </div>
+                    )}
+                  </div>
+                  <div className="artist-explorer__content">
+                    <div className="artist-explorer__list" role="listbox" aria-label="아티스트 목록">
+                      {artists.length === 0 ? (
+                        <div className="artist-empty">등록된 아티스트가 없습니다.</div>
+                      ) : (
+                        <ul className="artist-directory__list">
+                          {artists.map((artist) => {
+                            const isActive = selectedArtist?.id === artist.id;
+                            const fallbackAvatarUrl = `https://ui-avatars.com/api/?background=111827&color=e2e8f0&name=${encodeURIComponent(
+                              artist.displayName || artist.name
+                            )}`;
+                            return (
+                              <li
+                                key={artist.id}
+                                className={`artist-directory__item${isActive ? ' active' : ''}`}
+                                onClick={() => handleArtistClick(artist.id)}
+                                role="option"
+                                aria-selected={isActive}
+                              >
+                                <div className="artist-directory__avatar">
+                                  {artist.profileImageUrl ? (
+                                    <img
+                                      src={artist.profileImageUrl}
+                                      alt={`${artist.displayName || artist.name} 채널 프로필 이미지`}
+                                      loading="lazy"
+                                      decoding="async"
+                                      referrerPolicy="no-referrer"
+                                      onError={(event) => {
+                                        if (event.currentTarget.src !== fallbackAvatarUrl) {
+                                          event.currentTarget.src = fallbackAvatarUrl;
+                                        }
+                                      }}
+                                    />
+                                  ) : (
+                                    <img
+                                      src={fallbackAvatarUrl}
+                                      alt={`${artist.displayName || artist.name} 기본 프로필 이미지`}
+                                      loading="lazy"
+                                      decoding="async"
+                                    />
+                                  )}
+                                </div>
+                                <div className="artist-directory__meta">
+                                  <span className="artist-directory__name">{artist.displayName || artist.name}</span>
+                                  <span className="artist-directory__channel">{artist.youtubeChannelId}</span>
+                                </div>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                    </div>
+
+                    <div className="artist-explorer__detail">
+                      {selectedArtist ? (
+                        <div className="artist-detail">
+                          <div className="artist-detail__header">
+                            <div className="artist-detail__avatar">
+                              {selectedArtist.profileImageUrl ? (
                                 <img
-                                  src={artist.profileImageUrl}
-                                  alt={`${artist.displayName || artist.name} 채널 프로필 이미지`}
+                                  src={selectedArtist.profileImageUrl}
+                                  alt={`${selectedArtist.displayName || selectedArtist.name} 채널 프로필 이미지`}
                                   loading="lazy"
+                                  decoding="async"
+                                  referrerPolicy="no-referrer"
+                                  onError={(event) => {
+                                    const fallbackUrl = `https://ui-avatars.com/api/?background=111827&color=e2e8f0&name=${encodeURIComponent(
+                                      selectedArtist.displayName || selectedArtist.name
+                                    )}`;
+                                    if (event.currentTarget.src !== fallbackUrl) {
+                                      event.currentTarget.src = fallbackUrl;
+                                    }
+                                  }}
                                 />
                               ) : (
-                                <span className="artist-directory__icon" aria-hidden="true">
-                                  <svg viewBox="0 0 24 24" role="presentation">
-                                    <path d="M21.8 8.001a2.5 2.5 0 0 0-1.758-1.77C18.25 6 12 6 12 6s-6.25 0-8.042.231a2.5 2.5 0 0 0-1.758 1.77C2 9.801 2 12 2 12s0 2.199.2 3.999a2.5 2.5 0 0 0 1.758 1.77C5.75 18 12 18 12 18s6.25 0 8.042-.231a2.5 2.5 0 0 0 1.758-1.77C22 14.199 22 12 22 12s0-2.199-.2-3.999Z" />
-                                    <path d="M10 14.5v-5l4.5 2.5Z" fill="currentColor" />
-                                  </svg>
-                                </span>
+                                <img
+                                  src={`https://ui-avatars.com/api/?background=111827&color=e2e8f0&name=${encodeURIComponent(
+                                    selectedArtist.displayName || selectedArtist.name
+                                  )}`}
+                                  alt={`${selectedArtist.displayName || selectedArtist.name} 기본 프로필 이미지`}
+                                  loading="lazy"
+                                  decoding="async"
+                                />
                               )}
                             </div>
-                            <div className="artist-directory__meta">
-                              <span className="artist-directory__name">{artist.displayName || artist.name}</span>
-                              <span className="artist-directory__channel">{artist.youtubeChannelId}</span>
+                            <div className="artist-detail__info">
+                              <h4>{selectedArtist.displayName || selectedArtist.name}</h4>
+                              <p>{selectedArtist.youtubeChannelId}</p>
+                              {selectedArtist.youtubeChannelId && (
+                                <a
+                                  href={selectedArtist.youtubeChannelId.startsWith('@')
+                                    ? `https://www.youtube.com/${selectedArtist.youtubeChannelId}`
+                                    : `https://www.youtube.com/channel/${selectedArtist.youtubeChannelId}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                >
+                                  유튜브 채널 보기
+                                </a>
+                              )}
                             </div>
-                          </li>
-                        );
-                      })
-                    )}
-                  </ul>
-                </div>
-              </div>
-
-              <div className="media-card full">
-                <h3>등록된 영상</h3>
-                {videos.length === 0 ? (
-                  <p className="empty-state">선택된 아티스트의 영상이 아직 없습니다.</p>
-                ) : (
-                  <ul className="video-list">
-                    {videos.map((video) => {
-                      const isActive = selectedVideo === video.id;
-                      return (
-                        <li
-                          key={video.id}
-                          className={`video-item${isActive ? ' active' : ''}`}
-                          onClick={() => setSelectedVideo(video.id)}
-                        >
-                          <div>
-                            <h4>{video.title || video.youtubeVideoId}</h4>
-                            <p>{video.youtubeVideoId}</p>
                           </div>
-                          {video.thumbnailUrl && <img src={video.thumbnailUrl} alt="Video thumbnail" />}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
+                          <div className="artist-detail__videos">
+                            <div className="artist-detail__videos-header">
+                              <h5>등록된 영상</h5>
+                              {isArtistVideosLoading && <span className="artist-detail__loading">불러오는 중...</span>}
+                            </div>
+                            {isArtistVideosLoading ? (
+                              <p className="empty-state">영상 정보를 불러오는 중입니다.</p>
+                            ) : videos.length === 0 ? (
+                              <p className="empty-state">선택된 아티스트의 영상이 아직 없습니다.</p>
+                            ) : (
+                              <ul className="video-list">
+                                {videos.map((video) => {
+                                  const isActive = selectedVideo === video.id;
+                                  return (
+                                    <li
+                                      key={video.id}
+                                      className={`video-item${isActive ? ' active' : ''}`}
+                                      onClick={() => setSelectedVideo(video.id)}
+                                    >
+                                      <div>
+                                        <h4>{video.title || video.youtubeVideoId}</h4>
+                                        <p>{video.youtubeVideoId}</p>
+                                      </div>
+                                      {video.thumbnailUrl && (
+                                        <img
+                                          src={video.thumbnailUrl}
+                                          alt="Video thumbnail"
+                                          loading="lazy"
+                                          decoding="async"
+                                        />
+                                      )}
+                                    </li>
+                                  );
+                                })}
+                              </ul>
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="artist-detail__empty">
+                          <h4>아티스트를 선택해 주세요</h4>
+                          <p>좌측 목록에서 아티스트를 선택하면 등록된 영상과 채널 정보를 확인할 수 있습니다.</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </div>
 
               {clipCandidates.length > 0 && (
