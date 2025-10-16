@@ -6,8 +6,8 @@
 - 프론트엔드는 Google ID 토큰을 받아 상태만 갱신하고, 실제 API 요청 시 `X-User-Email`, `X-User-Name` 헤더만 전달합니다. 토큰 자체는 전송하거나 검증하지 않아 인증 무결성이 확보되지 않습니다. 【F:frontend/src/App.tsx†L168-L215】【F:frontend/src/App.tsx†L221-L259】
 - 백엔드 워커 역시 헤더 값만으로 사용자를 생성/조회하며, 별도의 서명 검증이나 만료 검사 없이 계정을 발급합니다. 【F:src/worker.ts†L778-L839】
 
-## 2. YouTube 메타데이터 연동 미구현
-- `fetchVideoMetadata` 함수는 현재 더미 데이터(썸네일 URL만 YouTube 기본 경로 사용)를 반환하도록 작성되어 있으며, 실제 YouTube Data API 호출 로직이 비어 있습니다. 따라서 제목/길이/채널 정보가 항상 기본값으로 저장됩니다. 【F:src/worker.ts†L952-L999】
+## 2. YouTube 메타데이터 연동 제한
+- `fetchVideoMetadata`는 이제 `YOUTUBE_API_KEY` 시크릿을 사용해 YouTube Data API v3를 호출하지만, 키가 없거나 쿼터 초과 시 기본 제목/썸네일로 폴백합니다. 운영 환경에서는 반드시 시크릿을 구성하고 모니터링이 필요합니다. 【F:src/worker.ts†L1849-L2003】
 - 영상 생성 시에도 사용자 입력으로만 `description`, `captionsJson`을 받기 때문에 YouTube에서 자동으로 설명/자막을 가져오는 기능이 존재하지 않습니다. 【F:src/worker.ts†L670-L726】
 
 ## 3. 공개 범위 제어 부재

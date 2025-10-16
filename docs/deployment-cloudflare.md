@@ -8,6 +8,7 @@
 - Node.js 18 이상
 - Wrangler CLI (`npm install -g wrangler`)
 - 레포지토리 체크아웃 및 `wrangler.toml` 확인
+- YouTube Data API v3 키 (Google Cloud 콘솔에서 발급)
 
 > `wrangler.toml`에는 Worker 이름과 D1 바인딩이 정의되어 있습니다. 필요하다면 `account_id`나 `workers_dev` 옵션을 추가해 자신의 계정과 환경에 맞게 수정하세요.
 
@@ -41,7 +42,19 @@ wrangler login
 
 2. 기존 데이터베이스를 사용할 경우 `wrangler d1 list`로 확인 후 `database_name`과 `database_id`가 일치하는지 확인합니다.
 
-## 4. 마이그레이션 적용
+## 4. YouTube Data API 키 설정
+
+Cloudflare Worker가 실제 YouTube 메타데이터를 가져오려면 `YOUTUBE_API_KEY` 시크릿을 설정해야 합니다. Wrangler에서 아래 명령을 실행하고
+프롬프트에 API 키를 붙여 넣으면 Workers 환경에 암호화된 값이 저장됩니다.
+
+```bash
+wrangler secret put YOUTUBE_API_KEY
+```
+
+CI/CD 파이프라인을 사용하는 경우에도 동일한 이름의 시크릿을 구성해야 합니다. 키가 누락되면 워커는 기본 썸네일과 제목만 사용하는 폴백
+메타데이터로 처리합니다.
+
+## 5. 마이그레이션 적용
 
 모든 마이그레이션 SQL 파일은 `migrations/` 디렉터리에 있습니다.
 
@@ -51,7 +64,7 @@ wrangler d1 migrations apply ytclipdb
 
 명령이 성공하면 `users`, `artists`, `videos`, `clips` 등 서비스 테이블이 생성됩니다. (마이그레이션 내용은 `migrations/0001_init.sql` 참고)
 
-## 5. 로컬에서 최종 점검
+## 6. 로컬에서 최종 점검
 
 배포 전 로컬 프리뷰로 API를 확인합니다.
 
@@ -68,7 +81,7 @@ wrangler dev
   - CLI에서 `wrangler d1 execute ytclipdb --command "SELECT * FROM artists"`와 같이 쿼리를 실행해 실제 DB의 상태를 확인합니다.
   - API 요청 후 `wrangler tail yt-clip-api --persist`로 워커 로그를 확인하면 요청이 원격 워커까지 도달했는지 빠르게 검증할 수 있습니다.
 
-## 6. 프로덕션 배포
+## 7. 프로덕션 배포
 
 ```bash
 wrangler deploy
@@ -78,13 +91,13 @@ wrangler deploy
 
 > **주의:** Cloudflare Bot 관리 기능이 Workers.dev 호스트의 `OPTIONS` 사전 요청을 차단하는 경우, 브라우저에서 동일 오리진 `/api` 경로를 사용하면 프리플라이트 자체가 발생하지 않아 문제를 우회할 수 있습니다. 반드시 교차 오리진 호출이 필요한 상황이 아니라면 기본 `/api` 프록시 구성을 유지하세요. 부득이하게 외부 호스트를 직접 호출해야 한다면 프론트엔드 빌드에 `VITE_ALLOW_CROSS_ORIGIN_API=true`를 추가해 경고 없이 원격 엔드포인트를 사용하도록 강제할 수 있습니다.
 
-## 7. 배포 후 확인 사항
+## 8. 배포 후 확인 사항
 
 - `wrangler d1 execute ytclipdb --command "SELECT COUNT(*) FROM users;"`와 같은 쿼리로 데이터베이스 상태를 점검합니다.
 - Cloudflare 대시보드 → Workers → Deployments에서 최신 배포가 활성화되어 있는지 확인합니다.
 - 필요 시 `wrangler tail`로 실시간 로그를 수집해 에러를 파악합니다.
 
-## 8. Super Bot Fight Mode 예외 설정
+## 9. Super Bot Fight Mode 예외 설정
 
 워커 엔드포인트가 Cloudflare Bot 관리 기능(Managed Challenge, Super Bot Fight Mode 등)에 의해 차단되면 프론트엔드에서 `OPTIONS`, `GET`, `POST` 요청이 실패하고, `wrangler tail`에도 호출이 기록되지 않습니다. Pages Functions를 통해 동일 오리진 `/api` 경로를 사용하면 브라우저가 사전 요청을 보내지 않아 이러한 차단을 피할 수 있습니다. 동일 오리진 프록시를 사용할 수 없는 경우에는 아래 절차대로 예외 규칙을 추가해 워커 도메인에 대한 정당한 트래픽을 허용하세요.
 

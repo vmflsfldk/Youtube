@@ -2,6 +2,7 @@ export interface Env {
   DB: D1Database;
   GOOGLE_OAUTH_CLIENT_IDS?: string;
   GOOGLE_CLIENT_ID?: string;
+  YOUTUBE_API_KEY?: string;
 }
 
 type D1Database = {
@@ -1163,7 +1164,7 @@ async function createVideo(
     throw new HttpError(400, "Unable to parse videoId from URL");
   }
 
-  const metadata = await fetchVideoMetadata(videoId);
+  const metadata = await fetchVideoMetadata(env, videoId);
   const existing = await env.DB.prepare(
     "SELECT id FROM videos WHERE youtube_video_id = ?"
   ).bind(videoId).first<{ id: number }>();
@@ -1852,18 +1853,145 @@ function extractVideoId(url: string): string | null {
   return null;
 }
 
-async function fetchVideoMetadata(videoId: string): Promise<{
+interface YouTubeThumbnailDetails {
+  url?: string;
+  width?: number;
+  height?: number;
+}
+
+interface YouTubeThumbnails {
+  default?: YouTubeThumbnailDetails;
+  medium?: YouTubeThumbnailDetails;
+  high?: YouTubeThumbnailDetails;
+  standard?: YouTubeThumbnailDetails;
+  maxres?: YouTubeThumbnailDetails;
+  [key: string]: YouTubeThumbnailDetails | undefined;
+}
+
+interface YouTubeSnippet {
+  title?: string;
+  channelId?: string;
+  thumbnails?: YouTubeThumbnails;
+}
+
+interface YouTubeContentDetails {
+  duration?: string;
+}
+
+interface YouTubeVideoItem {
+  snippet?: YouTubeSnippet;
+  contentDetails?: YouTubeContentDetails;
+}
+
+interface YouTubeVideosResponse {
+  items?: YouTubeVideoItem[];
+}
+
+const ISO_8601_DURATION_PATTERN = /^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$/i;
+
+function parseIso8601Duration(value: string | undefined): number | null {
+  if (!value) {
+    return null;
+  }
+  const match = value.match(ISO_8601_DURATION_PATTERN);
+  if (!match) {
+    return null;
+  }
+  const days = match[1] ? Number(match[1]) : 0;
+  const hours = match[2] ? Number(match[2]) : 0;
+  const minutes = match[3] ? Number(match[3]) : 0;
+  const seconds = match[4] ? Number(match[4]) : 0;
+  if ([days, hours, minutes, seconds].some((part) => !Number.isFinite(part))) {
+    return null;
+  }
+  return days * 86400 + hours * 3600 + minutes * 60 + seconds;
+}
+
+function selectThumbnailUrl(thumbnails: YouTubeThumbnails | undefined): string | null {
+  if (!thumbnails || typeof thumbnails !== "object") {
+    return null;
+  }
+  const preferredOrder = ["maxres", "standard", "high", "medium", "default"];
+  for (const key of preferredOrder) {
+    const url = thumbnails[key]?.url;
+    if (typeof url === "string" && url.trim().length > 0) {
+      return url.trim();
+    }
+  }
+  for (const details of Object.values(thumbnails)) {
+    const url = details?.url;
+    if (typeof url === "string" && url.trim().length > 0) {
+      return url.trim();
+    }
+  }
+  return null;
+}
+
+async function fetchVideoMetadata(env: Env, videoId: string): Promise<{
   title: string;
   durationSec: number | null;
   thumbnailUrl: string | null;
   channelId: string | null;
 }> {
-  // Placeholder implementation. Replace with real YouTube API integration if needed.
-  return {
+  const fallback = {
     title: `Video ${videoId}`,
     durationSec: null,
     thumbnailUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
     channelId: null
+  };
+
+  const apiKey = env.YOUTUBE_API_KEY?.trim();
+  if (!apiKey) {
+    console.warn("[yt-clip] YOUTUBE_API_KEY is not configured; falling back to default metadata.");
+    return fallback;
+  }
+
+  const url = new URL("https://www.googleapis.com/youtube/v3/videos");
+  url.searchParams.set("id", videoId);
+  url.searchParams.set("part", "snippet,contentDetails");
+  url.searchParams.set("key", apiKey);
+
+  let response: Response;
+  try {
+    response = await fetch(url.toString(), { method: "GET" });
+  } catch (error) {
+    console.error(`[yt-clip] Failed to contact YouTube Data API for video ${videoId}`, error);
+    return fallback;
+  }
+
+  if (!response.ok) {
+    console.warn(`[yt-clip] YouTube Data API responded with status ${response.status} for video ${videoId}`);
+    return fallback;
+  }
+
+  let payload: YouTubeVideosResponse;
+  try {
+    payload = (await response.json()) as YouTubeVideosResponse;
+  } catch (error) {
+    console.error("[yt-clip] Failed to parse YouTube Data API response", error);
+    return fallback;
+  }
+
+  const item = Array.isArray(payload.items) ? payload.items[0] ?? null : null;
+  if (!item) {
+    console.warn(`[yt-clip] YouTube Data API returned no items for video ${videoId}`);
+    return fallback;
+  }
+
+  const snippet = item.snippet;
+  const contentDetails = item.contentDetails;
+
+  const title = typeof snippet?.title === "string" && snippet.title.trim().length > 0 ? snippet.title.trim() : fallback.title;
+  const channelId =
+    typeof snippet?.channelId === "string" && snippet.channelId.trim().length > 0 ? snippet.channelId.trim() : null;
+  const thumbnailUrl = selectThumbnailUrl(snippet?.thumbnails) ?? fallback.thumbnailUrl;
+  const durationSec = parseIso8601Duration(contentDetails?.duration) ?? fallback.durationSec;
+
+  return {
+    title,
+    durationSec,
+    thumbnailUrl,
+    channelId
   };
 }
 
