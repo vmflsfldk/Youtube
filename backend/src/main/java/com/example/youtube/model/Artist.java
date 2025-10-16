@@ -1,6 +1,17 @@
 package com.example.youtube.model;
 
-import jakarta.persistence.*;
+import jakarta.persistence.CollectionTable;
+import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Table;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "artists")
@@ -34,6 +45,11 @@ public class Artist {
 
     @Column(name = "available_jp", nullable = false)
     private boolean availableJp;
+
+    @ElementCollection
+    @CollectionTable(name = "artist_tags", joinColumns = @JoinColumn(name = "artist_id"))
+    @Column(name = "tag", nullable = false)
+    private List<String> tags = new ArrayList<>();
 
     public Artist() {
     }
@@ -120,5 +136,13 @@ public class Artist {
 
     public void setAvailableJp(boolean availableJp) {
         this.availableJp = availableJp;
+    }
+
+    public List<String> getTags() {
+        return tags;
+    }
+
+    public void setTags(List<String> tags) {
+        this.tags = tags == null ? new ArrayList<>() : new ArrayList<>(tags);
     }
 }

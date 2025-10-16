@@ -3,13 +3,16 @@ package com.example.youtube.controller;
 import com.example.youtube.config.UserRequestInterceptor;
 import com.example.youtube.dto.ArtistRequest;
 import com.example.youtube.dto.ArtistResponse;
+import com.example.youtube.dto.ArtistTagRequest;
 import com.example.youtube.dto.FavoriteToggleRequest;
 import com.example.youtube.model.UserAccount;
 import com.example.youtube.service.ArtistService;
 import jakarta.validation.Valid;
 import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -36,6 +39,19 @@ public class ArtistController {
     public List<ArtistResponse> listArtists(@RequestParam(value = "mine", defaultValue = "false") boolean mine,
                                             @RequestAttribute(UserRequestInterceptor.CURRENT_USER_ATTR) UserAccount user) {
         return mine ? artistService.listMine(user) : artistService.listCreatedBy(user);
+    }
+
+    @PutMapping("/artists/{artistId}/tags")
+    public ArtistResponse updateTags(@PathVariable Long artistId,
+                                     @Valid @RequestBody ArtistTagRequest request,
+                                     @RequestAttribute(UserRequestInterceptor.CURRENT_USER_ATTR) UserAccount user) {
+        return artistService.updateTags(artistId, request.tags(), user);
+    }
+
+    @GetMapping("/artists/search")
+    public List<ArtistResponse> searchArtists(@RequestParam(value = "name", required = false) String name,
+                                              @RequestParam(value = "tag", required = false) String tag) {
+        return artistService.search(name, tag);
     }
 
     @PostMapping("/users/me/favorites")
