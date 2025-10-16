@@ -365,7 +365,7 @@ export default function App() {
   const [nicknameInput, setNicknameInput] = useState('');
   const [nicknameStatus, setNicknameStatus] = useState<string | null>(null);
   const [nicknameError, setNicknameError] = useState<string | null>(null);
-  const [activeManagementTab, setActiveManagementTab] = useState<'clips' | 'videos' | 'artists'>('clips');
+  const [activeManagementTab, setActiveManagementTab] = useState<'media' | 'artists'>('media');
 
   const authHeaders = useMemo(() => {
     if (!authToken) {
@@ -1271,17 +1271,10 @@ export default function App() {
               <div className="management-tabs">
                 <button
                   type="button"
-                  className={activeManagementTab === 'clips' ? 'active' : ''}
-                  onClick={() => setActiveManagementTab('clips')}
+                  className={activeManagementTab === 'media' ? 'active' : ''}
+                  onClick={() => setActiveManagementTab('media')}
                 >
-                  클립 등록
-                </button>
-                <button
-                  type="button"
-                  className={activeManagementTab === 'videos' ? 'active' : ''}
-                  onClick={() => setActiveManagementTab('videos')}
-                >
-                  영상 등록
+                  영상·클립 등록
                 </button>
                 <button
                   type="button"
@@ -1292,103 +1285,76 @@ export default function App() {
                 </button>
               </div>
               <div className="management-content">
-                {activeManagementTab === 'clips' && (
-                  <div className="management-section">
-                    <h3>새로운 클립 등록</h3>
-                    <form onSubmit={handleClipSubmit} className="stacked-form">
-                      <label htmlFor="clipVideoId">영상 선택</label>
-                      <select
-                        id="clipVideoId"
-                        value={selectedVideo ?? ''}
-                        onChange={(event) => {
-                          const value = Number(event.target.value);
-                          setSelectedVideo(Number.isNaN(value) ? null : value);
-                        }}
-                        required
-                        disabled={creationDisabled || videos.length === 0}
-                      >
-                        <option value="" disabled>
-                          영상 선택
-                        </option>
-                        {videos.map((video) => (
-                          <option key={video.id} value={video.id}>
-                            {video.title || video.youtubeVideoId}
-                          </option>
-                        ))}
-                      </select>
-                      <label htmlFor="clipTitle">클립 제목</label>
-                      <input
-                        id="clipTitle"
-                        placeholder="클립 제목"
-                        value={clipForm.title}
-                        onChange={(event) => setClipForm((prev) => ({ ...prev, title: event.target.value }))}
-                        required
-                        disabled={creationDisabled}
-                      />
-                      <div className="number-row">
-                        <div>
-                          <label htmlFor="clipStartSec">시작 시간 (초)</label>
-                          <input
-                            id="clipStartSec"
-                            type="number"
-                            min="0"
-                            value={clipForm.startSec}
-                            onChange={(event) =>
-                              setClipForm((prev) => ({ ...prev, startSec: Number(event.target.value) }))
-                            }
-                            required
-                            disabled={creationDisabled}
-                          />
-                        </div>
-                        <div>
-                          <label htmlFor="clipEndSec">종료 시간 (초)</label>
-                          <input
-                            id="clipEndSec"
-                            type="number"
-                            min="0"
-                            value={clipForm.endSec}
-                            onChange={(event) =>
-                              setClipForm((prev) => ({ ...prev, endSec: Number(event.target.value) }))
-                            }
-                            required
-                            disabled={creationDisabled}
-                          />
-                        </div>
-                      </div>
-                      <label htmlFor="clipTags">태그 (쉼표로 구분)</label>
-                      <input
-                        id="clipTags"
-                        placeholder="예: 하이라이트, 라이브"
-                        value={clipForm.tags}
-                        onChange={(event) => setClipForm((prev) => ({ ...prev, tags: event.target.value }))}
-                        disabled={creationDisabled}
-                      />
-                      <button type="submit" disabled={creationDisabled}>
-                        클립 등록
-                      </button>
-                    </form>
-                    <div className="clip-preview">
-                      <h4>프리뷰</h4>
-                      {selectedVideoData ? (
-                        <ClipPlayer
-                          youtubeVideoId={selectedVideoData.youtubeVideoId}
-                          startSec={previewStartSec}
-                          endSec={previewEndSec}
-                          autoplay={false}
+                {activeManagementTab === 'media' && (
+                  <>
+                    <div className="management-section">
+                      <h3>영상 등록</h3>
+                      <form onSubmit={handleVideoSubmit} className="stacked-form">
+                        <label htmlFor="videoUrl">YouTube 영상 URL</label>
+                        <input
+                          id="videoUrl"
+                          placeholder="https://www.youtube.com/watch?v=..."
+                          value={videoForm.url}
+                          onChange={(event) => setVideoForm((prev) => ({ ...prev, url: event.target.value }))}
+                          required
+                          disabled={creationDisabled}
                         />
-                      ) : (
-                        <p className="empty-state">클립 프리뷰를 확인하려면 영상을 선택하세요.</p>
-                      )}
-                    </div>
-                    <div className="auto-detect">
-                      <div className="number-row">
+                        <label htmlFor="videoArtistId">아티스트 선택</label>
                         <select
-                          id="detectVideo"
+                          id="videoArtistId"
+                          value={videoForm.artistId}
+                          onChange={(event) => setVideoForm((prev) => ({ ...prev, artistId: event.target.value }))}
+                          required
+                          disabled={creationDisabled || artists.length === 0}
+                        >
+                          <option value="" disabled>
+                            아티스트 선택
+                          </option>
+                          {artists.map((artist) => (
+                            <option key={artist.id} value={artist.id}>
+                              {artist.displayName || artist.name}
+                            </option>
+                          ))}
+                        </select>
+                        <label htmlFor="videoDescription">영상 설명 (선택)</label>
+                        <textarea
+                          id="videoDescription"
+                          rows={3}
+                          placeholder="영상 설명을 입력하거나 붙여넣기하세요."
+                          value={videoForm.description}
+                          onChange={(event) =>
+                            setVideoForm((prev) => ({ ...prev, description: event.target.value }))
+                          }
+                          disabled={creationDisabled}
+                        />
+                        <label htmlFor="videoCaptions">캡션 JSON 또는 시작시간|문장</label>
+                        <textarea
+                          id="videoCaptions"
+                          rows={3}
+                          placeholder={'[{"start":0,"text":"문장"}] 또는 12|첫 문장'}
+                          value={videoForm.captionsJson}
+                          onChange={(event) =>
+                            setVideoForm((prev) => ({ ...prev, captionsJson: event.target.value }))
+                          }
+                          disabled={creationDisabled}
+                        />
+                        <button type="submit" disabled={creationDisabled}>
+                          영상 메타데이터 저장
+                        </button>
+                      </form>
+                    </div>
+                    <div className="management-section">
+                      <h3>새로운 클립 등록</h3>
+                      <form onSubmit={handleClipSubmit} className="stacked-form">
+                        <label htmlFor="clipVideoId">영상 선택</label>
+                        <select
+                          id="clipVideoId"
                           value={selectedVideo ?? ''}
                           onChange={(event) => {
                             const value = Number(event.target.value);
                             setSelectedVideo(Number.isNaN(value) ? null : value);
                           }}
+                          required
                           disabled={creationDisabled || videos.length === 0}
                         >
                           <option value="" disabled>
@@ -1400,80 +1366,107 @@ export default function App() {
                             </option>
                           ))}
                         </select>
-                        <select
-                          id="detectMode"
-                          value={autoDetectMode}
-                          onChange={(event) => setAutoDetectMode(event.target.value)}
+                        <label htmlFor="clipTitle">클립 제목</label>
+                        <input
+                          id="clipTitle"
+                          placeholder="클립 제목"
+                          value={clipForm.title}
+                          onChange={(event) => setClipForm((prev) => ({ ...prev, title: event.target.value }))}
+                          required
                           disabled={creationDisabled}
-                        >
-                          <option value="chapters">챕터 기반</option>
-                          <option value="captions">자막 기반</option>
-                          <option value="combined">혼합</option>
-                        </select>
+                        />
+                        <div className="number-row">
+                          <div>
+                            <label htmlFor="clipStartSec">시작 시간 (초)</label>
+                            <input
+                              id="clipStartSec"
+                              type="number"
+                              min="0"
+                              value={clipForm.startSec}
+                              onChange={(event) =>
+                                setClipForm((prev) => ({ ...prev, startSec: Number(event.target.value) }))
+                              }
+                              required
+                              disabled={creationDisabled}
+                            />
+                          </div>
+                          <div>
+                            <label htmlFor="clipEndSec">종료 시간 (초)</label>
+                            <input
+                              id="clipEndSec"
+                              type="number"
+                              min="0"
+                              value={clipForm.endSec}
+                              onChange={(event) =>
+                                setClipForm((prev) => ({ ...prev, endSec: Number(event.target.value) }))
+                              }
+                              required
+                              disabled={creationDisabled}
+                            />
+                          </div>
+                        </div>
+                        <label htmlFor="clipTags">태그 (쉼표로 구분)</label>
+                        <input
+                          id="clipTags"
+                          placeholder="예: 하이라이트, 라이브"
+                          value={clipForm.tags}
+                          onChange={(event) => setClipForm((prev) => ({ ...prev, tags: event.target.value }))}
+                          disabled={creationDisabled}
+                        />
+                        <button type="submit" disabled={creationDisabled}>
+                          클립 등록
+                        </button>
+                      </form>
+                      <div className="clip-preview">
+                        <h4>프리뷰</h4>
+                        {selectedVideoData ? (
+                          <ClipPlayer
+                            youtubeVideoId={selectedVideoData.youtubeVideoId}
+                            startSec={previewStartSec}
+                            endSec={previewEndSec}
+                            autoplay={false}
+                          />
+                        ) : (
+                          <p className="empty-state">클립 프리뷰를 확인하려면 영상을 선택하세요.</p>
+                        )}
                       </div>
-                      <button type="button" onClick={runAutoDetect} disabled={creationDisabled || !selectedVideo}>
-                        자동으로 클립 제안 받기
-                      </button>
+                      <div className="auto-detect">
+                        <div className="number-row">
+                          <select
+                            id="detectVideo"
+                            value={selectedVideo ?? ''}
+                            onChange={(event) => {
+                              const value = Number(event.target.value);
+                              setSelectedVideo(Number.isNaN(value) ? null : value);
+                            }}
+                            disabled={creationDisabled || videos.length === 0}
+                          >
+                            <option value="" disabled>
+                              영상 선택
+                            </option>
+                            {videos.map((video) => (
+                              <option key={video.id} value={video.id}>
+                                {video.title || video.youtubeVideoId}
+                              </option>
+                            ))}
+                          </select>
+                          <select
+                            id="detectMode"
+                            value={autoDetectMode}
+                            onChange={(event) => setAutoDetectMode(event.target.value)}
+                            disabled={creationDisabled}
+                          >
+                            <option value="chapters">챕터 기반</option>
+                            <option value="captions">자막 기반</option>
+                            <option value="combined">혼합</option>
+                          </select>
+                        </div>
+                        <button type="button" onClick={runAutoDetect} disabled={creationDisabled || !selectedVideo}>
+                          자동으로 클립 제안 받기
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                )}
-                {activeManagementTab === 'videos' && (
-                  <div className="management-section">
-                    <h3>영상 등록</h3>
-                    <form onSubmit={handleVideoSubmit} className="stacked-form">
-                      <label htmlFor="videoUrl">YouTube 영상 URL</label>
-                      <input
-                        id="videoUrl"
-                        placeholder="https://www.youtube.com/watch?v=..."
-                        value={videoForm.url}
-                        onChange={(event) => setVideoForm((prev) => ({ ...prev, url: event.target.value }))}
-                        required
-                        disabled={creationDisabled}
-                      />
-                      <label htmlFor="videoArtistId">아티스트 선택</label>
-                      <select
-                        id="videoArtistId"
-                        value={videoForm.artistId}
-                        onChange={(event) => setVideoForm((prev) => ({ ...prev, artistId: event.target.value }))}
-                        required
-                        disabled={creationDisabled || artists.length === 0}
-                      >
-                        <option value="" disabled>
-                          아티스트 선택
-                        </option>
-                        {artists.map((artist) => (
-                          <option key={artist.id} value={artist.id}>
-                            {artist.displayName || artist.name}
-                          </option>
-                        ))}
-                      </select>
-                      <label htmlFor="videoDescription">영상 설명 (선택)</label>
-                      <textarea
-                        id="videoDescription"
-                        rows={3}
-                        placeholder="영상 설명을 입력하거나 붙여넣기하세요."
-                        value={videoForm.description}
-                        onChange={(event) =>
-                          setVideoForm((prev) => ({ ...prev, description: event.target.value }))
-                        }
-                        disabled={creationDisabled}
-                      />
-                      <label htmlFor="videoCaptions">캡션 JSON 또는 시작시간|문장</label>
-                      <textarea
-                        id="videoCaptions"
-                        rows={3}
-                        placeholder={'[{"start":0,"text":"문장"}] 또는 12|첫 문장'}
-                        value={videoForm.captionsJson}
-                        onChange={(event) =>
-                          setVideoForm((prev) => ({ ...prev, captionsJson: event.target.value }))
-                        }
-                        disabled={creationDisabled}
-                      />
-                      <button type="submit" disabled={creationDisabled}>
-                        영상 메타데이터 저장
-                      </button>
-                    </form>
-                  </div>
+                  </>
                 )}
                 {activeManagementTab === 'artists' && (
                   <div className="management-section">
