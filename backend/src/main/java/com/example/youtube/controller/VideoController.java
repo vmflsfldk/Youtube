@@ -2,6 +2,7 @@ package com.example.youtube.controller;
 
 import com.example.youtube.dto.VideoCreateRequest;
 import com.example.youtube.dto.VideoResponse;
+import com.example.youtube.dto.VideoSectionResponse;
 import com.example.youtube.service.VideoService;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -30,5 +31,10 @@ public class VideoController {
     @GetMapping
     public List<VideoResponse> listVideos(@RequestParam("artistId") Long artistId) {
         return videoService.listByArtist(artistId);
+    }
+
+    @GetMapping("/sections/preview")
+    public List<VideoSectionResponse> previewSections(@RequestParam("videoUrl") String videoUrl) {
+        return videoService.previewSections(videoUrl);
     }
 }
