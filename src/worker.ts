@@ -32,6 +32,7 @@ interface ArtistResponse {
   name: string;
   displayName: string;
   youtubeChannelId: string;
+  profileImageUrl?: string | null;
 }
 
 interface VideoResponse {
@@ -187,6 +188,7 @@ interface ArtistRow {
   name: string;
   display_name: string | null;
   youtube_channel_id: string;
+  profile_image_url: string | null;
 }
 
 interface TableInfoRow {
@@ -213,8 +215,18 @@ interface EmailSessionRow {
 
 let hasEnsuredSchema = false;
 let hasEnsuredArtistDisplayNameColumn = false;
+let hasEnsuredArtistProfileImageColumn = false;
 let hasEnsuredArtistUpdatedAtColumn = false;
 let hasEnsuredUserPasswordColumns = false;
+let hasWarnedMissingYouTubeApiKey = false;
+
+const warnMissingYouTubeApiKey = (): void => {
+  if (hasWarnedMissingYouTubeApiKey) {
+    return;
+  }
+  console.warn("[yt-clip] YOUTUBE_API_KEY is not configured; YouTube metadata fetches will be skipped.");
+  hasWarnedMissingYouTubeApiKey = true;
+};
 
 const encoder = new TextEncoder();
 
@@ -518,6 +530,24 @@ async function ensureArtistDisplayNameColumn(db: D1Database): Promise<void> {
   }
 
   hasEnsuredArtistDisplayNameColumn = true;
+}
+
+async function ensureArtistProfileImageColumn(db: D1Database): Promise<void> {
+  if (hasEnsuredArtistProfileImageColumn) {
+    return;
+  }
+
+  const { results } = await db.prepare("PRAGMA table_info(artists)").all<TableInfoRow>();
+  const hasColumn = (results ?? []).some((column) => column.name?.toLowerCase() === "profile_image_url");
+
+  if (!hasColumn) {
+    const alterResult = await db.prepare("ALTER TABLE artists ADD COLUMN profile_image_url TEXT").run();
+    if (!alterResult.success && !isDuplicateColumnError(alterResult.error)) {
+      throw new Error(alterResult.error ?? "Failed to add profile_image_url column to artists table");
+    }
+  }
+
+  hasEnsuredArtistProfileImageColumn = true;
 }
 
 async function ensureArtistUpdatedAtColumn(db: D1Database): Promise<void> {
@@ -1051,7 +1081,6 @@ async function createArtist(
   const body = await readJson(request);
   const name = typeof body.name === "string" ? body.name.trim() : "";
   const displayNameRaw = typeof body.displayName === "string" ? body.displayName : "";
-  const displayName = displayNameRaw.trim() || name;
   const youtubeChannelId = typeof body.youtubeChannelId === "string" ? body.youtubeChannelId.trim() : "";
   if (!name) {
     throw new HttpError(400, "name is required");
@@ -1062,6 +1091,11 @@ async function createArtist(
 
   await ensureArtistUpdatedAtColumn(env.DB);
   await ensureArtistDisplayNameColumn(env.DB);
+  await ensureArtistProfileImageColumn(env.DB);
+
+  const metadata = await fetchChannelMetadata(env, youtubeChannelId);
+  const displayName = displayNameRaw.trim() || metadata.title || name;
+  const profileImageUrl = metadata.profileImageUrl;
 
   const insertResult = await env.DB.prepare(
     "INSERT INTO artists (name, display_name, youtube_channel_id, created_by) VALUES (?, ?, ?, ?)"
@@ -1072,8 +1106,24 @@ async function createArtist(
     throw new HttpError(500, insertResult.error ?? "Failed to insert artist");
   }
   const artistId = numberFromRowId(insertResult.meta.last_row_id);
+
+  let finalProfileImageUrl: string | null = null;
+  if (profileImageUrl && profileImageUrl.trim().length > 0) {
+    const updateResult = await env.DB
+      .prepare("UPDATE artists SET profile_image_url = ? WHERE id = ?")
+      .bind(profileImageUrl.trim(), artistId)
+      .run();
+    if (updateResult.success) {
+      finalProfileImageUrl = profileImageUrl.trim();
+    } else {
+      console.warn(
+        `[yt-clip] Failed to persist profile image URL for artist ${artistId}: ${updateResult.error ?? "unknown error"}`
+      );
+    }
+  }
+
   return jsonResponse(
-    { id: artistId, name, displayName, youtubeChannelId } satisfies ArtistResponse,
+    { id: artistId, name, displayName, youtubeChannelId, profileImageUrl: finalProfileImageUrl } satisfies ArtistResponse,
     201,
     cors
   );
@@ -1088,11 +1138,12 @@ async function listArtists(
   const mine = url.searchParams.get("mine") === "true";
   await ensureArtistUpdatedAtColumn(env.DB);
   await ensureArtistDisplayNameColumn(env.DB);
+  await ensureArtistProfileImageColumn(env.DB);
   let results: ArtistRow[] | null | undefined;
   if (mine) {
     const requestingUser = requireUser(user);
     const response = await env.DB.prepare(
-      `SELECT a.id, a.name, a.display_name, a.youtube_channel_id
+      `SELECT a.id, a.name, a.display_name, a.youtube_channel_id, a.profile_image_url
          FROM artists a
          JOIN user_favorite_artists ufa ON ufa.artist_id = a.id
         WHERE ufa.user_id = ?
@@ -1103,13 +1154,15 @@ async function listArtists(
     results = response.results;
   } else {
     const response = await env.DB.prepare(
-      `SELECT id, name, display_name, youtube_channel_id
+      `SELECT id, name, display_name, youtube_channel_id, profile_image_url
          FROM artists
         ORDER BY id DESC`
     ).all<ArtistRow>();
     results = response.results;
   }
-  const artists = (results ?? []).map(toArtistResponse);
+  const rows = results ?? [];
+  const hydrated = await Promise.all(rows.map((row) => refreshArtistMetadataIfNeeded(env, row)));
+  const artists = hydrated.map(toArtistResponse);
   return jsonResponse(artists, 200, cors);
 }
 
@@ -1749,12 +1802,64 @@ async function ensureVideo(env: Env, videoId: number, userId: number): Promise<v
   }
 }
 
+async function refreshArtistMetadataIfNeeded(env: Env, row: ArtistRow): Promise<ArtistRow> {
+  const needsDisplayName = !row.display_name || row.display_name.trim().length === 0;
+  const needsProfileImage = !row.profile_image_url || row.profile_image_url.trim().length === 0;
+
+  if (!needsDisplayName && !needsProfileImage) {
+    return row;
+  }
+
+  const channelId = row.youtube_channel_id?.trim();
+  if (!channelId) {
+    return row;
+  }
+
+  const metadata = await fetchChannelMetadata(env, channelId);
+
+  const assignments: string[] = [];
+  const values: unknown[] = [];
+  let displayName = row.display_name;
+  let profileImageUrl = row.profile_image_url;
+
+  if (needsDisplayName && metadata.title) {
+    displayName = metadata.title;
+    assignments.push("display_name = ?");
+    values.push(metadata.title);
+  }
+
+  if (needsProfileImage && metadata.profileImageUrl) {
+    profileImageUrl = metadata.profileImageUrl;
+    assignments.push("profile_image_url = ?");
+    values.push(metadata.profileImageUrl);
+  }
+
+  if (assignments.length > 0) {
+    assignments.push("updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')");
+    values.push(row.id);
+    const sql = `UPDATE artists SET ${assignments.join(", ")} WHERE id = ?`;
+    const result = await env.DB.prepare(sql).bind(...values).run();
+    if (!result.success) {
+      console.warn(
+        `[yt-clip] Failed to update artist metadata for ${row.id}: ${result.error ?? "unknown error"}`
+      );
+    }
+  }
+
+  return {
+    ...row,
+    display_name: displayName ?? row.display_name,
+    profile_image_url: profileImageUrl ?? row.profile_image_url
+  };
+}
+
 function toArtistResponse(row: ArtistRow): ArtistResponse {
   return {
     id: row.id,
     name: row.name,
     displayName: row.display_name ?? row.name,
-    youtubeChannelId: row.youtube_channel_id
+    youtubeChannelId: row.youtube_channel_id,
+    profileImageUrl: row.profile_image_url ?? null
   };
 }
 
@@ -1887,6 +1992,14 @@ interface YouTubeVideosResponse {
   items?: YouTubeVideoItem[];
 }
 
+interface YouTubeChannelItem {
+  snippet?: YouTubeSnippet;
+}
+
+interface YouTubeChannelsResponse {
+  items?: YouTubeChannelItem[];
+}
+
 const ISO_8601_DURATION_PATTERN = /^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$/i;
 
 function parseIso8601Duration(value: string | undefined): number | null {
@@ -1942,7 +2055,7 @@ async function fetchVideoMetadata(env: Env, videoId: string): Promise<{
 
   const apiKey = env.YOUTUBE_API_KEY?.trim();
   if (!apiKey) {
-    console.warn("[yt-clip] YOUTUBE_API_KEY is not configured; falling back to default metadata.");
+    warnMissingYouTubeApiKey();
     return fallback;
   }
 
@@ -1993,6 +2106,60 @@ async function fetchVideoMetadata(env: Env, videoId: string): Promise<{
     thumbnailUrl,
     channelId
   };
+}
+
+async function fetchChannelMetadata(env: Env, channelId: string): Promise<{
+  title: string | null;
+  profileImageUrl: string | null;
+}> {
+  const fallback = { title: null, profileImageUrl: null };
+  const trimmedChannelId = channelId.trim();
+  if (!trimmedChannelId) {
+    return fallback;
+  }
+
+  const apiKey = env.YOUTUBE_API_KEY?.trim();
+  if (!apiKey) {
+    warnMissingYouTubeApiKey();
+    return fallback;
+  }
+
+  const url = new URL("https://www.googleapis.com/youtube/v3/channels");
+  url.searchParams.set("id", trimmedChannelId);
+  url.searchParams.set("part", "snippet");
+  url.searchParams.set("key", apiKey);
+
+  let response: Response;
+  try {
+    response = await fetch(url.toString(), { method: "GET" });
+  } catch (error) {
+    console.error(`[yt-clip] Failed to contact YouTube Data API for channel ${trimmedChannelId}`, error);
+    return fallback;
+  }
+
+  if (!response.ok) {
+    console.warn(`[yt-clip] YouTube Data API responded with status ${response.status} for channel ${trimmedChannelId}`);
+    return fallback;
+  }
+
+  let payload: YouTubeChannelsResponse;
+  try {
+    payload = (await response.json()) as YouTubeChannelsResponse;
+  } catch (error) {
+    console.error("[yt-clip] Failed to parse YouTube Data API channel response", error);
+    return fallback;
+  }
+
+  const item = Array.isArray(payload.items) ? payload.items[0] ?? null : null;
+  const snippet = item?.snippet;
+  if (!snippet) {
+    return fallback;
+  }
+
+  const title = typeof snippet.title === "string" && snippet.title.trim().length > 0 ? snippet.title.trim() : null;
+  const profileImageUrl = selectThumbnailUrl(snippet.thumbnails) ?? null;
+
+  return { title, profileImageUrl };
 }
 
 function numberFromRowId(rowId: number | undefined): number {
