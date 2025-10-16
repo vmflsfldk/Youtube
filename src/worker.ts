@@ -2208,32 +2208,11 @@ function parseYouTubeChannelIdentifier(value: string): {
   return { channelId: null, username: null, handle: null };
 }
 
-async function resolveChannelIdFromHandle(handle: string): Promise<string | null> {
-  const normalized = handle.replace(/^@+/, "").trim();
-  if (!normalized) {
-    return null;
-  }
-  const url = `https://www.youtube.com/@${encodeURIComponent(normalized)}`;
-  try {
-    const response = await fetch(url, { method: "GET" });
-    if (!response.ok) {
-      console.warn(`[yt-clip] Failed to resolve channel handle @${normalized}: ${response.status}`);
-      return null;
-    }
-    const html = await response.text();
-    const browseMatch = html.match(/"browseId":"(UC[0-9A-Za-z_-]{22})"/);
-    if (browseMatch && browseMatch[1]) {
-      return browseMatch[1];
-    }
-    const channelMatch = html.match(/"channelId":"(UC[0-9A-Za-z_-]{22})"/);
-    if (channelMatch && channelMatch[1]) {
-      return channelMatch[1];
-    }
-  } catch (error) {
-    console.warn(`[yt-clip] Failed to resolve channel handle @${normalized}`, error);
-  }
-  return null;
-}
+type HtmlChannelMetadata = {
+  title: string | null;
+  thumbnailUrl: string | null;
+  channelId: string | null;
+};
 
 async function fetchChannelMetadata(env: Env, channelId: string): Promise<{
   title: string | null;
@@ -2246,17 +2225,30 @@ async function fetchChannelMetadata(env: Env, channelId: string): Promise<{
     return fallback;
   }
 
-  const apiKey = env.YOUTUBE_API_KEY?.trim();
-  if (!apiKey) {
-    warnMissingYouTubeApiKey();
-    return fallback;
-  }
-
   const identifier = parseYouTubeChannelIdentifier(trimmedChannelId);
   let effectiveChannelId = identifier.channelId;
 
+  const htmlMetadataLoader = createHtmlChannelMetadataLoader(identifier, trimmedChannelId);
+
   if (!effectiveChannelId && identifier.handle) {
-    effectiveChannelId = await resolveChannelIdFromHandle(identifier.handle);
+    const htmlMetadata = await htmlMetadataLoader();
+    if (htmlMetadata?.channelId) {
+      effectiveChannelId = htmlMetadata.channelId;
+    }
+  }
+
+  const apiKey = env.YOUTUBE_API_KEY?.trim();
+  if (!apiKey) {
+    warnMissingYouTubeApiKey();
+    const htmlMetadata = await htmlMetadataLoader();
+    if (htmlMetadata) {
+      return {
+        title: htmlMetadata.title,
+        profileImageUrl: htmlMetadata.thumbnailUrl,
+        channelId: htmlMetadata.channelId ?? identifier.channelId ?? null
+      };
+    }
+    return { ...fallback, channelId: identifier.channelId ?? null };
   }
 
   const url = new URL("https://www.googleapis.com/youtube/v3/channels");
@@ -2275,12 +2267,28 @@ async function fetchChannelMetadata(env: Env, channelId: string): Promise<{
     response = await fetch(url.toString(), { method: "GET" });
   } catch (error) {
     console.error(`[yt-clip] Failed to contact YouTube Data API for channel ${trimmedChannelId}`, error);
-    return { ...fallback, channelId: effectiveChannelId ?? null };
+    const htmlMetadata = await htmlMetadataLoader();
+    if (htmlMetadata) {
+      return {
+        title: htmlMetadata.title,
+        profileImageUrl: htmlMetadata.thumbnailUrl,
+        channelId: htmlMetadata.channelId ?? effectiveChannelId ?? identifier.channelId ?? null
+      };
+    }
+    return { ...fallback, channelId: effectiveChannelId ?? identifier.channelId ?? null };
   }
 
   if (!response.ok) {
     console.warn(`[yt-clip] YouTube Data API responded with status ${response.status} for channel ${trimmedChannelId}`);
-    return { ...fallback, channelId: effectiveChannelId ?? null };
+    const htmlMetadata = await htmlMetadataLoader();
+    if (htmlMetadata) {
+      return {
+        title: htmlMetadata.title,
+        profileImageUrl: htmlMetadata.thumbnailUrl,
+        channelId: htmlMetadata.channelId ?? effectiveChannelId ?? identifier.channelId ?? null
+      };
+    }
+    return { ...fallback, channelId: effectiveChannelId ?? identifier.channelId ?? null };
   }
 
   let payload: YouTubeChannelsResponse;
@@ -2288,23 +2296,185 @@ async function fetchChannelMetadata(env: Env, channelId: string): Promise<{
     payload = (await response.json()) as YouTubeChannelsResponse;
   } catch (error) {
     console.error("[yt-clip] Failed to parse YouTube Data API channel response", error);
-    return { ...fallback, channelId: effectiveChannelId ?? null };
+    const htmlMetadata = await htmlMetadataLoader();
+    if (htmlMetadata) {
+      return {
+        title: htmlMetadata.title,
+        profileImageUrl: htmlMetadata.thumbnailUrl,
+        channelId: htmlMetadata.channelId ?? effectiveChannelId ?? identifier.channelId ?? null
+      };
+    }
+    return { ...fallback, channelId: effectiveChannelId ?? identifier.channelId ?? null };
   }
 
   const item = Array.isArray(payload.items) ? payload.items[0] ?? null : null;
-  const snippet = item?.snippet;
-  if (!snippet) {
-    return { ...fallback, channelId: effectiveChannelId ?? (typeof item?.id === "string" ? item.id : null) ?? null };
+  if (!item) {
+    const htmlMetadata = await htmlMetadataLoader();
+    if (htmlMetadata) {
+      return {
+        title: htmlMetadata.title,
+        profileImageUrl: htmlMetadata.thumbnailUrl,
+        channelId: htmlMetadata.channelId ?? effectiveChannelId ?? identifier.channelId ?? null
+      };
+    }
+    return { ...fallback, channelId: effectiveChannelId ?? identifier.channelId ?? null };
   }
 
-  const title = typeof snippet.title === "string" && snippet.title.trim().length > 0 ? snippet.title.trim() : null;
-  const profileImageUrl = selectThumbnailUrl(snippet.thumbnails) ?? null;
+  const snippet = item.snippet;
+  const htmlMetadata = await htmlMetadataLoader();
 
-  const resolvedChannelId = typeof item?.id === "string" && item.id.trim() ? item.id.trim() : effectiveChannelId ?? null;
+  let title = typeof snippet?.title === "string" && snippet.title.trim().length > 0 ? snippet.title.trim() : null;
+  if (!title) {
+    title = htmlMetadata?.title ?? null;
+  }
+
+  let profileImageUrl = selectThumbnailUrl(snippet?.thumbnails) ?? null;
+  if (!profileImageUrl) {
+    profileImageUrl = htmlMetadata?.thumbnailUrl ?? null;
+  }
+
+  const resolvedChannelId =
+    typeof item?.id === "string" && item.id.trim()
+      ? item.id.trim()
+      : effectiveChannelId ?? htmlMetadata?.channelId ?? identifier.channelId ?? null;
 
   return { title, profileImageUrl, channelId: resolvedChannelId };
 }
 
+function createHtmlChannelMetadataLoader(
+  identifier: ReturnType<typeof parseYouTubeChannelIdentifier>,
+  originalInput: string
+): () => Promise<HtmlChannelMetadata | null> {
+  let promise: Promise<HtmlChannelMetadata | null> | null = null;
+  return () => {
+    if (!promise) {
+      const candidates = buildChannelUrlCandidates(identifier, originalInput);
+      promise = fetchChannelMetadataFromHtml(candidates);
+    }
+    return promise;
+  };
+}
+
+function buildChannelUrlCandidates(
+  identifier: ReturnType<typeof parseYouTubeChannelIdentifier>,
+  originalInput: string
+): string[] {
+  const candidates = new Set<string>();
+  const trimmed = originalInput.trim();
+
+  const parsed = tryParseYouTubeUrl(trimmed);
+  if (parsed) {
+    const normalizedPath = parsed.pathname.replace(/\/+$/, "");
+    candidates.add(`${parsed.origin}${normalizedPath}`);
+  } else if (trimmed) {
+    candidates.add(`https://www.youtube.com/${trimmed.replace(/^\/+/, "")}`);
+  }
+
+  if (identifier.handle) {
+    candidates.add(`https://www.youtube.com/@${identifier.handle}`);
+  }
+
+  if (identifier.channelId) {
+    candidates.add(`https://www.youtube.com/channel/${identifier.channelId}`);
+  }
+
+  if (identifier.username) {
+    candidates.add(`https://www.youtube.com/user/${identifier.username}`);
+    candidates.add(`https://www.youtube.com/c/${identifier.username}`);
+  }
+
+  return Array.from(candidates);
+}
+
+async function fetchChannelMetadataFromHtml(urls: string[]): Promise<HtmlChannelMetadata | null> {
+  for (const url of urls) {
+    try {
+      const response = await fetch(url, { method: "GET" });
+      if (!response.ok) {
+        continue;
+      }
+      const html = await response.text();
+      const channelId = extractChannelIdFromHtml(html);
+      const thumbnailUrl = extractThumbnailFromHtml(html);
+      const title = extractTitleFromHtml(html);
+      if (channelId || thumbnailUrl || title) {
+        return { channelId, thumbnailUrl, title };
+      }
+    } catch (error) {
+      console.warn(`[yt-clip] Failed to fetch channel page ${url}`, error);
+    }
+  }
+  return null;
+}
+
+function extractChannelIdFromHtml(html: string): string | null {
+  const browseMatch = html.match(/"browseId":"(UC[0-9A-Za-z_-]{22})"/);
+  if (browseMatch?.[1]) {
+    return browseMatch[1];
+  }
+  const channelMatch = html.match(/"channelId":"(UC[0-9A-Za-z_-]{22})"/);
+  if (channelMatch?.[1]) {
+    return channelMatch[1];
+  }
+  return null;
+}
+
+function extractThumbnailFromHtml(html: string): string | null {
+  const avatarMatch = html.match(/"avatar":\{[^}]*"url":"([^"]+)"/);
+  const ogImageMatch = html.match(/<meta[^>]+property="og:image"[^>]+content="([^"]+)"/i);
+  const raw = avatarMatch?.[1] ?? ogImageMatch?.[1];
+  return sanitizeThumbnailUrl(raw ?? null);
+}
+
+function extractTitleFromHtml(html: string): string | null {
+  const ogTitleMatch = html.match(/<meta[^>]+property="og:title"[^>]+content="([^"]+)"/i);
+  if (ogTitleMatch?.[1]) {
+    return decodeHtmlEntities(ogTitleMatch[1]);
+  }
+  const titleTagMatch = html.match(/<title>([^<]+)<\/title>/i);
+  if (titleTagMatch?.[1]) {
+    return decodeHtmlEntities(titleTagMatch[1]);
+  }
+  return null;
+}
+
+function sanitizeThumbnailUrl(raw: string | null): string | null {
+  if (!raw) {
+    return null;
+  }
+  const unescaped = decodeHtmlEntities(
+    raw
+      .replace(/\\u0026/gi, "&")
+      .replace(/\\u003d/gi, "=")
+      .replace(/\\u002f/gi, "/")
+      .replace(/\\\\//g, "/")
+  );
+  const trimmed = unescaped.trim();
+  if (!trimmed) {
+    return null;
+  }
+  if (trimmed.startsWith("//")) {
+    return `https:${trimmed}`;
+  }
+  if (!/^https?:/i.test(trimmed)) {
+    try {
+      const url = new URL(trimmed);
+      return url.toString();
+    } catch {
+      return null;
+    }
+  }
+  return trimmed;
+}
+
+function decodeHtmlEntities(value: string): string {
+  return value
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'");
+}
 function numberFromRowId(rowId: number | undefined): number {
   if (typeof rowId === "number") {
     return rowId;
