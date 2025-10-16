@@ -774,7 +774,7 @@ async function createEmailSession(env: Env, email: string): Promise<{ token: str
   const token = generateRandomToken();
   const tokenHash = await hashValue(token);
   const nowIso = new Date().toISOString();
-  const sessionExpires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+  const sessionExpires = new Date(Date.now() + 30 * 60 * 1000).toISOString();
 
   await env.DB.prepare("DELETE FROM email_sessions WHERE email = ? AND expires_at <= ?")
     .bind(email, nowIso)
@@ -952,6 +952,9 @@ async function handleApi(
     }
     if (request.method === "POST" && path === "/api/users/me/nickname") {
       return await updateNickname(request, env, requireUser(user), cors);
+    }
+    if (request.method === "POST" && path === "/api/users/me/password") {
+      return await updatePassword(request, env, requireUser(user), cors);
     }
     if (request.method === "POST" && path === "/api/users/me/favorites") {
       return await toggleFavorite(request, env, requireUser(user), cors);
@@ -1568,6 +1571,64 @@ async function updateNickname(
 
   user.displayName = nicknameRaw;
   return jsonResponse({ ...user }, 200, cors);
+}
+
+async function updatePassword(
+  request: Request,
+  env: Env,
+  user: UserContext,
+  cors: CorsConfig
+): Promise<Response> {
+  const body = await readJson(request);
+  const currentPasswordRaw = typeof body.currentPassword === "string" ? body.currentPassword : "";
+  const newPasswordRaw = typeof body.newPassword === "string" ? body.newPassword : "";
+  const confirmPasswordRaw = typeof body.confirmPassword === "string" ? body.confirmPassword : "";
+
+  if (!newPasswordRaw) {
+    throw new HttpError(400, "새 비밀번호를 입력해주세요.");
+  }
+
+  if (newPasswordRaw.length < 8) {
+    throw new HttpError(400, "비밀번호는 8자 이상 입력해주세요.");
+  }
+
+  if (newPasswordRaw !== confirmPasswordRaw) {
+    throw new HttpError(400, "비밀번호 확인이 일치하지 않습니다.");
+  }
+
+  const existing = await env.DB.prepare(
+    "SELECT password_hash, password_salt FROM users WHERE id = ?"
+  )
+    .bind(user.id)
+    .first<{
+      password_hash: string | null;
+      password_salt: string | null;
+    }>();
+
+  if (existing?.password_hash && existing.password_salt) {
+    if (!currentPasswordRaw) {
+      throw new HttpError(400, "현재 비밀번호를 입력해주세요.");
+    }
+    const isValid = await verifyPassword(currentPasswordRaw, existing.password_salt, existing.password_hash);
+    if (!isValid) {
+      throw new HttpError(400, "현재 비밀번호가 일치하지 않습니다.");
+    }
+  }
+
+  const { hash, salt } = await hashPassword(newPasswordRaw);
+  const nowIso = new Date().toISOString();
+
+  const updateResult = await env.DB.prepare(
+    "UPDATE users SET password_hash = ?, password_salt = ?, password_updated_at = ? WHERE id = ?"
+  )
+    .bind(hash, salt, nowIso, user.id)
+    .run();
+
+  if (!updateResult.success) {
+    throw new HttpError(500, updateResult.error ?? "비밀번호를 저장하지 못했습니다.");
+  }
+
+  return jsonResponse({ success: true }, 200, cors);
 }
 
 function requireUser(user: UserContext | null): UserContext {
