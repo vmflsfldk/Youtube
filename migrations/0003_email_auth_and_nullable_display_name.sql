@@ -1,5 +1,4 @@
 PRAGMA foreign_keys = OFF;
-BEGIN TRANSACTION;
 
 ALTER TABLE users RENAME TO users_old;
 
@@ -16,7 +15,6 @@ SELECT id, email, display_name, created_at
 
 DROP TABLE users_old;
 
-COMMIT;
 PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS email_verification_codes (
