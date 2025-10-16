@@ -45,7 +45,8 @@ wrangler login
 ## 4. YouTube Data API 키 설정
 
 Cloudflare Worker가 실제 YouTube 메타데이터를 가져오려면 `YOUTUBE_API_KEY` 시크릿을 설정해야 합니다. Wrangler에서 아래 명령을 실행하고
-프롬프트에 API 키를 붙여 넣으면 Workers 환경에 암호화된 값이 저장됩니다.
+프롬프트에 API 키를 붙여 넣으면 Workers 환경에 암호화된 값이 저장됩니다. **시크릿을 추가한 뒤에는 `wrangler deploy`로 워커를 다시 배포해**
+최신 시크릿이 실행 중인 배포에 반영되었는지 확인하세요.
 
 ```bash
 wrangler secret put YOUTUBE_API_KEY
@@ -53,6 +54,13 @@ wrangler secret put YOUTUBE_API_KEY
 
 CI/CD 파이프라인을 사용하는 경우에도 동일한 이름의 시크릿을 구성해야 합니다. 키가 누락되면 워커는 기본 썸네일과 제목만 사용하는 폴백
 메타데이터로 처리합니다.
+
+> ⚠️ Cloudflare Pages Functions를 통해 `/api/*` 경로를 프록시하는 경우, Pages 프로젝트의 **Settings → Functions → Environment variables**
+> 메뉴에서도 동일한 `YOUTUBE_API_KEY` 시크릿을 추가해야 합니다. 프리뷰/프로덕션 환경이 분리돼 있다면 두 환경 모두에 키를 입력하세요.
+> Pages Functions에서 시크릿을 갱신한 뒤에는 새 배포를 트리거해야 런타임에서 값을 읽을 수 있습니다.
+
+로컬 `wrangler dev` 환경에서 YouTube API를 사용하려면 `.dev.vars` 파일에 `YOUTUBE_API_KEY=...`를 추가하거나, `wrangler secret put --local
+YOUTUBE_API_KEY` 명령으로 로컬 시크릿을 등록한 뒤 개발 서버를 다시 실행하세요.
 
 ## 5. 마이그레이션 적용
 
