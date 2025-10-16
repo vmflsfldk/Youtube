@@ -4,6 +4,7 @@ public record ArtistResponse(
         Long id,
         String name,
         String displayName,
-        String youtubeChannelId
+        String youtubeChannelId,
+        String profileImageUrl
 ) {
 }

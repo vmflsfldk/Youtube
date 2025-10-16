@@ -797,13 +797,31 @@ button:disabled:hover {
   box-shadow: 0 20px 36px rgba(34, 211, 238, 0.2);
 }
 
-.artist-directory__icon {
-  width: 44px;
-  height: 44px;
-  border-radius: 14px;
+.artist-directory__avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
   display: grid;
   place-items: center;
   background: rgba(239, 68, 68, 0.16);
+  border: 1px solid rgba(248, 113, 113, 0.28);
+}
+
+.artist-directory__avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.artist-directory__icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
   color: #f87171;
 }
 
