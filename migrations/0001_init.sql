@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS videos (
     channel_id TEXT,
     description TEXT,
     captions_json TEXT,
+    content_type TEXT NOT NULL DEFAULT 'OFFICIAL',
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     FOREIGN KEY (artist_id) REFERENCES artists(id) ON DELETE CASCADE

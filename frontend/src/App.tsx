@@ -58,6 +58,20 @@ const describeSectionSource = (source?: string): string => {
   }
 };
 
+const describeVideoContentType = (contentType?: string): string => {
+  switch ((contentType ?? '').toUpperCase()) {
+    case 'CLIP_SOURCE':
+      return '라이브';
+    case 'OFFICIAL':
+      return '공식';
+    default:
+      return '기타';
+  }
+};
+
+const isClipSourceVideo = (video: VideoResponse): boolean =>
+  (video.contentType ?? '').toUpperCase() === 'CLIP_SOURCE';
+
 const VIDEO_FILTER_KEYWORDS = ['cover', 'original', 'official'];
 
 type ArtistCountryKey = 'availableKo' | 'availableEn' | 'availableJp';
@@ -101,6 +115,7 @@ interface VideoResponse {
   durationSec?: number;
   thumbnailUrl?: string;
   channelId?: string;
+  contentType?: 'OFFICIAL' | 'CLIP_SOURCE' | string;
   sections?: VideoSectionResponse[];
 }
 
@@ -333,7 +348,7 @@ export default function App() {
   const [artistForm, setArtistForm] = useState<ArtistFormState>(() => createInitialArtistFormState());
   const [artistSearchQuery, setArtistSearchQuery] = useState('');
   const [videoForm, setVideoForm] = useState({ url: '', artistId: '', description: '', captionsJson: '' });
-  const [clipForm, setClipForm] = useState({ title: '', startSec: 0, endSec: 0, tags: '' });
+  const [clipForm, setClipForm] = useState({ title: '', startSec: 0, endSec: 0, tags: '', videoUrl: '' });
   const [autoDetectMode, setAutoDetectMode] = useState('chapters');
   const [isArtistVideosLoading, setArtistVideosLoading] = useState(false);
   const [isGoogleReady, setIsGoogleReady] = useState(false);
@@ -574,7 +589,7 @@ export default function App() {
     setClipCandidates([]);
     setSelectedVideo(null);
     setVideoForm({ url: '', artistId: '', description: '', captionsJson: '' });
-    setClipForm({ title: '', startSec: 0, endSec: 0, tags: '' });
+    setClipForm({ title: '', startSec: 0, endSec: 0, tags: '', videoUrl: '' });
     setEmailRegisterEmail('');
     setEmailRegisterCode('');
     setEmailRegisterPassword('');
@@ -1157,6 +1172,50 @@ export default function App() {
     []
   );
 
+  const reloadArtistVideos = useCallback(
+    async (options?: { signal?: AbortSignal }) => {
+      const currentArtistId = Number(videoForm.artistId);
+      if (!videoForm.artistId || Number.isNaN(currentArtistId)) {
+        if (!options?.signal?.aborted) {
+          setVideos([]);
+          setSelectedVideo(null);
+          setArtistVideosLoading(false);
+        }
+        return;
+      }
+
+      if (!options?.signal?.aborted) {
+        setArtistVideosLoading(true);
+      }
+
+      try {
+        const response = await http.get<VideoResponse[]>('/videos', {
+          headers: authHeaders,
+          params: { artistId: currentArtistId }
+        });
+
+        if (options?.signal?.aborted) {
+          return;
+        }
+
+        const fetchedVideos = ensureArray(response.data);
+        setVideos(fetchedVideos);
+      } catch (error) {
+        if (options?.signal?.aborted) {
+          return;
+        }
+        console.error('Failed to load videos', error);
+        setVideos([]);
+        setSelectedVideo(null);
+      } finally {
+        if (!options?.signal?.aborted) {
+          setArtistVideosLoading(false);
+        }
+      }
+    },
+    [videoForm.artistId, authHeaders]
+  );
+
   const handleVideoSubmit = async (event: FormEvent) => {
     event.preventDefault();
     if (creationDisabled) {
@@ -1183,6 +1242,7 @@ export default function App() {
       setVideoSectionPreviewError(null);
       setHasAttemptedVideoSectionPreview(false);
       setVideoForm((prev) => ({ ...prev, url: '', description: '', captionsJson: '' }));
+      reloadArtistVideos().catch((error) => console.error('Failed to refresh videos after save', error));
     } catch (error) {
       console.error('Failed to save video', error);
     }
@@ -1237,26 +1297,48 @@ export default function App() {
       console.warn('Authentication is required to create clips.');
       return;
     }
-    if (!selectedVideo) {
+    const trimmedVideoUrl = clipForm.videoUrl.trim();
+    const tags = clipForm.tags
+      .split(',')
+      .map((tag) => tag.trim())
+      .filter(Boolean);
+
+    if (!trimmedVideoUrl && !selectedVideo) {
+      console.warn('클립을 저장하려면 라이브 영상 URL을 입력하거나 기존 영상을 선택해 주세요.');
       return;
     }
+
+    const payload: Record<string, unknown> = {
+      title: clipForm.title,
+      startSec: Number(clipForm.startSec),
+      endSec: Number(clipForm.endSec),
+      tags
+    };
+
+    if (trimmedVideoUrl) {
+      const parsedArtistId = Number(videoForm.artistId);
+      if (!videoForm.artistId || Number.isNaN(parsedArtistId)) {
+        console.warn('라이브 영상 URL을 등록하려면 아티스트를 먼저 선택해야 합니다.');
+        return;
+      }
+      payload.videoUrl = trimmedVideoUrl;
+      payload.artistId = parsedArtistId;
+    } else if (selectedVideo) {
+      payload.videoId = selectedVideo;
+    }
+
     try {
-      const response = await http.post<ClipResponse>(
-        '/clips',
-        {
-          videoId: selectedVideo,
-          title: clipForm.title,
-          startSec: Number(clipForm.startSec),
-          endSec: Number(clipForm.endSec),
-          tags: clipForm.tags
-            .split(',')
-            .map((tag) => tag.trim())
-            .filter(Boolean)
-        },
-        { headers: authHeaders }
-      );
-      setClips((prev) => [...prev, normalizeClip(response.data)]);
-      setClipForm({ title: '', startSec: 0, endSec: 0, tags: '' });
+      const response = await http.post<ClipResponse>('/clips', payload, { headers: authHeaders });
+      const normalizedClip = normalizeClip(response.data);
+      setClipForm({ title: '', startSec: 0, endSec: 0, tags: '', videoUrl: '' });
+      setClipCandidates([]);
+      if (response.data.videoId !== selectedVideo) {
+        setSelectedVideo(response.data.videoId);
+        setClips([normalizedClip]);
+      } else {
+        setClips((prev) => [...prev, normalizedClip]);
+      }
+      reloadArtistVideos().catch((error) => console.error('Failed to refresh videos after clip creation', error));
     } catch (error) {
       console.error('Failed to create clip', error);
     }
@@ -1284,62 +1366,42 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (!videoForm.artistId) {
-      setVideos([]);
-      setSelectedVideo(null);
-      setArtistVideosLoading(false);
-      return;
-    }
-
-    let cancelled = false;
-    setArtistVideosLoading(true);
-
-    (async () => {
-      try {
-        const response = await http.get<VideoResponse[]>('/videos', {
-          headers: authHeaders,
-          params: { artistId: Number(videoForm.artistId) }
-        });
-
-        if (cancelled) {
-          return;
-        }
-
-        const fetchedVideos = ensureArray(response.data);
-        setVideos(fetchedVideos);
-        setSelectedVideo((previous) => {
-          if (previous && fetchedVideos.some((video) => video.id === previous)) {
-            return previous;
-          }
-          return fetchedVideos.length > 0 ? fetchedVideos[0].id : null;
-        });
-      } catch (error) {
-        console.error('Failed to load videos', error);
-        if (!cancelled) {
-          setVideos([]);
-          setSelectedVideo(null);
-        }
-      } finally {
-        if (!cancelled) {
-          setArtistVideosLoading(false);
-        }
+    const controller = new AbortController();
+    reloadArtistVideos({ signal: controller.signal }).catch((error) => {
+      if (error instanceof Error && error.name === 'AbortError') {
+        return;
       }
-    })();
-
+      console.error('Failed to refresh videos', error);
+    });
     return () => {
-      cancelled = true;
+      controller.abort();
     };
-  }, [videoForm.artistId, authHeaders]);
+  }, [reloadArtistVideos]);
 
   const handleArtistClick = (artistId: number) => {
     setVideoForm((prev) => ({ ...prev, artistId: String(artistId) }));
   };
+
+  useEffect(() => {
+    setSelectedVideo((previous) => {
+      if (previous && videos.some((video) => video.id === previous)) {
+        return previous;
+      }
+      const clipSource = videos.find((video) => isClipSourceVideo(video));
+      if (clipSource) {
+        return clipSource.id;
+      }
+      return videos.length > 0 ? videos[0].id : null;
+    });
+  }, [videos]);
 
   const selectedArtist = artists.find((artist) => artist.id === Number(videoForm.artistId));
   const noArtistsRegistered = artists.length === 0;
   const noFilteredArtists = !noArtistsRegistered && filteredArtists.length === 0;
   const selectedArtistBadges = selectedArtist ? resolveArtistCountryBadges(selectedArtist) : [];
   const selectedVideoData = selectedVideo ? videos.find((video) => video.id === selectedVideo) : null;
+  const clipSourceVideos = useMemo(() => videos.filter((video) => isClipSourceVideo(video)), [videos]);
+  const officialVideos = useMemo(() => videos.filter((video) => !isClipSourceVideo(video)), [videos]);
   const displayedClips = isAuthenticated ? clips : publicClips;
   const playlistHeading = isAuthenticated ? '유저가 저장한 플레이리스트' : '공개된 클립 모음';
   const playlistSubtitle = isAuthenticated
@@ -1666,25 +1728,52 @@ export default function App() {
                       <h3>새로운 클립 등록</h3>
                       <form onSubmit={handleClipSubmit} className="stacked-form">
                         <label htmlFor="clipVideoId">영상 선택</label>
+                        <p className="form-hint">등록된 라이브 영상을 선택하거나 아래 입력란에 새로운 URL을 추가하세요.</p>
                         <select
                           id="clipVideoId"
                           value={selectedVideo ?? ''}
                           onChange={(event) => {
-                            const value = Number(event.target.value);
-                            setSelectedVideo(Number.isNaN(value) ? null : value);
+                            const { value } = event.target;
+                            if (value === '') {
+                              setSelectedVideo(null);
+                              return;
+                            }
+                            const parsed = Number(value);
+                            setSelectedVideo(Number.isNaN(parsed) ? null : parsed);
                           }}
-                          required
                           disabled={creationDisabled || videos.length === 0}
                         >
-                          <option value="" disabled>
-                            영상 선택
-                          </option>
-                          {videos.map((video) => (
-                            <option key={video.id} value={video.id}>
-                              {video.title || video.youtubeVideoId}
-                            </option>
-                          ))}
+                          <option value="">선택 안 함</option>
+                          {clipSourceVideos.length > 0 && (
+                            <optgroup label="라이브/클립 원본">
+                              {clipSourceVideos.map((video) => (
+                                <option key={video.id} value={video.id}>
+                                  {(video.title || video.youtubeVideoId) ?? video.youtubeVideoId} ·{' '}
+                                  {describeVideoContentType(video.contentType)}
+                                </option>
+                              ))}
+                            </optgroup>
+                          )}
+                          {officialVideos.length > 0 && (
+                            <optgroup label="공식 영상">
+                              {officialVideos.map((video) => (
+                                <option key={video.id} value={video.id}>
+                                  {(video.title || video.youtubeVideoId) ?? video.youtubeVideoId} ·{' '}
+                                  {describeVideoContentType(video.contentType)}
+                                </option>
+                              ))}
+                            </optgroup>
+                          )}
                         </select>
+                        <label htmlFor="clipVideoUrl">라이브 영상 URL</label>
+                        <input
+                          id="clipVideoUrl"
+                          placeholder="https://www.youtube.com/watch?v=..."
+                          value={clipForm.videoUrl}
+                          onChange={(event) => setClipForm((prev) => ({ ...prev, videoUrl: event.target.value }))}
+                          disabled={creationDisabled}
+                        />
+                        <p className="form-hint">라이브 영상 URL을 입력하면 자동으로 클립 원본으로 등록됩니다.</p>
                         {selectedVideoData?.sections && selectedVideoData.sections.length > 0 ? (
                           <div className="section-preview">
                             <p className="artist-preview__hint">구간을 클릭하면 시간이 자동으로 입력됩니다.</p>
@@ -1782,12 +1871,18 @@ export default function App() {
                       <div className="clip-preview">
                         <h4>프리뷰</h4>
                         {selectedVideoData ? (
-                          <ClipPlayer
-                            youtubeVideoId={selectedVideoData.youtubeVideoId}
-                            startSec={previewStartSec}
-                            endSec={previewEndSec}
-                            autoplay={false}
-                          />
+                          <>
+                            <p className="form-hint">
+                              {describeVideoContentType(selectedVideoData.contentType)} 영상 ·{' '}
+                              {selectedVideoData.title || selectedVideoData.youtubeVideoId}
+                            </p>
+                            <ClipPlayer
+                              youtubeVideoId={selectedVideoData.youtubeVideoId}
+                              startSec={previewStartSec}
+                              endSec={previewEndSec}
+                              autoplay={false}
+                            />
+                          </>
                         ) : (
                           <p className="empty-state">클립 프리뷰를 확인하려면 영상을 선택하세요.</p>
                         )}
@@ -1798,19 +1893,37 @@ export default function App() {
                             id="detectVideo"
                             value={selectedVideo ?? ''}
                             onChange={(event) => {
-                              const value = Number(event.target.value);
-                              setSelectedVideo(Number.isNaN(value) ? null : value);
+                              const { value } = event.target;
+                              if (value === '') {
+                                setSelectedVideo(null);
+                                return;
+                              }
+                              const parsed = Number(value);
+                              setSelectedVideo(Number.isNaN(parsed) ? null : parsed);
                             }}
                             disabled={creationDisabled || videos.length === 0}
                           >
-                            <option value="" disabled>
-                              영상 선택
-                            </option>
-                            {videos.map((video) => (
-                              <option key={video.id} value={video.id}>
-                                {video.title || video.youtubeVideoId}
-                              </option>
-                            ))}
+                            <option value="">선택 안 함</option>
+                            {clipSourceVideos.length > 0 && (
+                              <optgroup label="라이브/클립 원본">
+                                {clipSourceVideos.map((video) => (
+                                  <option key={video.id} value={video.id}>
+                                    {(video.title || video.youtubeVideoId) ?? video.youtubeVideoId} ·{' '}
+                                    {describeVideoContentType(video.contentType)}
+                                  </option>
+                                ))}
+                              </optgroup>
+                            )}
+                            {officialVideos.length > 0 && (
+                              <optgroup label="공식 영상">
+                                {officialVideos.map((video) => (
+                                  <option key={video.id} value={video.id}>
+                                    {(video.title || video.youtubeVideoId) ?? video.youtubeVideoId} ·{' '}
+                                    {describeVideoContentType(video.contentType)}
+                                  </option>
+                                ))}
+                              </optgroup>
+                            )}
                           </select>
                           <select
                             id="detectMode"
@@ -2373,49 +2486,122 @@ export default function App() {
                             ) : videos.length === 0 ? (
                               <p className="empty-state">선택된 아티스트의 영상이 아직 없습니다.</p>
                             ) : (
-                              <ul className="video-list">
-                                {videos.map((video) => {
-                                  const isActive = selectedVideo === video.id;
-                                  return (
-                                    <li
-                                      key={video.id}
-                                      className={`video-item${isActive ? ' active' : ''}`}
-                                      onClick={() => setSelectedVideo(video.id)}
-                                    >
-                                      <div className="video-item__info">
-                                        <h4>{video.title || video.youtubeVideoId}</h4>
-                                        <p>{video.youtubeVideoId}</p>
-                                        {Array.isArray(video.sections) && video.sections.length > 0 && (
-                                          <ul className="video-item__sections">
-                                            {video.sections.map((section, index) => (
-                                              <li
-                                                key={`${section.startSec}-${section.endSec}-${index}`}
-                                                className="video-item__section"
-                                              >
-                                                <span className="video-item__section-time">
-                                                  {formatSeconds(section.startSec)} → {formatSeconds(section.endSec)}
+                              <>
+                                <div className="artist-detail__video-section">
+                                  <h6>공식 영상</h6>
+                                  {officialVideos.length === 0 ? (
+                                    <p className="empty-state">등록된 공식 영상이 없습니다.</p>
+                                  ) : (
+                                    <ul className="video-list">
+                                      {officialVideos.map((video) => {
+                                        const isActive = selectedVideo === video.id;
+                                        return (
+                                          <li
+                                            key={video.id}
+                                            className={`video-item${isActive ? ' active' : ''}`}
+                                            onClick={() => setSelectedVideo(video.id)}
+                                          >
+                                            <div className="video-item__info">
+                                              <div className="video-item__info-header">
+                                                <h4>{video.title || video.youtubeVideoId}</h4>
+                                                <span
+                                                  className={`video-item__badge video-item__badge--${(video.contentType ?? 'unknown').toLowerCase()}`}
+                                                >
+                                                  {describeVideoContentType(video.contentType)}
                                                 </span>
-                                                <span className="video-item__section-title">{section.title}</span>
-                                                <span className="video-item__section-source">
-                                                  {describeSectionSource(section.source)}
+                                              </div>
+                                              <p>{video.youtubeVideoId}</p>
+                                              {Array.isArray(video.sections) && video.sections.length > 0 && (
+                                                <ul className="video-item__sections">
+                                                  {video.sections.map((section, index) => (
+                                                    <li
+                                                      key={`${section.startSec}-${section.endSec}-${index}`}
+                                                      className="video-item__section"
+                                                    >
+                                                      <span className="video-item__section-time">
+                                                        {formatSeconds(section.startSec)} → {formatSeconds(section.endSec)}
+                                                      </span>
+                                                      <span className="video-item__section-title">{section.title}</span>
+                                                      <span className="video-item__section-source">
+                                                        {describeSectionSource(section.source)}
+                                                      </span>
+                                                    </li>
+                                                  ))}
+                                                </ul>
+                                              )}
+                                            </div>
+                                            {video.thumbnailUrl && (
+                                              <img
+                                                src={video.thumbnailUrl}
+                                                alt="Video thumbnail"
+                                                loading="lazy"
+                                                decoding="async"
+                                              />
+                                            )}
+                                          </li>
+                                        );
+                                      })}
+                                    </ul>
+                                  )}
+                                </div>
+                                <div className="artist-detail__video-section">
+                                  <h6>라이브 · 클립 원본</h6>
+                                  {clipSourceVideos.length === 0 ? (
+                                    <p className="empty-state">등록된 라이브 영상이 없습니다.</p>
+                                  ) : (
+                                    <ul className="video-list">
+                                      {clipSourceVideos.map((video) => {
+                                        const isActive = selectedVideo === video.id;
+                                        return (
+                                          <li
+                                            key={video.id}
+                                            className={`video-item${isActive ? ' active' : ''}`}
+                                            onClick={() => setSelectedVideo(video.id)}
+                                          >
+                                            <div className="video-item__info">
+                                              <div className="video-item__info-header">
+                                                <h4>{video.title || video.youtubeVideoId}</h4>
+                                                <span
+                                                  className={`video-item__badge video-item__badge--${(video.contentType ?? 'unknown').toLowerCase()}`}
+                                                >
+                                                  {describeVideoContentType(video.contentType)}
                                                 </span>
-                                              </li>
-                                            ))}
-                                          </ul>
-                                        )}
-                                      </div>
-                                      {video.thumbnailUrl && (
-                                        <img
-                                          src={video.thumbnailUrl}
-                                          alt="Video thumbnail"
-                                          loading="lazy"
-                                          decoding="async"
-                                        />
-                                      )}
-                                    </li>
-                                  );
-                                })}
-                              </ul>
+                                              </div>
+                                              <p>{video.youtubeVideoId}</p>
+                                              {Array.isArray(video.sections) && video.sections.length > 0 && (
+                                                <ul className="video-item__sections">
+                                                  {video.sections.map((section, index) => (
+                                                    <li
+                                                      key={`${section.startSec}-${section.endSec}-${index}`}
+                                                      className="video-item__section"
+                                                    >
+                                                      <span className="video-item__section-time">
+                                                        {formatSeconds(section.startSec)} → {formatSeconds(section.endSec)}
+                                                      </span>
+                                                      <span className="video-item__section-title">{section.title}</span>
+                                                      <span className="video-item__section-source">
+                                                        {describeSectionSource(section.source)}
+                                                      </span>
+                                                    </li>
+                                                  ))}
+                                                </ul>
+                                              )}
+                                            </div>
+                                            {video.thumbnailUrl && (
+                                              <img
+                                                src={video.thumbnailUrl}
+                                                alt="Video thumbnail"
+                                                loading="lazy"
+                                                decoding="async"
+                                              />
+                                            )}
+                                          </li>
+                                        );
+                                      })}
+                                    </ul>
+                                  )}
+                                </div>
+                              </>
                             )}
                           </div>
                         </div>
