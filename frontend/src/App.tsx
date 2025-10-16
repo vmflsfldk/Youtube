@@ -58,6 +58,8 @@ const describeSectionSource = (source?: string): string => {
   }
 };
 
+const VIDEO_FILTER_KEYWORDS = ['cover', 'original', 'official'];
+
 interface ArtistResponse {
   id: number;
   name: string;
@@ -122,6 +124,19 @@ interface ArtistPreviewDebug {
   htmlThumbnail: string | null;
   resolvedChannelId: string | null;
   warnings: string[];
+  videoFetchAttempted?: boolean;
+  videoFetchStatus?: number | null;
+  videoFilterKeywords?: string[];
+  filteredVideoCount?: number;
+  videoFetchError?: string | null;
+}
+
+interface ArtistPreviewVideo {
+  videoId: string;
+  title: string | null;
+  thumbnailUrl: string | null;
+  url: string;
+  publishedAt: string | null;
 }
 
 interface ArtistPreviewResponse {
@@ -130,6 +145,7 @@ interface ArtistPreviewResponse {
   title: string | null;
   channelUrl: string | null;
   debug: ArtistPreviewDebug | null;
+  videos?: ArtistPreviewVideo[];
 }
 
 type ArtistDebugLogEntryType = 'preview-success' | 'preview-error' | 'create-success' | 'create-error';
@@ -291,6 +307,7 @@ export default function App() {
   const [artistPreviewError, setArtistPreviewError] = useState<string | null>(null);
   const [isArtistDebugVisible, setArtistDebugVisible] = useState(false);
   const [artistDebugLog, setArtistDebugLog] = useState<ArtistDebugLogEntry[]>([]);
+  const [activeSection, setActiveSection] = useState<SectionKey>('library');
 
   const appendArtistDebugLog = useCallback((entry: Omit<ArtistDebugLogEntry, 'id'>) => {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -339,6 +356,27 @@ export default function App() {
     return '사용자 입력';
   }, [artistPreview]);
 
+  const previewVideos = useMemo(() => {
+    if (!artistPreview?.data?.videos) {
+      return [] as ArtistPreviewVideo[];
+    }
+    return artistPreview.data.videos.slice(0, 12);
+  }, [artistPreview]);
+
+  const previewVideoKeywords = useMemo(() => {
+    const rawKeywords = artistPreview?.data?.debug?.videoFilterKeywords ?? [];
+    if (!Array.isArray(rawKeywords) || rawKeywords.length === 0) {
+      return VIDEO_FILTER_KEYWORDS;
+    }
+    const normalized = rawKeywords
+      .filter((keyword): keyword is string => typeof keyword === 'string' && keyword.trim().length > 0)
+      .map((keyword) => keyword.trim());
+    if (normalized.length === 0) {
+      return VIDEO_FILTER_KEYWORDS;
+    }
+    return Array.from(new Set(normalized));
+  }, [artistPreview]);
+
   const formatDebugLabel = useCallback((type: ArtistDebugLogEntryType) => {
     switch (type) {
       case 'preview-success':
@@ -358,6 +396,16 @@ export default function App() {
     const date = new Date(iso);
     if (Number.isNaN(date.getTime())) {
       return iso;
+    }
+    return `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
+  }, []);
+  const formatPreviewVideoDate = useCallback((iso: string | null | undefined) => {
+    if (!iso) {
+      return null;
+    }
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) {
+      return null;
     }
     return `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
   }, []);
@@ -843,6 +891,7 @@ export default function App() {
       setArtistPreview(null);
       setArtistPreviewReady(false);
       setArtistPreviewError(null);
+      setVideoForm((prev) => ({ ...prev, artistId: String(response.data.id) }));
       appendArtistDebugLog({
         timestamp: new Date().toISOString(),
         type: 'create-success',
@@ -875,6 +924,15 @@ export default function App() {
       });
     }
   };
+
+  const applyPreviewVideoToForm = useCallback(
+    (video: ArtistPreviewVideo) => {
+      setVideoForm((prev) => ({ ...prev, url: video.url }));
+      setActiveSection('management');
+      setActiveManagementTab('media');
+    },
+    [setActiveManagementTab, setActiveSection, setVideoForm]
+  );
 
   const handleVideoSectionPreviewFetch = useCallback(async () => {
     if (creationDisabled) {
@@ -1129,8 +1187,6 @@ export default function App() {
     ? Math.min(selectedVideoData.durationSec, previewStartSec + 30)
     : previewStartSec + 30;
   const previewEndSec = Number(clipForm.endSec) > previewStartSec ? Number(clipForm.endSec) : fallbackEnd;
-
-  const [activeSection, setActiveSection] = useState<SectionKey>('library');
 
   const sidebarTabs = useMemo(() => {
     const tabs: {
@@ -1674,32 +1730,99 @@ export default function App() {
                                   썸네일 없음
                                 </div>
                               )}
-                              <div className="artist-preview__meta">
-                                <p className="artist-preview__title">
-                                  {artistPreview.data.title ?? '채널 제목을 확인할 수 없습니다.'}
-                                </p>
-                                {artistPreview.data.channelUrl && (
-                                  <a
-                                    className="artist-preview__link"
-                                    href={artistPreview.data.channelUrl}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                  >
-                                    채널 바로가기
-                                  </a>
-                                )}
-                                {artistPreview.data.channelId && (
-                                  <p className="artist-preview__channel-id">{artistPreview.data.channelId}</p>
-                                )}
-                                {artistPreviewSource && (
-                                  <p className="artist-preview__source">데이터 출처: {artistPreviewSource}</p>
-                                )}
-                                {artistPreview.data.debug?.apiStatus !== undefined &&
-                                  artistPreview.data.debug?.apiStatus !== null && (
-                                    <p className="artist-preview__api-status">
-                                      API 응답 상태: {artistPreview.data.debug.apiStatus}
+                              <div className="artist-preview__details">
+                                <div className="artist-preview__meta">
+                                  <p className="artist-preview__title">
+                                    {artistPreview.data.title ?? '채널 제목을 확인할 수 없습니다.'}
+                                  </p>
+                                  {artistPreview.data.channelUrl && (
+                                    <a
+                                      className="artist-preview__link"
+                                      href={artistPreview.data.channelUrl}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                    >
+                                      채널 바로가기
+                                    </a>
+                                  )}
+                                  {artistPreview.data.channelId && (
+                                    <p className="artist-preview__channel-id">{artistPreview.data.channelId}</p>
+                                  )}
+                                  {artistPreviewSource && (
+                                    <p className="artist-preview__source">데이터 출처: {artistPreviewSource}</p>
+                                  )}
+                                  {artistPreview.data.debug?.apiStatus !== undefined &&
+                                    artistPreview.data.debug?.apiStatus !== null && (
+                                      <p className="artist-preview__api-status">
+                                        API 응답 상태: {artistPreview.data.debug.apiStatus}
+                                      </p>
+                                    )}
+                                </div>
+                                <div className="artist-preview__videos">
+                                  <div className="artist-preview__videos-header">
+                                    <h5>키워드 매칭 영상</h5>
+                                    {previewVideoKeywords.length > 0 && (
+                                      <span className="artist-preview__videos-keywords">
+                                        키워드: {previewVideoKeywords.join(' / ')}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {previewVideos.length > 0 ? (
+                                    <ul className="artist-preview__videos-list">
+                                      {previewVideos.map((video) => {
+                                        const publishedLabel = formatPreviewVideoDate(video.publishedAt);
+                                        return (
+                                          <li key={video.videoId} className="artist-preview__video">
+                                            {video.thumbnailUrl ? (
+                                              <img
+                                                className="artist-preview__video-thumbnail"
+                                                src={video.thumbnailUrl}
+                                                alt={video.title ? `${video.title} 썸네일` : '영상 썸네일'}
+                                                loading="lazy"
+                                                decoding="async"
+                                              />
+                                            ) : (
+                                              <div className="artist-preview__video-thumbnail artist-preview__video-thumbnail--placeholder">
+                                                썸네일 없음
+                                              </div>
+                                            )}
+                                            <div className="artist-preview__video-meta">
+                                              <p className="artist-preview__video-title">
+                                                {video.title ?? `영상 ${video.videoId}`}
+                                              </p>
+                                              {publishedLabel && (
+                                                <p className="artist-preview__video-date">업로드: {publishedLabel}</p>
+                                              )}
+                                              <div className="artist-preview__video-actions">
+                                                <a
+                                                  className="artist-preview__video-link"
+                                                  href={video.url}
+                                                  target="_blank"
+                                                  rel="noreferrer"
+                                                >
+                                                  유튜브에서 보기
+                                                </a>
+                                                <button
+                                                  type="button"
+                                                  className="artist-preview__video-apply"
+                                                  onClick={() => applyPreviewVideoToForm(video)}
+                                                >
+                                                  영상 등록 폼에 추가
+                                                </button>
+                                              </div>
+                                            </div>
+                                          </li>
+                                        );
+                                      })}
+                                    </ul>
+                                  ) : (
+                                    <p className="artist-preview__videos-empty">
+                                      {artistPreview.data.debug?.videoFetchError
+                                        ? `채널 영상 정보를 불러올 수 없습니다. (${artistPreview.data.debug.videoFetchError})`
+                                        : '조건에 맞는 영상을 찾지 못했습니다.'}
                                     </p>
                                   )}
+                                </div>
                               </div>
                             </div>
                           ) : (
