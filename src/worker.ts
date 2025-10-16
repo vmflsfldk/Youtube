@@ -1027,6 +1027,9 @@ async function handleApi(
 
     const user = await getUserFromHeaders(env, request.headers);
 
+    if (request.method === "POST" && path === "/api/artists/preview") {
+      return await previewArtist(request, env, requireUser(user), cors);
+    }
     if (request.method === "POST" && path === "/api/artists") {
       return await createArtist(request, env, requireUser(user), cors);
     }
@@ -1070,6 +1073,42 @@ async function handleApi(
     console.error("Unexpected error", error);
     return jsonResponse({ error: "Internal Server Error" }, 500, cors);
   }
+}
+
+async function previewArtist(
+  request: Request,
+  env: Env,
+  _user: UserContext,
+  cors: CorsConfig
+): Promise<Response> {
+  const body = await readJson(request);
+  const youtubeChannelId = typeof body.youtubeChannelId === "string" ? body.youtubeChannelId.trim() : "";
+  if (!youtubeChannelId) {
+    throw new HttpError(400, "youtubeChannelId is required");
+  }
+
+  const metadata = await fetchChannelMetadata(env, youtubeChannelId);
+  const resolvedChannelId = metadata.channelId?.trim() || null;
+
+  const channelUrl = resolvedChannelId
+    ? `https://www.youtube.com/channel/${resolvedChannelId}`
+    : metadata.debug.identifier.handle
+    ? `https://www.youtube.com/@${metadata.debug.identifier.handle}`
+    : metadata.debug.identifier.username
+    ? `https://www.youtube.com/${metadata.debug.identifier.username}`
+    : null;
+
+  return jsonResponse(
+    {
+      channelId: resolvedChannelId,
+      profileImageUrl: metadata.profileImageUrl,
+      title: metadata.title,
+      channelUrl,
+      debug: metadata.debug
+    },
+    200,
+    cors
+  );
 }
 
 async function createArtist(
@@ -2214,24 +2253,74 @@ type HtmlChannelMetadata = {
   channelId: string | null;
 };
 
-async function fetchChannelMetadata(env: Env, channelId: string): Promise<{
+interface ChannelMetadataDebug {
+  input: string;
+  identifier: ReturnType<typeof parseYouTubeChannelIdentifier>;
+  htmlCandidates: string[];
+  attemptedHtml: boolean;
+  attemptedApi: boolean;
+  apiStatus: number | null;
+  usedHtmlFallback: boolean;
+  usedApi: boolean;
+  htmlChannelId: string | null;
+  htmlTitle: string | null;
+  htmlThumbnail: string | null;
+  resolvedChannelId: string | null;
+  warnings: string[];
+}
+
+interface ChannelMetadata {
   title: string | null;
   profileImageUrl: string | null;
   channelId: string | null;
-}> {
-  const fallback = { title: null, profileImageUrl: null, channelId: null };
+  debug: ChannelMetadataDebug;
+}
+
+async function fetchChannelMetadata(env: Env, channelId: string): Promise<ChannelMetadata> {
   const trimmedChannelId = channelId.trim();
+  const baseDebug: ChannelMetadataDebug = {
+    input: trimmedChannelId,
+    identifier: { channelId: null, username: null, handle: null },
+    htmlCandidates: [],
+    attemptedHtml: false,
+    attemptedApi: false,
+    apiStatus: null,
+    usedHtmlFallback: false,
+    usedApi: false,
+    htmlChannelId: null,
+    htmlTitle: null,
+    htmlThumbnail: null,
+    resolvedChannelId: null,
+    warnings: []
+  };
+
   if (!trimmedChannelId) {
-    return fallback;
+    return { title: null, profileImageUrl: null, channelId: null, debug: baseDebug };
   }
 
   const identifier = parseYouTubeChannelIdentifier(trimmedChannelId);
-  let effectiveChannelId = identifier.channelId;
+  baseDebug.identifier = identifier;
 
-  const htmlMetadataLoader = createHtmlChannelMetadataLoader(identifier, trimmedChannelId);
+  let effectiveChannelId = identifier.channelId;
+  const htmlCandidates = buildChannelUrlCandidates(identifier, trimmedChannelId);
+  baseDebug.htmlCandidates = htmlCandidates;
+
+  let htmlMetadataCache: HtmlChannelMetadata | null | undefined;
+  const loadHtmlMetadata = async (): Promise<HtmlChannelMetadata | null> => {
+    if (typeof htmlMetadataCache === "undefined") {
+      baseDebug.attemptedHtml = true;
+      htmlMetadataCache = await fetchChannelMetadataFromHtml(htmlCandidates);
+      if (htmlMetadataCache) {
+        baseDebug.htmlChannelId = htmlMetadataCache.channelId ?? null;
+        baseDebug.htmlTitle = htmlMetadataCache.title ?? null;
+        baseDebug.htmlThumbnail = htmlMetadataCache.thumbnailUrl ?? null;
+      }
+    }
+    return htmlMetadataCache ?? null;
+  };
 
   if (!effectiveChannelId && identifier.handle) {
-    const htmlMetadata = await htmlMetadataLoader();
+    const htmlMetadata = await loadHtmlMetadata();
     if (htmlMetadata?.channelId) {
       effectiveChannelId = htmlMetadata.channelId;
     }
@@ -2240,15 +2329,22 @@ async function fetchChannelMetadata(env: Env, channelId: string): Promise<{
   const apiKey = env.YOUTUBE_API_KEY?.trim();
   if (!apiKey) {
     warnMissingYouTubeApiKey();
-    const htmlMetadata = await htmlMetadataLoader();
+    baseDebug.warnings.push("YOUTUBE_API_KEY missing");
+    const htmlMetadata = await loadHtmlMetadata();
     if (htmlMetadata) {
+      const resolvedChannelId = htmlMetadata.channelId ?? identifier.channelId ?? null;
+      baseDebug.usedHtmlFallback = true;
+      baseDebug.resolvedChannelId = resolvedChannelId;
       return {
         title: htmlMetadata.title,
         profileImageUrl: htmlMetadata.thumbnailUrl,
-        channelId: htmlMetadata.channelId ?? identifier.channelId ?? null
+        channelId: resolvedChannelId,
+        debug: baseDebug
       };
     }
-    return { ...fallback, channelId: identifier.channelId ?? null };
+    const resolvedChannelId = identifier.channelId ?? null;
+    baseDebug.resolvedChannelId = resolvedChannelId;
+    return { title: null, profileImageUrl: null, channelId: resolvedChannelId, debug: baseDebug };
   }
 
   const url = new URL("https://www.googleapis.com/youtube/v3/channels");
@@ -2265,30 +2361,46 @@ async function fetchChannelMetadata(env: Env, channelId: string): Promise<{
   let response: Response;
   try {
     response = await fetch(url.toString(), { method: "GET" });
+    baseDebug.attemptedApi = true;
+    baseDebug.apiStatus = response.status;
   } catch (error) {
+    baseDebug.attemptedApi = true;
+    baseDebug.apiStatus = null;
     console.error(`[yt-clip] Failed to contact YouTube Data API for channel ${trimmedChannelId}`, error);
-    const htmlMetadata = await htmlMetadataLoader();
+    const htmlMetadata = await loadHtmlMetadata();
     if (htmlMetadata) {
+      const resolvedChannelId = htmlMetadata.channelId ?? effectiveChannelId ?? identifier.channelId ?? null;
+      baseDebug.usedHtmlFallback = true;
+      baseDebug.resolvedChannelId = resolvedChannelId;
       return {
         title: htmlMetadata.title,
         profileImageUrl: htmlMetadata.thumbnailUrl,
-        channelId: htmlMetadata.channelId ?? effectiveChannelId ?? identifier.channelId ?? null
+        channelId: resolvedChannelId,
+        debug: baseDebug
       };
     }
-    return { ...fallback, channelId: effectiveChannelId ?? identifier.channelId ?? null };
+    const resolvedChannelId = effectiveChannelId ?? identifier.channelId ?? null;
+    baseDebug.resolvedChannelId = resolvedChannelId;
+    return { title: null, profileImageUrl: null, channelId: resolvedChannelId, debug: baseDebug };
   }
 
   if (!response.ok) {
     console.warn(`[yt-clip] YouTube Data API responded with status ${response.status} for channel ${trimmedChannelId}`);
-    const htmlMetadata = await htmlMetadataLoader();
+    const htmlMetadata = await loadHtmlMetadata();
     if (htmlMetadata) {
+      const resolvedChannelId = htmlMetadata.channelId ?? effectiveChannelId ?? identifier.channelId ?? null;
+      baseDebug.usedHtmlFallback = true;
+      baseDebug.resolvedChannelId = resolvedChannelId;
       return {
         title: htmlMetadata.title,
         profileImageUrl: htmlMetadata.thumbnailUrl,
-        channelId: htmlMetadata.channelId ?? effectiveChannelId ?? identifier.channelId ?? null
+        channelId: resolvedChannelId,
+        debug: baseDebug
       };
     }
-    return { ...fallback, channelId: effectiveChannelId ?? identifier.channelId ?? null };
+    const resolvedChannelId = effectiveChannelId ?? identifier.channelId ?? null;
+    baseDebug.resolvedChannelId = resolvedChannelId;
+    return { title: null, profileImageUrl: null, channelId: resolvedChannelId, debug: baseDebug };
   }
 
   let payload: YouTubeChannelsResponse;
@@ -2296,41 +2408,59 @@ async function fetchChannelMetadata(env: Env, channelId: string): Promise<{
     payload = (await response.json()) as YouTubeChannelsResponse;
   } catch (error) {
     console.error("[yt-clip] Failed to parse YouTube Data API channel response", error);
-    const htmlMetadata = await htmlMetadataLoader();
+    const htmlMetadata = await loadHtmlMetadata();
     if (htmlMetadata) {
+      const resolvedChannelId = htmlMetadata.channelId ?? effectiveChannelId ?? identifier.channelId ?? null;
+      baseDebug.usedHtmlFallback = true;
+      baseDebug.resolvedChannelId = resolvedChannelId;
       return {
         title: htmlMetadata.title,
         profileImageUrl: htmlMetadata.thumbnailUrl,
-        channelId: htmlMetadata.channelId ?? effectiveChannelId ?? identifier.channelId ?? null
+        channelId: resolvedChannelId,
+        debug: baseDebug
       };
     }
-    return { ...fallback, channelId: effectiveChannelId ?? identifier.channelId ?? null };
+    const resolvedChannelId = effectiveChannelId ?? identifier.channelId ?? null;
+    baseDebug.resolvedChannelId = resolvedChannelId;
+    return { title: null, profileImageUrl: null, channelId: resolvedChannelId, debug: baseDebug };
   }
 
   const item = Array.isArray(payload.items) ? payload.items[0] ?? null : null;
   if (!item) {
-    const htmlMetadata = await htmlMetadataLoader();
+    const htmlMetadata = await loadHtmlMetadata();
     if (htmlMetadata) {
+      const resolvedChannelId = htmlMetadata.channelId ?? effectiveChannelId ?? identifier.channelId ?? null;
+      baseDebug.usedHtmlFallback = true;
+      baseDebug.resolvedChannelId = resolvedChannelId;
       return {
         title: htmlMetadata.title,
         profileImageUrl: htmlMetadata.thumbnailUrl,
-        channelId: htmlMetadata.channelId ?? effectiveChannelId ?? identifier.channelId ?? null
+        channelId: resolvedChannelId,
+        debug: baseDebug
       };
     }
-    return { ...fallback, channelId: effectiveChannelId ?? identifier.channelId ?? null };
+    const resolvedChannelId = effectiveChannelId ?? identifier.channelId ?? null;
+    baseDebug.resolvedChannelId = resolvedChannelId;
+    return { title: null, profileImageUrl: null, channelId: resolvedChannelId, debug: baseDebug };
   }
 
   const snippet = item.snippet;
-  const htmlMetadata = await htmlMetadataLoader();
+  const htmlMetadata = await loadHtmlMetadata();
 
   let title = typeof snippet?.title === "string" && snippet.title.trim().length > 0 ? snippet.title.trim() : null;
   if (!title) {
     title = htmlMetadata?.title ?? null;
+    if (title) {
+      baseDebug.usedHtmlFallback = true;
+    }
   }
 
   let profileImageUrl = selectThumbnailUrl(snippet?.thumbnails) ?? null;
   if (!profileImageUrl) {
     profileImageUrl = htmlMetadata?.thumbnailUrl ?? null;
+    if (profileImageUrl) {
+      baseDebug.usedHtmlFallback = true;
+    }
   }
 
   const resolvedChannelId =
@@ -2338,21 +2468,10 @@ async function fetchChannelMetadata(env: Env, channelId: string): Promise<{
       ? item.id.trim()
       : effectiveChannelId ?? htmlMetadata?.channelId ?? identifier.channelId ?? null;
 
-  return { title, profileImageUrl, channelId: resolvedChannelId };
-}
+  baseDebug.usedApi = true;
+  baseDebug.resolvedChannelId = resolvedChannelId;
 
-function createHtmlChannelMetadataLoader(
-  identifier: ReturnType<typeof parseYouTubeChannelIdentifier>,
-  originalInput: string
-): () => Promise<HtmlChannelMetadata | null> {
-  let promise: Promise<HtmlChannelMetadata | null> | null = null;
-  return () => {
-    if (!promise) {
-      const candidates = buildChannelUrlCandidates(identifier, originalInput);
-      promise = fetchChannelMetadataFromHtml(candidates);
-    }
-    return promise;
-  };
+  return { title, profileImageUrl, channelId: resolvedChannelId, debug: baseDebug };
 }
 
 function buildChannelUrlCandidates(

@@ -602,6 +602,220 @@ button:disabled:hover {
   color: var(--color-text-primary);
 }
 
+.artist-registration {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+}
+
+.artist-registration__form {
+  flex: 1 1 320px;
+}
+
+.artist-preview-panel {
+  flex: 1 1 320px;
+  background: rgba(15, 23, 42, 0.52);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 20px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.08);
+}
+
+.artist-preview-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.artist-preview-panel__header h4 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.artist-preview-panel__body {
+  background: rgba(15, 23, 42, 0.48);
+  border-radius: 16px;
+  padding: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.artist-preview__content {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.artist-preview__thumbnail {
+  width: 96px;
+  height: 96px;
+  border-radius: 16px;
+  object-fit: cover;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.artist-preview__thumbnail--placeholder {
+  display: grid;
+  place-items: center;
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+.artist-preview__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.artist-preview__title {
+  margin: 0;
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.artist-preview__channel-id {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  word-break: break-all;
+}
+
+.artist-preview__source,
+.artist-preview__api-status {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+.artist-preview__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--accent-secondary);
+  text-decoration: none;
+  font-size: 0.9rem;
+}
+
+.artist-preview__link:hover {
+  text-decoration: underline;
+}
+
+.artist-preview__status,
+.artist-preview__empty {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}
+
+.artist-preview__hint {
+  margin: 6px 0 0;
+  font-size: 0.85rem;
+  color: var(--accent-secondary);
+}
+
+.artist-preview__error {
+  margin: 6px 0 0;
+  font-size: 0.85rem;
+  color: #f87171;
+}
+
+.artist-debug-toggle {
+  background: rgba(99, 102, 241, 0.16);
+  color: var(--accent-secondary);
+  border: 1px solid rgba(99, 102, 241, 0.32);
+  border-radius: 12px;
+  padding: 6px 12px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.artist-debug-toggle:hover {
+  background: rgba(99, 102, 241, 0.28);
+  transform: translateY(-1px);
+}
+
+.artist-debug-log {
+  border-top: 1px solid rgba(148, 163, 184, 0.14);
+  padding-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.artist-debug-log__empty {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+.artist-debug-log__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.artist-debug-log__entry {
+  background: rgba(15, 23, 42, 0.45);
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+
+.artist-debug-log__entry-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.8rem;
+}
+
+.artist-debug-log__label {
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.artist-debug-log__timestamp {
+  color: var(--color-text-muted);
+}
+
+.artist-debug-log__details {
+  margin-top: 8px;
+  font-size: 0.78rem;
+}
+
+.artist-debug-log__details summary {
+  cursor: pointer;
+  color: var(--accent-secondary);
+}
+
+.artist-debug-log__details pre {
+  margin: 8px 0 0;
+  padding: 12px;
+  background: rgba(2, 6, 23, 0.6);
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  overflow-x: auto;
+}
+
+@media (max-width: 1024px) {
+  .artist-registration {
+    flex-direction: column;
+  }
+
+  .artist-preview-panel {
+    width: 100%;
+  }
+}
+
 .artist-list {
   list-style: none;
   padding: 0;
