@@ -58,6 +58,16 @@ public class ArtistService {
     }
 
     @Transactional
+    public ArtistResponse updateTags(Long artistId, List<String> tags, UserAccount user) {
+        Artist artist = artistRepository.findById(artistId)
+                .orElseThrow(() -> new EntityNotFoundException("Artist not found: " + artistId));
+
+        artist.setTags(normalizeTags(tags));
+        Artist saved = artistRepository.save(artist);
+        return map(saved);
+    }
+
+    @Transactional
     public List<ArtistResponse> listMine(UserAccount user) {
         return user.getFavoriteArtists().stream()
                 .map(this::map)
@@ -83,6 +93,36 @@ public class ArtistService {
         userAccountRepository.save(user);
     }
 
+    @Transactional(readOnly = true)
+    public List<ArtistResponse> search(String name, String tag) {
+        String trimmedName = trimToNull(name);
+        String trimmedTag = trimToNull(tag);
+
+        List<Artist> artists = artistRepository.search(trimmedName, trimmedTag);
+        return artists.stream()
+                .map(this::map)
+                .collect(Collectors.toList());
+    }
+
+    private List<String> normalizeTags(List<String> tags) {
+        if (tags == null) {
+            return List.of();
+        }
+        return tags.stream()
+                .map(tag -> tag == null ? null : tag.trim())
+                .filter(tag -> tag != null && !tag.isBlank())
+                .distinct()
+                .collect(Collectors.toList());
+    }
+
+    private String trimToNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
     private ArtistResponse map(Artist artist) {
         Artist resolved = refreshMetadataIfNeeded(artist);
         return new ArtistResponse(
@@ -93,7 +133,8 @@ public class ArtistService {
                 resolved.getProfileImageUrl(),
                 resolved.isAvailableKo(),
                 resolved.isAvailableEn(),
-                resolved.isAvailableJp());
+                resolved.isAvailableJp(),
+                List.copyOf(resolved.getTags()));
     }
 
     private Artist refreshMetadataIfNeeded(Artist artist) {

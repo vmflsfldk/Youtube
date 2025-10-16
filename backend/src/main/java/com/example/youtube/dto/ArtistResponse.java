@@ -1,5 +1,7 @@
 package com.example.youtube.dto;
 
+import java.util.List;
+
 public record ArtistResponse(
         Long id,
         String name,
@@ -8,6 +10,7 @@ public record ArtistResponse(
         String profileImageUrl,
         boolean availableKo,
         boolean availableEn,
-        boolean availableJp
+        boolean availableJp,
+        List<String> tags
 ) {
 }
