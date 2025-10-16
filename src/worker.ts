@@ -1089,6 +1089,7 @@ async function previewArtist(
 
   const metadata = await fetchChannelMetadata(env, youtubeChannelId);
   const resolvedChannelId = metadata.channelId?.trim() || null;
+  const filteredVideos = await fetchFilteredChannelUploads(env, resolvedChannelId ?? youtubeChannelId, metadata.debug);
 
   const channelUrl = resolvedChannelId
     ? `https://www.youtube.com/channel/${resolvedChannelId}`
@@ -1104,7 +1105,8 @@ async function previewArtist(
       profileImageUrl: metadata.profileImageUrl,
       title: metadata.title,
       channelUrl,
-      debug: metadata.debug
+      debug: metadata.debug,
+      videos: filteredVideos
     },
     200,
     cors
@@ -2031,6 +2033,8 @@ interface YouTubeSnippet {
   title?: string;
   channelId?: string;
   thumbnails?: YouTubeThumbnails;
+  publishedAt?: string;
+  description?: string;
 }
 
 interface YouTubeContentDetails {
@@ -2057,6 +2061,7 @@ interface YouTubeChannelsResponse {
 
 interface YouTubeSearchId {
   channelId?: string;
+  videoId?: string;
 }
 
 interface YouTubeSearchItem {
@@ -2266,6 +2271,16 @@ type HtmlChannelMetadata = {
   channelId: string | null;
 };
 
+const CHANNEL_UPLOAD_KEYWORDS = ["cover", "original", "official"] as const;
+
+type ChannelUploadVideo = {
+  videoId: string;
+  title: string | null;
+  url: string;
+  thumbnailUrl: string | null;
+  publishedAt: string | null;
+};
+
 interface ChannelMetadataDebug {
   input: string;
   identifier: ReturnType<typeof parseYouTubeChannelIdentifier>;
@@ -2280,6 +2295,11 @@ interface ChannelMetadataDebug {
   htmlThumbnail: string | null;
   resolvedChannelId: string | null;
   warnings: string[];
+  videoFetchAttempted: boolean;
+  videoFetchStatus: number | null;
+  videoFilterKeywords: string[];
+  filteredVideoCount: number;
+  videoFetchError: string | null;
 }
 
 interface ChannelMetadata {
@@ -2304,7 +2324,12 @@ async function fetchChannelMetadata(env: Env, channelId: string): Promise<Channe
     htmlTitle: null,
     htmlThumbnail: null,
     resolvedChannelId: null,
-    warnings: []
+    warnings: [],
+    videoFetchAttempted: false,
+    videoFetchStatus: null,
+    videoFilterKeywords: [],
+    filteredVideoCount: 0,
+    videoFetchError: null
   };
 
   if (!trimmedChannelId) {
@@ -2567,6 +2592,122 @@ async function fetchChannelMetadata(env: Env, channelId: string): Promise<Channe
   baseDebug.resolvedChannelId = resolvedChannelId;
 
   return { title, profileImageUrl, channelId: resolvedChannelId, debug: baseDebug };
+}
+
+async function fetchFilteredChannelUploads(
+  env: Env,
+  channelId: string | null,
+  debug: ChannelMetadataDebug
+): Promise<ChannelUploadVideo[]> {
+  const trimmedChannelId = typeof channelId === "string" ? channelId.trim() : "";
+  debug.videoFilterKeywords = Array.from(CHANNEL_UPLOAD_KEYWORDS);
+  if (!trimmedChannelId) {
+    debug.videoFetchError = "channelId missing";
+    return [];
+  }
+
+  const apiKey = env.YOUTUBE_API_KEY?.trim();
+  if (!apiKey) {
+    const warning = "YOUTUBE_API_KEY missing";
+    debug.videoFetchError = warning;
+    if (!debug.warnings.includes(warning)) {
+      debug.warnings.push(warning);
+    }
+    return [];
+  }
+
+  const url = new URL("https://www.googleapis.com/youtube/v3/search");
+  url.searchParams.set("part", "snippet");
+  url.searchParams.set("channelId", trimmedChannelId);
+  url.searchParams.set("type", "video");
+  url.searchParams.set("order", "date");
+  url.searchParams.set("maxResults", "50");
+  url.searchParams.set("key", apiKey);
+
+  debug.videoFetchAttempted = true;
+
+  let response: Response;
+  try {
+    response = await fetch(url.toString(), { method: "GET" });
+  } catch (error) {
+    debug.videoFetchError = error instanceof Error ? error.message : "Failed to fetch channel uploads";
+    console.warn(`[yt-clip] Failed to contact YouTube Data API for uploads of channel ${trimmedChannelId}`, error);
+    return [];
+  }
+
+  debug.videoFetchStatus = response.status;
+
+  if (!response.ok) {
+    debug.videoFetchError = `HTTP ${response.status}`;
+    console.warn(
+      `[yt-clip] YouTube Data API responded with status ${response.status} when listing uploads for channel ${trimmedChannelId}`
+    );
+    return [];
+  }
+
+  let payload: YouTubeSearchResponse;
+  try {
+    payload = (await response.json()) as YouTubeSearchResponse;
+  } catch (error) {
+    debug.videoFetchError = "Invalid JSON response";
+    console.error("[yt-clip] Failed to parse YouTube channel uploads response", error);
+    return [];
+  }
+
+  const items = Array.isArray(payload.items) ? payload.items : [];
+  const seen = new Set<string>();
+  const filtered: ChannelUploadVideo[] = [];
+
+  for (const item of items) {
+    const rawVideoId = item?.id?.videoId;
+    const videoId = typeof rawVideoId === "string" ? rawVideoId.trim() : "";
+    if (!videoId || seen.has(videoId)) {
+      continue;
+    }
+
+    const snippet = item?.snippet;
+    const title = sanitizeSnippetTitle(snippet ?? null);
+    const comparisonTitle = (title ?? snippet?.title ?? "").toLowerCase();
+    if (!CHANNEL_UPLOAD_KEYWORDS.some((keyword) => comparisonTitle.includes(keyword))) {
+      continue;
+    }
+
+    seen.add(videoId);
+    const publishedAtRaw = typeof snippet?.publishedAt === "string" ? snippet.publishedAt.trim() : "";
+    let publishedAt: string | null = null;
+    if (publishedAtRaw) {
+      const date = new Date(publishedAtRaw);
+      if (!Number.isNaN(date.getTime())) {
+        publishedAt = date.toISOString();
+      }
+    }
+
+    filtered.push({
+      videoId,
+      title,
+      url: `https://www.youtube.com/watch?v=${videoId}`,
+      thumbnailUrl: selectThumbnailUrl(snippet?.thumbnails) ?? null,
+      publishedAt
+    });
+  }
+
+  filtered.sort((a, b) => {
+    if (a.publishedAt && b.publishedAt) {
+      return b.publishedAt.localeCompare(a.publishedAt);
+    }
+    if (a.publishedAt) {
+      return -1;
+    }
+    if (b.publishedAt) {
+      return 1;
+    }
+    return 0;
+  });
+
+  debug.filteredVideoCount = filtered.length;
+  debug.videoFetchError = null;
+
+  return filtered;
 }
 
 function sanitizeSnippetTitle(snippet: YouTubeSnippet | null): string | null {
