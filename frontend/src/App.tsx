@@ -29,12 +29,46 @@ const ensureArray = <T,>(value: MaybeArray<T>): T[] => {
   return [];
 };
 
+const formatSeconds = (value: number): string => {
+  if (!Number.isFinite(value) || value < 0) {
+    return '0:00';
+  }
+  const total = Math.floor(value);
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = total % 60;
+  const minutePart = minutes.toString().padStart(2, '0');
+  const secondPart = seconds.toString().padStart(2, '0');
+  if (hours > 0) {
+    return `${hours}:${minutePart}:${secondPart}`;
+  }
+  return `${minutes}:${secondPart}`;
+};
+
+const describeSectionSource = (source?: string): string => {
+  switch ((source ?? '').toUpperCase()) {
+    case 'COMMENT':
+      return '댓글';
+    case 'VIDEO_DESCRIPTION':
+      return '영상 설명';
+    default:
+      return '기타';
+  }
+};
+
 interface ArtistResponse {
   id: number;
   name: string;
   displayName: string;
   youtubeChannelId: string;
   profileImageUrl?: string | null;
+}
+
+interface VideoSectionResponse {
+  title: string;
+  startSec: number;
+  endSec: number;
+  source: string;
 }
 
 interface VideoResponse {
@@ -45,6 +79,7 @@ interface VideoResponse {
   durationSec?: number;
   thumbnailUrl?: string;
   channelId?: string;
+  sections?: VideoSectionResponse[];
 }
 
 interface ClipResponse {
@@ -1817,9 +1852,27 @@ export default function App() {
                                       className={`video-item${isActive ? ' active' : ''}`}
                                       onClick={() => setSelectedVideo(video.id)}
                                     >
-                                      <div>
+                                      <div className="video-item__info">
                                         <h4>{video.title || video.youtubeVideoId}</h4>
                                         <p>{video.youtubeVideoId}</p>
+                                        {Array.isArray(video.sections) && video.sections.length > 0 && (
+                                          <ul className="video-item__sections">
+                                            {video.sections.map((section, index) => (
+                                              <li
+                                                key={`${section.startSec}-${section.endSec}-${index}`}
+                                                className="video-item__section"
+                                              >
+                                                <span className="video-item__section-time">
+                                                  {formatSeconds(section.startSec)} → {formatSeconds(section.endSec)}
+                                                </span>
+                                                <span className="video-item__section-title">{section.title}</span>
+                                                <span className="video-item__section-source">
+                                                  {describeSectionSource(section.source)}
+                                                </span>
+                                              </li>
+                                            ))}
+                                          </ul>
+                                        )}
                                       </div>
                                       {video.thumbnailUrl && (
                                         <img

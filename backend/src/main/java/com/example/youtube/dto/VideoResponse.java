@@ -1,5 +1,7 @@
 package com.example.youtube.dto;
 
+import java.util.List;
+
 public record VideoResponse(
         Long id,
         Long artistId,
@@ -7,6 +9,7 @@ public record VideoResponse(
         String title,
         Integer durationSec,
         String thumbnailUrl,
-        String channelId
+        String channelId,
+        List<VideoSectionResponse> sections
 ) {
 }
