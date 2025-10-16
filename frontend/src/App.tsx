@@ -72,6 +72,9 @@ const ARTIST_COUNTRY_METADATA: ReadonlyArray<{
   { key: 'availableJp', code: 'JP', label: '일본' }
 ];
 
+const AUTH_TOKEN_STORAGE_KEY = 'yt-clip.auth-token';
+const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000;
+
 interface ArtistResponse {
   id: number;
   name: string;
@@ -483,6 +486,7 @@ export default function App() {
   const [nicknameStatus, setNicknameStatus] = useState<string | null>(null);
   const [nicknameError, setNicknameError] = useState<string | null>(null);
   const [activeManagementTab, setActiveManagementTab] = useState<'media' | 'artists'>('media');
+  const inactivityTimeoutRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
 
   const authHeaders = useMemo(() => {
     if (!authToken) {
@@ -558,7 +562,7 @@ export default function App() {
     setPasswordLoginError(null);
   }, []);
 
-  const handleSignOut = () => {
+  const handleSignOut = useCallback(() => {
     closeSignupPopup();
     setAuthToken(null);
     setCurrentUser(null);
@@ -591,7 +595,92 @@ export default function App() {
     setPasswordChangeConfirm('');
     setPasswordChangeStatus(null);
     setPasswordChangeError(null);
-  };
+  }, [closeSignupPopup]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    try {
+      const storedToken = window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
+      if (storedToken) {
+        setAuthToken(storedToken);
+      }
+    } catch (error) {
+      console.error('Failed to restore auth token from storage', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    try {
+      if (authToken) {
+        window.localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, authToken);
+      } else {
+        window.localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+      }
+    } catch (error) {
+      console.error('Failed to persist auth token to storage', error);
+    }
+  }, [authToken]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') {
+      return;
+    }
+
+    if (!isAuthenticated) {
+      if (inactivityTimeoutRef.current) {
+        window.clearTimeout(inactivityTimeoutRef.current);
+        inactivityTimeoutRef.current = null;
+      }
+      return;
+    }
+
+    const resetTimer = () => {
+      if (inactivityTimeoutRef.current) {
+        window.clearTimeout(inactivityTimeoutRef.current);
+      }
+      inactivityTimeoutRef.current = window.setTimeout(() => {
+        handleSignOut();
+      }, INACTIVITY_TIMEOUT_MS);
+    };
+
+    const handleActivity = () => {
+      if (document.hidden) {
+        return;
+      }
+      resetTimer();
+    };
+
+    resetTimer();
+
+    const windowEvents: Array<keyof WindowEventMap> = [
+      'click',
+      'keydown',
+      'mousemove',
+      'scroll',
+      'touchstart'
+    ];
+
+    windowEvents.forEach((eventName) => {
+      window.addEventListener(eventName, handleActivity);
+    });
+    document.addEventListener('visibilitychange', handleActivity);
+
+    return () => {
+      windowEvents.forEach((eventName) => {
+        window.removeEventListener(eventName, handleActivity);
+      });
+      document.removeEventListener('visibilitychange', handleActivity);
+      if (inactivityTimeoutRef.current) {
+        window.clearTimeout(inactivityTimeoutRef.current);
+        inactivityTimeoutRef.current = null;
+      }
+    };
+  }, [isAuthenticated, handleSignOut]);
 
   useEffect(() => {
     if (!authToken) {
