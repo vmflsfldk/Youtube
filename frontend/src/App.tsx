@@ -1290,11 +1290,17 @@ export default function App() {
         endSec: section.endSec
       }));
 
+      const normalizedSource = (section.source ?? '').toUpperCase();
+      const trimmedVideoUrl = clipForm.videoUrl.trim();
+      const parsedArtistId = Number(videoForm.artistId);
+      const hasSelectedVideo = selectedVideo !== null;
+      const canCreateWithVideoUrl =
+        trimmedVideoUrl.length > 0 && !Number.isNaN(parsedArtistId) && videoForm.artistId !== '';
+
       const shouldAutoCreate =
         !creationDisabled &&
-        selectedVideo !== null &&
-        (section.source ?? '').toUpperCase() === 'COMMENT' &&
-        clipForm.videoUrl.trim().length === 0;
+        normalizedSource === 'COMMENT' &&
+        (hasSelectedVideo || canCreateWithVideoUrl);
 
       if (!shouldAutoCreate) {
         return;
@@ -1302,15 +1308,39 @@ export default function App() {
 
       const tags = parseTags(clipForm.tags);
 
-      void createClip({
+      const payload: ClipCreationPayload = {
         title: resolvedTitle,
         startSec: section.startSec,
         endSec: section.endSec,
-        tags,
-        videoId: selectedVideo
-      }).catch((error) => {
-        console.error('Failed to auto-create clip from comment section', error);
-      });
+        tags
+      };
+
+      let restoreVideoUrl: string | null = null;
+
+      if (hasSelectedVideo) {
+        payload.videoId = selectedVideo;
+      } else if (canCreateWithVideoUrl) {
+        payload.videoUrl = trimmedVideoUrl;
+        payload.artistId = parsedArtistId;
+        restoreVideoUrl = trimmedVideoUrl;
+      } else {
+        return;
+      }
+
+      const previousTags = clipForm.tags;
+
+      void createClip(payload)
+        .catch((error) => {
+          console.error('Failed to auto-create clip from comment section', error);
+        })
+        .finally(() => {
+          if (restoreVideoUrl) {
+            setVideoForm((prev) => ({ ...prev, url: restoreVideoUrl }));
+            setClipForm((prev) => ({ ...prev, videoUrl: restoreVideoUrl, tags: previousTags }));
+          } else if (previousTags) {
+            setClipForm((prev) => ({ ...prev, tags: previousTags }));
+          }
+        });
     },
     [
       clipForm.tags,
@@ -1318,8 +1348,16 @@ export default function App() {
       clipForm.videoUrl,
       createClip,
       creationDisabled,
-      selectedVideo
+      selectedVideo,
+      videoForm.artistId
     ]
+  );
+
+  const handlePreviewSectionApply = useCallback(
+    (section: VideoSectionResponse, index: number) => {
+      applyVideoSectionToClip(section, section.title || `구간 ${index + 1}`);
+    },
+    [applyVideoSectionToClip]
   );
 
   const submitVideo = useCallback(async () => {
@@ -2009,7 +2047,24 @@ export default function App() {
                                 </p>
                                 <ul className="video-item__sections">
                                   {videoSectionPreview.map((section, index) => (
-                                    <li key={`${section.startSec}-${section.endSec}-${index}`} className="video-item__section">
+                                    <li
+                                      key={`${section.startSec}-${section.endSec}-${index}`}
+                                      className="video-item__section"
+                                      onClick={() => handlePreviewSectionApply(section, index)}
+                                      role="button"
+                                      tabIndex={0}
+                                      onKeyDown={(event) => {
+                                        if (
+                                          event.key === 'Enter' ||
+                                          event.key === ' ' ||
+                                          event.key === 'Space' ||
+                                          event.key === 'Spacebar'
+                                        ) {
+                                          event.preventDefault();
+                                          handlePreviewSectionApply(section, index);
+                                        }
+                                      }}
+                                    >
                                       <span className="video-item__section-time">
                                         {formatSeconds(section.startSec)} → {formatSeconds(section.endSec)}
                                       </span>
@@ -2753,7 +2808,24 @@ export default function App() {
                                     </p>
                                     <ul className="video-item__sections">
                                       {videoSectionPreview.map((section, index) => (
-                                        <li key={`${section.startSec}-${section.endSec}-${index}`} className="video-item__section">
+                                        <li
+                                          key={`${section.startSec}-${section.endSec}-${index}`}
+                                          className="video-item__section"
+                                          onClick={() => handlePreviewSectionApply(section, index)}
+                                          role="button"
+                                          tabIndex={0}
+                                          onKeyDown={(event) => {
+                                            if (
+                                              event.key === 'Enter' ||
+                                              event.key === ' ' ||
+                                              event.key === 'Space' ||
+                                              event.key === 'Spacebar'
+                                            ) {
+                                              event.preventDefault();
+                                              handlePreviewSectionApply(section, index);
+                                            }
+                                          }}
+                                        >
                                           <span className="video-item__section-time">
                                             {formatSeconds(section.startSec)} → {formatSeconds(section.endSec)}
                                           </span>
