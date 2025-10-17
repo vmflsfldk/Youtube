@@ -1,4 +1,13 @@
-import { FormEvent, KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ChangeEvent,
+  FormEvent,
+  KeyboardEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState
+} from 'react';
 import axios from 'axios';
 import ClipPlayer from './components/ClipPlayer';
 import GoogleLoginButton from './components/GoogleLoginButton';
@@ -44,6 +53,41 @@ const formatSeconds = (value: number): string => {
   }
   return `${minutes}:${secondPart}`;
 };
+
+const parseTimeInput = (value: string | number): number => {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) && value >= 0 ? value : 0;
+  }
+
+  const trimmed = value.trim();
+  if (trimmed === '') {
+    return 0;
+  }
+
+  if (/^\d+(\.\d+)?$/.test(trimmed)) {
+    return Number(trimmed);
+  }
+
+  const segments = trimmed.split(':');
+  if (segments.length === 0 || segments.some((segment) => segment.trim() === '')) {
+    return 0;
+  }
+
+  let multiplier = 1;
+  let total = 0;
+  for (let index = segments.length - 1; index >= 0; index -= 1) {
+    const segment = segments[index];
+    if (!/^\d+$/.test(segment)) {
+      return 0;
+    }
+    total += Number(segment) * multiplier;
+    multiplier *= 60;
+  }
+
+  return total;
+};
+
+const sanitizeTimeInput = (value: string): string => value.replace(/[^0-9:]/g, '');
 
 const isActivationKey = (key: string): boolean =>
   key === 'Enter' || key === ' ' || key === 'Space' || key === 'Spacebar';
@@ -478,7 +522,20 @@ export default function App() {
   const [artistSearchQuery, setArtistSearchQuery] = useState('');
   const [artistTagQuery, setArtistTagQuery] = useState('');
   const [videoForm, setVideoForm] = useState({ url: '', artistId: '', description: '', captionsJson: '' });
-  const [clipForm, setClipForm] = useState({ title: '', startSec: 0, endSec: 0, tags: '', videoUrl: '' });
+  const [clipForm, setClipForm] = useState({
+    title: '',
+    startSec: '0:00',
+    endSec: '0:00',
+    tags: '',
+    videoUrl: ''
+  });
+  const handleClipTimeInputChange = useCallback(
+    (key: 'startSec' | 'endSec') => (event: ChangeEvent<HTMLInputElement>) => {
+      const sanitized = sanitizeTimeInput(event.target.value);
+      setClipForm((prev) => ({ ...prev, [key]: sanitized }));
+    },
+    [setClipForm]
+  );
   const mediaRegistrationType = useMemo(
     () => resolveMediaRegistrationType(videoForm.url, selectedVideo),
     [videoForm.url, selectedVideo]
@@ -737,7 +794,7 @@ export default function App() {
     setClipCandidates([]);
     setSelectedVideo(null);
     setVideoForm({ url: '', artistId: '', description: '', captionsJson: '' });
-    setClipForm({ title: '', startSec: 0, endSec: 0, tags: '', videoUrl: '' });
+    setClipForm({ title: '', startSec: '0:00', endSec: '0:00', tags: '', videoUrl: '' });
     setEmailRegisterEmail('');
     setEmailRegisterCode('');
     setEmailRegisterPassword('');
@@ -1382,7 +1439,7 @@ export default function App() {
     async (payload: ClipCreationPayload, options?: { hiddenSource?: boolean }) => {
       const response = await http.post<ClipResponse>('/clips', payload, { headers: authHeaders });
       const normalizedClip = normalizeClip(response.data);
-      setClipForm({ title: '', startSec: 0, endSec: 0, tags: '', videoUrl: '' });
+      setClipForm({ title: '', startSec: '0:00', endSec: '0:00', tags: '', videoUrl: '' });
       setVideoForm((prev) => ({ ...prev, url: '' }));
       setClipCandidates([]);
       if (options?.hiddenSource) {
@@ -1409,8 +1466,8 @@ export default function App() {
       setClipForm((prev) => ({
         ...prev,
         title: resolvedTitle,
-        startSec: section.startSec,
-        endSec: section.endSec
+        startSec: formatSeconds(section.startSec),
+        endSec: formatSeconds(section.endSec)
       }));
 
       const normalizedSource = (section.source ?? '').toUpperCase();
@@ -1588,10 +1645,13 @@ export default function App() {
       return;
     }
 
+    const startSec = parseTimeInput(clipForm.startSec);
+    const endSec = parseTimeInput(clipForm.endSec);
+
     const payload: ClipCreationPayload = {
       title: clipForm.title,
-      startSec: Number(clipForm.startSec),
-      endSec: Number(clipForm.endSec),
+      startSec,
+      endSec,
       tags
     };
 
@@ -1949,11 +2009,13 @@ export default function App() {
   const playlistEmptyMessage = isAuthenticated
     ? '선택된 영상의 저장된 클립이 없습니다.'
     : '공개된 클립이 아직 없습니다.';
-  const previewStartSec = Math.max(0, Number(clipForm.startSec) || 0);
+  const parsedPreviewStartSec = parseTimeInput(clipForm.startSec);
+  const parsedPreviewEndSec = parseTimeInput(clipForm.endSec);
+  const previewStartSec = Math.max(0, parsedPreviewStartSec || 0);
   const fallbackEnd = selectedVideoData?.durationSec
     ? Math.min(selectedVideoData.durationSec, previewStartSec + 30)
     : previewStartSec + 30;
-  const previewEndSec = Number(clipForm.endSec) > previewStartSec ? Number(clipForm.endSec) : fallbackEnd;
+  const previewEndSec = parsedPreviewEndSec > previewStartSec ? parsedPreviewEndSec : fallbackEnd;
 
   const renderVideoListItem = (video: VideoResponse) => {
     const isVideoSelected = selectedVideo === video.id;
@@ -2439,29 +2501,31 @@ export default function App() {
                             />
                             <div className="number-row">
                               <div>
-                                <label htmlFor="clipStartSec">시작 시간 (초)</label>
+                                <label htmlFor="clipStartSec">시작 시간 (mm:ss)</label>
                                 <input
                                   id="clipStartSec"
-                                  type="number"
-                                  min="0"
+                                  type="text"
+                                  inputMode="numeric"
+                                  placeholder="mm:ss"
+                                  pattern="^\\d{1,2}:\\d{2}(?::\\d{2})?$|^\\d+$"
+                                  title="초 또는 mm:ss 형식으로 입력하세요"
                                   value={clipForm.startSec}
-                                  onChange={(event) =>
-                                    setClipForm((prev) => ({ ...prev, startSec: Number(event.target.value) }))
-                                  }
+                                  onChange={handleClipTimeInputChange('startSec')}
                                   required
                                   disabled={creationDisabled}
                                 />
                               </div>
                               <div>
-                                <label htmlFor="clipEndSec">종료 시간 (초)</label>
+                                <label htmlFor="clipEndSec">종료 시간 (mm:ss)</label>
                                 <input
                                   id="clipEndSec"
-                                  type="number"
-                                  min="0"
+                                  type="text"
+                                  inputMode="numeric"
+                                  placeholder="mm:ss"
+                                  pattern="^\\d{1,2}:\\d{2}(?::\\d{2})?$|^\\d+$"
+                                  title="초 또는 mm:ss 형식으로 입력하세요"
                                   value={clipForm.endSec}
-                                  onChange={(event) =>
-                                    setClipForm((prev) => ({ ...prev, endSec: Number(event.target.value) }))
-                                  }
+                                  onChange={handleClipTimeInputChange('endSec')}
                                   required
                                   disabled={creationDisabled}
                                 />
@@ -3173,29 +3237,31 @@ export default function App() {
                                 />
                                 <div className="number-row">
                                   <div>
-                                    <label htmlFor="libraryClipStartSec">시작 시간 (초)</label>
+                                    <label htmlFor="libraryClipStartSec">시작 시간 (mm:ss)</label>
                                     <input
                                       id="libraryClipStartSec"
-                                      type="number"
-                                      min="0"
+                                      type="text"
+                                      inputMode="numeric"
+                                      placeholder="mm:ss"
+                                      pattern="^\\d{1,2}:\\d{2}(?::\\d{2})?$|^\\d+$"
+                                      title="초 또는 mm:ss 형식으로 입력하세요"
                                       value={clipForm.startSec}
-                                      onChange={(event) =>
-                                        setClipForm((prev) => ({ ...prev, startSec: Number(event.target.value) }))
-                                      }
+                                      onChange={handleClipTimeInputChange('startSec')}
                                       required
                                       disabled={creationDisabled}
                                     />
                                   </div>
                                   <div>
-                                    <label htmlFor="libraryClipEndSec">종료 시간 (초)</label>
+                                    <label htmlFor="libraryClipEndSec">종료 시간 (mm:ss)</label>
                                     <input
                                       id="libraryClipEndSec"
-                                      type="number"
-                                      min="0"
+                                      type="text"
+                                      inputMode="numeric"
+                                      placeholder="mm:ss"
+                                      pattern="^\\d{1,2}:\\d{2}(?::\\d{2})?$|^\\d+$"
+                                      title="초 또는 mm:ss 형식으로 입력하세요"
                                       value={clipForm.endSec}
-                                      onChange={(event) =>
-                                        setClipForm((prev) => ({ ...prev, endSec: Number(event.target.value) }))
-                                      }
+                                      onChange={handleClipTimeInputChange('endSec')}
                                       required
                                       disabled={creationDisabled}
                                     />
