@@ -60,6 +60,7 @@ Google 로그인 버튼이 동작하려면 프론트엔드와 Worker가 **동일
 2. **프론트엔드 환경 변수 설정**
 
    Vite 빌드에는 동일한 값을 `VITE_GOOGLE_CLIENT_ID`로 주입해야 합니다.
+   `VITE_GOOGLE_CLIENT_ID`를 따로 설정하지 않은 경우, `GOOGLE_CLIENT_ID` 값이 자동으로 사용됩니다.
 
    - Cloudflare Pages: 프로젝트 Settings → Environment variables에서 `VITE_GOOGLE_CLIENT_ID`를 추가하고 프리뷰/프로덕션 환경 모두에 값을 입력하세요.
    - 로컬 개발: `frontend/.env.local` 파일을 생성해 `VITE_GOOGLE_CLIENT_ID=<your-client-id>` 형태로 저장합니다.
