@@ -45,6 +45,19 @@ const formatSeconds = (value: number): string => {
   return `${minutes}:${secondPart}`;
 };
 
+const isActivationKey = (key: string): boolean =>
+  key === 'Enter' || key === ' ' || key === 'Space' || key === 'Spacebar';
+
+const handleInteractiveListItemKeyDown = (
+  event: KeyboardEvent<HTMLLIElement>,
+  action: () => void
+) => {
+  if (isActivationKey(event.key)) {
+    event.preventDefault();
+    action();
+  }
+};
+
 const describeSectionSource = (source?: string): string => {
   switch ((source ?? '').toUpperCase()) {
     case 'COMMENT':
@@ -2291,17 +2304,11 @@ export default function App() {
                                       onClick={() => handlePreviewSectionApply(section, index)}
                                       role="button"
                                       tabIndex={0}
-                                      onKeyDown={(event) => {
-                                        if (
-                                          event.key === 'Enter' ||
-                                          event.key === ' ' ||
-                                          event.key === 'Space' ||
-                                          event.key === 'Spacebar'
-                                        ) {
-                                          event.preventDefault();
-                                          handlePreviewSectionApply(section, index);
-                                        }
-                                      }}
+                                      onKeyDown={(event) =>
+                                        handleInteractiveListItemKeyDown(event, () =>
+                                          handlePreviewSectionApply(section, index)
+                                        )
+                                      }
                                     >
                                       <span className="video-item__section-time">
                                         {formatSeconds(section.startSec)} → {formatSeconds(section.endSec)}
@@ -2395,17 +2402,11 @@ export default function App() {
                                       onClick={() => applyVideoSectionToClip(section, `구간 ${index + 1}`)}
                                       role="button"
                                       tabIndex={0}
-                                      onKeyDown={(event) => {
-                                        if (
-                                          event.key === 'Enter' ||
-                                          event.key === ' ' ||
-                                          event.key === 'Space' ||
-                                          event.key === 'Spacebar'
-                                        ) {
-                                          event.preventDefault();
-                                          applyVideoSectionToClip(section, `구간 ${index + 1}`);
-                                        }
-                                      }}
+                                      onKeyDown={(event) =>
+                                        handleInteractiveListItemKeyDown(event, () =>
+                                          applyVideoSectionToClip(section, `구간 ${index + 1}`)
+                                        )
+                                      }
                                     >
                                       <span className="video-item__section-time">
                                         {formatSeconds(section.startSec)} → {formatSeconds(section.endSec)}
@@ -3052,17 +3053,11 @@ export default function App() {
                                           onClick={() => handlePreviewSectionApply(section, index)}
                                           role="button"
                                           tabIndex={0}
-                                          onKeyDown={(event) => {
-                                            if (
-                                              event.key === 'Enter' ||
-                                              event.key === ' ' ||
-                                              event.key === 'Space' ||
-                                              event.key === 'Spacebar'
-                                            ) {
-                                              event.preventDefault();
-                                              handlePreviewSectionApply(section, index);
-                                            }
-                                          }}
+                                          onKeyDown={(event) =>
+                                            handleInteractiveListItemKeyDown(event, () =>
+                                              handlePreviewSectionApply(section, index)
+                                            )
+                                          }
                                         >
                                           <span className="video-item__section-time">
                                             {formatSeconds(section.startSec)} → {formatSeconds(section.endSec)}
@@ -3139,17 +3134,11 @@ export default function App() {
                                           onClick={() => applyVideoSectionToClip(section, `구간 ${index + 1}`)}
                                           role="button"
                                           tabIndex={0}
-                                          onKeyDown={(event) => {
-                                            if (
-                                              event.key === 'Enter' ||
-                                              event.key === ' ' ||
-                                              event.key === 'Space' ||
-                                              event.key === 'Spacebar'
-                                            ) {
-                                              event.preventDefault();
-                                              applyVideoSectionToClip(section, `구간 ${index + 1}`);
-                                            }
-                                          }}
+                                          onKeyDown={(event) =>
+                                            handleInteractiveListItemKeyDown(event, () =>
+                                              applyVideoSectionToClip(section, `구간 ${index + 1}`)
+                                            )
+                                          }
                                         >
                                           <span className="video-item__section-time">
                                             {formatSeconds(section.startSec)} → {formatSeconds(section.endSec)}
