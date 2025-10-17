@@ -19,6 +19,38 @@ type MaybeArray<T> =
   | null
   | undefined;
 
+type ClipTimeField =
+  | 'startHours'
+  | 'startMinutes'
+  | 'startSeconds'
+  | 'endHours'
+  | 'endMinutes'
+  | 'endSeconds';
+
+type ClipFormState = {
+  title: string;
+  startHours: string;
+  startMinutes: string;
+  startSeconds: string;
+  endHours: string;
+  endMinutes: string;
+  endSeconds: string;
+  tags: string;
+  videoUrl: string;
+};
+
+const createInitialClipFormState = (): ClipFormState => ({
+  title: '',
+  startHours: '0',
+  startMinutes: '00',
+  startSeconds: '00',
+  endHours: '0',
+  endMinutes: '00',
+  endSeconds: '00',
+  tags: '',
+  videoUrl: ''
+});
+
 const ensureArray = <T,>(value: MaybeArray<T>): T[] => {
   if (Array.isArray(value)) {
     return value;
@@ -54,40 +86,66 @@ const formatSeconds = (value: number): string => {
   return `${minutes}:${secondPart}`;
 };
 
-const parseTimeInput = (value: string | number): number => {
-  if (typeof value === 'number') {
-    return Number.isFinite(value) && value >= 0 ? value : 0;
+const clamp = (value: number, min: number, max: number): number => Math.min(Math.max(value, min), max);
+
+const sanitizeTimePartInput = (value: string, options: { maxLength?: number; maxValue?: number | null }) => {
+  const digitsOnly = value.replace(/\D/g, '');
+  const truncated = options.maxLength ? digitsOnly.slice(0, options.maxLength) : digitsOnly;
+
+  if (truncated === '') {
+    return '';
   }
 
-  const trimmed = value.trim();
-  if (trimmed === '') {
-    return 0;
+  const numeric = Number(truncated);
+  if (!Number.isFinite(numeric)) {
+    return '';
   }
 
-  if (/^\d+(\.\d+)?$/.test(trimmed)) {
-    return Number(trimmed);
+  if (typeof options.maxValue === 'number') {
+    return clamp(numeric, 0, options.maxValue).toString();
   }
 
-  const segments = trimmed.split(':');
-  if (segments.length === 0 || segments.some((segment) => segment.trim() === '')) {
-    return 0;
-  }
-
-  let multiplier = 1;
-  let total = 0;
-  for (let index = segments.length - 1; index >= 0; index -= 1) {
-    const segment = segments[index];
-    if (!/^\d+$/.test(segment)) {
-      return 0;
-    }
-    total += Number(segment) * multiplier;
-    multiplier *= 60;
-  }
-
-  return total;
+  return numeric.toString();
 };
 
-const sanitizeTimeInput = (value: string): string => value.replace(/[^0-9:]/g, '');
+const parseClipTimeParts = (hours: string, minutes: string, seconds: string): number => {
+  const parsePart = (value: string, max?: number): number => {
+    if (!value) {
+      return 0;
+    }
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric) || numeric < 0) {
+      return 0;
+    }
+    if (typeof max === 'number') {
+      return clamp(numeric, 0, max);
+    }
+    return numeric;
+  };
+
+  const hourValue = parsePart(hours);
+  const minuteValue = parsePart(minutes, 59);
+  const secondValue = parsePart(seconds, 59);
+
+  return hourValue * 3600 + minuteValue * 60 + secondValue;
+};
+
+const createClipTimePartValues = (totalSeconds: number) => {
+  if (!Number.isFinite(totalSeconds) || totalSeconds < 0) {
+    return { hours: '0', minutes: '00', seconds: '00' } as const;
+  }
+
+  const total = Math.floor(totalSeconds);
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = total % 60;
+
+  return {
+    hours: hours.toString(),
+    minutes: minutes.toString().padStart(2, '0'),
+    seconds: seconds.toString().padStart(2, '0')
+  } as const;
+};
 
 const isActivationKey = (key: string): boolean =>
   key === 'Enter' || key === ' ' || key === 'Space' || key === 'Spacebar';
@@ -522,19 +580,16 @@ export default function App() {
   const [artistSearchQuery, setArtistSearchQuery] = useState('');
   const [artistTagQuery, setArtistTagQuery] = useState('');
   const [videoForm, setVideoForm] = useState({ url: '', artistId: '', description: '', captionsJson: '' });
-  const [clipForm, setClipForm] = useState({
-    title: '',
-    startSec: '0:00',
-    endSec: '0:00',
-    tags: '',
-    videoUrl: ''
-  });
-  const handleClipTimeInputChange = useCallback(
-    (key: 'startSec' | 'endSec') => (event: ChangeEvent<HTMLInputElement>) => {
-      const sanitized = sanitizeTimeInput(event.target.value);
+  const [clipForm, setClipForm] = useState<ClipFormState>(() => createInitialClipFormState());
+  const handleClipTimePartChange = useCallback(
+    (key: ClipTimeField) => (event: ChangeEvent<HTMLInputElement>) => {
+      const options = key.endsWith('Hours')
+        ? { maxLength: 3, maxValue: null }
+        : { maxLength: 2, maxValue: 59 };
+      const sanitized = sanitizeTimePartInput(event.target.value, options);
       setClipForm((prev) => ({ ...prev, [key]: sanitized }));
     },
-    [setClipForm]
+    []
   );
   const mediaRegistrationType = useMemo(
     () => resolveMediaRegistrationType(videoForm.url, selectedVideo),
@@ -794,7 +849,7 @@ export default function App() {
     setClipCandidates([]);
     setSelectedVideo(null);
     setVideoForm({ url: '', artistId: '', description: '', captionsJson: '' });
-    setClipForm({ title: '', startSec: '0:00', endSec: '0:00', tags: '', videoUrl: '' });
+    setClipForm(createInitialClipFormState());
     setEmailRegisterEmail('');
     setEmailRegisterCode('');
     setEmailRegisterPassword('');
@@ -1439,7 +1494,7 @@ export default function App() {
     async (payload: ClipCreationPayload, options?: { hiddenSource?: boolean }) => {
       const response = await http.post<ClipResponse>('/clips', payload, { headers: authHeaders });
       const normalizedClip = normalizeClip(response.data);
-      setClipForm({ title: '', startSec: '0:00', endSec: '0:00', tags: '', videoUrl: '' });
+      setClipForm(createInitialClipFormState());
       setVideoForm((prev) => ({ ...prev, url: '' }));
       setClipCandidates([]);
       if (options?.hiddenSource) {
@@ -1462,12 +1517,18 @@ export default function App() {
   const applyVideoSectionToClip = useCallback(
     (section: VideoSectionResponse, fallbackTitle: string) => {
       const resolvedTitle = section.title || fallbackTitle;
+      const startParts = createClipTimePartValues(section.startSec);
+      const endParts = createClipTimePartValues(section.endSec);
 
       setClipForm((prev) => ({
         ...prev,
         title: resolvedTitle,
-        startSec: formatSeconds(section.startSec),
-        endSec: formatSeconds(section.endSec)
+        startHours: startParts.hours,
+        startMinutes: startParts.minutes,
+        startSeconds: startParts.seconds,
+        endHours: endParts.hours,
+        endMinutes: endParts.minutes,
+        endSeconds: endParts.seconds
       }));
 
       const normalizedSource = (section.source ?? '').toUpperCase();
@@ -1645,8 +1706,12 @@ export default function App() {
       return;
     }
 
-    const startSec = parseTimeInput(clipForm.startSec);
-    const endSec = parseTimeInput(clipForm.endSec);
+    const startSec = parseClipTimeParts(
+      clipForm.startHours,
+      clipForm.startMinutes,
+      clipForm.startSeconds
+    );
+    const endSec = parseClipTimeParts(clipForm.endHours, clipForm.endMinutes, clipForm.endSeconds);
 
     const payload: ClipCreationPayload = {
       title: clipForm.title,
@@ -1681,8 +1746,12 @@ export default function App() {
     clipForm.videoUrl,
     clipForm.tags,
     clipForm.title,
-    clipForm.startSec,
-    clipForm.endSec,
+    clipForm.startHours,
+    clipForm.startMinutes,
+    clipForm.startSeconds,
+    clipForm.endHours,
+    clipForm.endMinutes,
+    clipForm.endSeconds,
     selectedVideo,
     videoForm.artistId,
     createClip
@@ -2009,8 +2078,14 @@ export default function App() {
   const playlistEmptyMessage = isAuthenticated
     ? '선택된 영상의 저장된 클립이 없습니다.'
     : '공개된 클립이 아직 없습니다.';
-  const parsedPreviewStartSec = parseTimeInput(clipForm.startSec);
-  const parsedPreviewEndSec = parseTimeInput(clipForm.endSec);
+  const parsedPreviewStartSec = useMemo(
+    () => parseClipTimeParts(clipForm.startHours, clipForm.startMinutes, clipForm.startSeconds),
+    [clipForm.startHours, clipForm.startMinutes, clipForm.startSeconds]
+  );
+  const parsedPreviewEndSec = useMemo(
+    () => parseClipTimeParts(clipForm.endHours, clipForm.endMinutes, clipForm.endSeconds),
+    [clipForm.endHours, clipForm.endMinutes, clipForm.endSeconds]
+  );
   const previewStartSec = Math.max(0, parsedPreviewStartSec || 0);
   const fallbackEnd = selectedVideoData?.durationSec
     ? Math.min(selectedVideoData.durationSec, previewStartSec + 30)
@@ -2499,37 +2574,97 @@ export default function App() {
                               required
                               disabled={creationDisabled}
                             />
-                            <div className="number-row">
-                              <div>
-                                <label htmlFor="clipStartSec">시작 시간 (mm:ss)</label>
-                                <input
-                                  id="clipStartSec"
-                                  type="text"
-                                  inputMode="numeric"
-                                  placeholder="mm:ss"
-                                  pattern="^\\d{1,2}:\\d{2}(?::\\d{2})?$|^\\d+$"
-                                  title="초 또는 mm:ss 형식으로 입력하세요"
-                                  value={clipForm.startSec}
-                                  onChange={handleClipTimeInputChange('startSec')}
-                                  required
-                                  disabled={creationDisabled}
-                                />
-                              </div>
-                              <div>
-                                <label htmlFor="clipEndSec">종료 시간 (mm:ss)</label>
-                                <input
-                                  id="clipEndSec"
-                                  type="text"
-                                  inputMode="numeric"
-                                  placeholder="mm:ss"
-                                  pattern="^\\d{1,2}:\\d{2}(?::\\d{2})?$|^\\d+$"
-                                  title="초 또는 mm:ss 형식으로 입력하세요"
-                                  value={clipForm.endSec}
-                                  onChange={handleClipTimeInputChange('endSec')}
-                                  required
-                                  disabled={creationDisabled}
-                                />
-                              </div>
+                            <div className="clip-time-row">
+                              <fieldset className="clip-time-fieldset">
+                                <legend>시작 시간</legend>
+                                <div className="clip-time-inputs">
+                                  <div className="clip-time-input">
+                                    <label htmlFor="clipStartHours">시간</label>
+                                    <input
+                                      id="clipStartHours"
+                                      type="text"
+                                      inputMode="numeric"
+                                      placeholder="0"
+                                      maxLength={3}
+                                      value={clipForm.startHours}
+                                      onChange={handleClipTimePartChange('startHours')}
+                                      disabled={creationDisabled}
+                                    />
+                                  </div>
+                                  <div className="clip-time-input">
+                                    <label htmlFor="clipStartMinutes">분</label>
+                                    <input
+                                      id="clipStartMinutes"
+                                      type="text"
+                                      inputMode="numeric"
+                                      placeholder="00"
+                                      maxLength={2}
+                                      value={clipForm.startMinutes}
+                                      onChange={handleClipTimePartChange('startMinutes')}
+                                      disabled={creationDisabled}
+                                    />
+                                  </div>
+                                  <div className="clip-time-input">
+                                    <label htmlFor="clipStartSeconds">초</label>
+                                    <input
+                                      id="clipStartSeconds"
+                                      type="text"
+                                      inputMode="numeric"
+                                      placeholder="00"
+                                      maxLength={2}
+                                      value={clipForm.startSeconds}
+                                      onChange={handleClipTimePartChange('startSeconds')}
+                                      required
+                                      disabled={creationDisabled}
+                                    />
+                                  </div>
+                                </div>
+                              </fieldset>
+                              <fieldset className="clip-time-fieldset">
+                                <legend>종료 시간</legend>
+                                <div className="clip-time-inputs">
+                                  <div className="clip-time-input">
+                                    <label htmlFor="clipEndHours">시간</label>
+                                    <input
+                                      id="clipEndHours"
+                                      type="text"
+                                      inputMode="numeric"
+                                      placeholder="0"
+                                      maxLength={3}
+                                      value={clipForm.endHours}
+                                      onChange={handleClipTimePartChange('endHours')}
+                                      disabled={creationDisabled}
+                                    />
+                                  </div>
+                                  <div className="clip-time-input">
+                                    <label htmlFor="clipEndMinutes">분</label>
+                                    <input
+                                      id="clipEndMinutes"
+                                      type="text"
+                                      inputMode="numeric"
+                                      placeholder="00"
+                                      maxLength={2}
+                                      value={clipForm.endMinutes}
+                                      onChange={handleClipTimePartChange('endMinutes')}
+                                      disabled={creationDisabled}
+                                    />
+                                  </div>
+                                  <div className="clip-time-input">
+                                    <label htmlFor="clipEndSeconds">초</label>
+                                    <input
+                                      id="clipEndSeconds"
+                                      type="text"
+                                      inputMode="numeric"
+                                      placeholder="00"
+                                      maxLength={2}
+                                      value={clipForm.endSeconds}
+                                      onChange={handleClipTimePartChange('endSeconds')}
+                                      required
+                                      disabled={creationDisabled}
+                                    />
+                                  </div>
+                                </div>
+                              </fieldset>
                             </div>
                             <label htmlFor="clipTags">태그 (쉼표로 구분)</label>
                             <input
@@ -3235,37 +3370,97 @@ export default function App() {
                                   required
                                   disabled={creationDisabled}
                                 />
-                                <div className="number-row">
-                                  <div>
-                                    <label htmlFor="libraryClipStartSec">시작 시간 (mm:ss)</label>
-                                    <input
-                                      id="libraryClipStartSec"
-                                      type="text"
-                                      inputMode="numeric"
-                                      placeholder="mm:ss"
-                                      pattern="^\\d{1,2}:\\d{2}(?::\\d{2})?$|^\\d+$"
-                                      title="초 또는 mm:ss 형식으로 입력하세요"
-                                      value={clipForm.startSec}
-                                      onChange={handleClipTimeInputChange('startSec')}
-                                      required
-                                      disabled={creationDisabled}
-                                    />
-                                  </div>
-                                  <div>
-                                    <label htmlFor="libraryClipEndSec">종료 시간 (mm:ss)</label>
-                                    <input
-                                      id="libraryClipEndSec"
-                                      type="text"
-                                      inputMode="numeric"
-                                      placeholder="mm:ss"
-                                      pattern="^\\d{1,2}:\\d{2}(?::\\d{2})?$|^\\d+$"
-                                      title="초 또는 mm:ss 형식으로 입력하세요"
-                                      value={clipForm.endSec}
-                                      onChange={handleClipTimeInputChange('endSec')}
-                                      required
-                                      disabled={creationDisabled}
-                                    />
-                                  </div>
+                                <div className="clip-time-row">
+                                  <fieldset className="clip-time-fieldset">
+                                    <legend>시작 시간</legend>
+                                    <div className="clip-time-inputs">
+                                      <div className="clip-time-input">
+                                        <label htmlFor="libraryClipStartHours">시간</label>
+                                        <input
+                                          id="libraryClipStartHours"
+                                          type="text"
+                                          inputMode="numeric"
+                                          placeholder="0"
+                                          maxLength={3}
+                                          value={clipForm.startHours}
+                                          onChange={handleClipTimePartChange('startHours')}
+                                          disabled={creationDisabled}
+                                        />
+                                      </div>
+                                      <div className="clip-time-input">
+                                        <label htmlFor="libraryClipStartMinutes">분</label>
+                                        <input
+                                          id="libraryClipStartMinutes"
+                                          type="text"
+                                          inputMode="numeric"
+                                          placeholder="00"
+                                          maxLength={2}
+                                          value={clipForm.startMinutes}
+                                          onChange={handleClipTimePartChange('startMinutes')}
+                                          disabled={creationDisabled}
+                                        />
+                                      </div>
+                                      <div className="clip-time-input">
+                                        <label htmlFor="libraryClipStartSeconds">초</label>
+                                        <input
+                                          id="libraryClipStartSeconds"
+                                          type="text"
+                                          inputMode="numeric"
+                                          placeholder="00"
+                                          maxLength={2}
+                                          value={clipForm.startSeconds}
+                                          onChange={handleClipTimePartChange('startSeconds')}
+                                          required
+                                          disabled={creationDisabled}
+                                        />
+                                      </div>
+                                    </div>
+                                  </fieldset>
+                                  <fieldset className="clip-time-fieldset">
+                                    <legend>종료 시간</legend>
+                                    <div className="clip-time-inputs">
+                                      <div className="clip-time-input">
+                                        <label htmlFor="libraryClipEndHours">시간</label>
+                                        <input
+                                          id="libraryClipEndHours"
+                                          type="text"
+                                          inputMode="numeric"
+                                          placeholder="0"
+                                          maxLength={3}
+                                          value={clipForm.endHours}
+                                          onChange={handleClipTimePartChange('endHours')}
+                                          disabled={creationDisabled}
+                                        />
+                                      </div>
+                                      <div className="clip-time-input">
+                                        <label htmlFor="libraryClipEndMinutes">분</label>
+                                        <input
+                                          id="libraryClipEndMinutes"
+                                          type="text"
+                                          inputMode="numeric"
+                                          placeholder="00"
+                                          maxLength={2}
+                                          value={clipForm.endMinutes}
+                                          onChange={handleClipTimePartChange('endMinutes')}
+                                          disabled={creationDisabled}
+                                        />
+                                      </div>
+                                      <div className="clip-time-input">
+                                        <label htmlFor="libraryClipEndSeconds">초</label>
+                                        <input
+                                          id="libraryClipEndSeconds"
+                                          type="text"
+                                          inputMode="numeric"
+                                          placeholder="00"
+                                          maxLength={2}
+                                          value={clipForm.endSeconds}
+                                          onChange={handleClipTimePartChange('endSeconds')}
+                                          required
+                                          disabled={creationDisabled}
+                                        />
+                                      </div>
+                                    </div>
+                                  </fieldset>
                                 </div>
                                 <label htmlFor="libraryClipTags">태그 (쉼표로 구분)</label>
                                 <input
