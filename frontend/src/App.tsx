@@ -446,9 +446,9 @@ export default function App() {
   const [favoriteVideoIds, setFavoriteVideoIds] = useState<number[]>([]);
   const [playlistVideoIds, setPlaylistVideoIds] = useState<number[]>([]);
   const [expandedVideoCategories, setExpandedVideoCategories] = useState<Record<VideoCategoryKey, boolean>>({
-    cover: true,
-    live: true,
-    original: true
+    cover: false,
+    live: false,
+    original: false
   });
   const [clips, setClips] = useState<ClipResponse[]>([]);
   const [publicClips, setPublicClips] = useState<ClipResponse[]>([]);
@@ -1887,6 +1887,14 @@ export default function App() {
   }, []);
   const selectedVideoData = selectedVideo ? videos.find((video) => video.id === selectedVideo) : null;
   const selectedVideoIsHidden = selectedVideo !== null && hiddenVideoIds.includes(selectedVideo);
+  const selectedVideoCategory = useMemo<VideoCategoryKey | null>(
+    () => (selectedVideoData ? categorizeVideo(selectedVideoData) : null),
+    [selectedVideoData]
+  );
+  const shouldShowSelectedVideoPreview = selectedVideoData
+    ? selectedVideoIsHidden ||
+      (selectedVideoCategory ? expandedVideoCategories[selectedVideoCategory] : false)
+    : false;
   const displayableVideos = useMemo(
     () => videos.filter((video) => !hiddenVideoIds.includes(video.id)),
     [videos, hiddenVideoIds]
@@ -3256,7 +3264,7 @@ export default function App() {
                           <p className="artist-library__empty">등록된 영상이 없습니다.</p>
                         ) : (
                           <ul className="artist-library__video-list">
-                            {selectedVideoData && (
+                            {shouldShowSelectedVideoPreview && selectedVideoData && (
                               <li className="artist-library__video-preview">
                                 <div className="artist-library__video-preview-meta">
                                   <span className="artist-library__video-preview-title">
