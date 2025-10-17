@@ -94,6 +94,7 @@ interface ArtistResponse {
   name: string;
   displayName: string;
   youtubeChannelId: string;
+  youtubeChannelTitle?: string | null;
   profileImageUrl?: string | null;
   availableKo: boolean;
   availableEn: boolean;
@@ -433,8 +434,13 @@ export default function App() {
     }
 
     return artists.filter((artist) => {
-      const searchableFields = [artist.name, artist.displayName, artist.youtubeChannelId]
-        .filter((value): value is string => Boolean(value))
+      const searchableFields = [
+        artist.name,
+        artist.displayName,
+        artist.youtubeChannelId,
+        artist.youtubeChannelTitle ?? undefined
+      ]
+        .filter((value): value is string => Boolean(value && value.trim()))
         .map((value) => value.toLowerCase());
       const tags = Array.isArray(artist.tags)
         ? artist.tags.map((tag) => tag.toLowerCase())
@@ -1482,7 +1488,7 @@ export default function App() {
         <div className="artist-library__info">
           <span className="artist-library__name">{artist.displayName || artist.name}</span>
           <span className="artist-library__channel">
-            {artist.displayName || artist.name || artist.youtubeChannelId}
+            {artist.youtubeChannelTitle || artist.youtubeChannelId}
           </span>
         </div>
         {countryBadges.length > 0 && (
