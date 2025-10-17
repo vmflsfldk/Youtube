@@ -18,7 +18,7 @@ public class YouTubeApiVideoSectionProvider implements YouTubeVideoSectionProvid
 
     private static final Logger log = LoggerFactory.getLogger(YouTubeApiVideoSectionProvider.class);
     private static final Pattern TIMESTAMP_PATTERN = Pattern.compile(
-            "^(?:(?:\\d+[\\.)-]\\s*)|(?:\\d+\\s+)|(?:[-•*]\\s*))?(?:(\\d{1,2}):)?(\\d{1,2}):(\\d{2})\\s*-?\\s*(.+)$");
+            "^(?:(?:\\d+\\s*[\\.)-]\\s*)|(?:\\d+\\s+)|(?:[-•*]\\s*))?(?:(\\d{1,2}):)?(\\d{1,2}):(\\d{2})\\s*-?\\s*(.+)$");
     private static final int DEFAULT_SECTION_LENGTH = 45;
 
     private final RestClient restClient;
