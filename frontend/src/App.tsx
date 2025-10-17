@@ -2,6 +2,7 @@ import {
   ChangeEvent,
   FormEvent,
   KeyboardEvent,
+  RefObject,
   useCallback,
   useEffect,
   useMemo,
@@ -640,6 +641,11 @@ export default function App() {
   const [clipForm, setClipForm] = useState<ClipFormState>(() => createInitialClipFormState());
   const autoDetectInFlightRef = useRef(false);
   const autoDetectedVideoIdRef = useRef<number | null>(null);
+  const videoListSectionRef = useRef<HTMLElement | null>(null);
+  const clipListSectionRef = useRef<HTMLElement | null>(null);
+  const scrollToSection = useCallback((sectionRef: RefObject<HTMLElement | null>) => {
+    sectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, []);
   const handleClipTimePartChange = useCallback(
     (key: ClipTimeField) => (event: ChangeEvent<HTMLInputElement>) => {
       const options = key.endsWith('Hours')
@@ -3019,6 +3025,20 @@ export default function App() {
                         >
                           클립 등록
                         </button>
+                        <button
+                          type="button"
+                          className="artist-library__action-button artist-library__action-button--ghost"
+                          onClick={() => scrollToSection(videoListSectionRef)}
+                        >
+                          영상 목록
+                        </button>
+                        <button
+                          type="button"
+                          className="artist-library__action-button artist-library__action-button--ghost"
+                          onClick={() => scrollToSection(clipListSectionRef)}
+                        >
+                          클립 목록
+                        </button>
                         {creationDisabled && (
                           <span className="artist-library__action-hint">로그인 후 등록할 수 있습니다.</span>
                         )}
@@ -3346,7 +3366,7 @@ export default function App() {
                           )}
                         </section>
                       )}
-                      <section className="artist-library__detail-section">
+                      <section ref={videoListSectionRef} className="artist-library__detail-section">
                         <div className="artist-library__section-header">
                           <h4>영상 목록</h4>
                           {isArtistVideosLoading ? (
@@ -3425,7 +3445,7 @@ export default function App() {
                           </ul>
                         )}
                       </section>
-                      <section className="artist-library__detail-section">
+                      <section ref={clipListSectionRef} className="artist-library__detail-section">
                         <div className="artist-library__section-header">
                           <h4>클립 목록</h4>
                           {selectedVideoData && (
