@@ -888,7 +888,8 @@ interface ClipRow {
 const DEFAULT_CLIP_LENGTH = 30;
 const DEFAULT_SECTION_LENGTH = 45;
 const KEYWORDS = ["chorus", "hook", "verse", "intro", "outro"];
-const TIMESTAMP_PATTERN = /^(?:(\d{1,2}):)?(\d{1,2}):(\d{2})\s*-?\s*(.*)$/i;
+const TIMESTAMP_PATTERN =
+  /^(?:(?:\d+\s*[\.)-]\s*)|(?:\d+\s+)|(?:[-•*]\s*))?(?:(\d{1,2}):)?(\d{1,2}):(\d{2})\s*-?\s*(.*)$/i;
 
 class HttpError extends Error {
   status: number;
