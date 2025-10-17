@@ -1472,6 +1472,66 @@ button:disabled:hover {
   gap: 14px;
 }
 
+.artist-library__video-category {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.artist-library__video-category-toggle {
+  width: 100%;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background: rgba(15, 23, 42, 0.55);
+  color: inherit;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  cursor: pointer;
+  font-weight: 600;
+  text-align: left;
+  transition: border-color 0.2s ease, background 0.2s ease, transform 0.2s ease;
+}
+
+.artist-library__video-category-toggle:hover {
+  border-color: rgba(99, 102, 241, 0.55);
+  background: rgba(30, 41, 59, 0.7);
+  transform: translateY(-1px);
+}
+
+.artist-library__video-category-toggle:focus-visible {
+  outline: none;
+  border-color: rgba(99, 102, 241, 0.8);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.28);
+}
+
+.artist-library__video-category-label {
+  font-size: 0.96rem;
+}
+
+.artist-library__video-category-count {
+  margin-left: auto;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
+.artist-library__video-category-icon {
+  margin-left: 12px;
+  font-size: 0.9rem;
+  color: var(--color-text-muted);
+}
+
+.artist-library__video-sublist {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  border-left: 1px solid rgba(148, 163, 184, 0.2);
+}
+
 .artist-library__video-preview {
   border-radius: 18px;
   border: 1px solid rgba(148, 163, 184, 0.24);
