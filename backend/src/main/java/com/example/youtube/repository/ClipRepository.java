@@ -13,4 +13,6 @@ public interface ClipRepository extends JpaRepository<Clip, Long> {
     List<Clip> findByArtist(@Param("artist") Artist artist);
 
     List<Clip> findByVideo(Video video);
+
+    boolean existsByVideoAndStartSecAndEndSec(Video video, int startSec, int endSec);
 }
