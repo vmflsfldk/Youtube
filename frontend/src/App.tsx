@@ -168,9 +168,37 @@ const describeSectionSource = (source?: string): string => {
       return '영상 설명';
     case 'YOUTUBE_CHAPTER':
       return '유튜브 챕터';
+    case 'AUTO_DETECTED':
+      return '자동 감지';
     default:
       return '기타';
   }
+};
+
+const AUTO_DETECTED_SECTION_SOURCE = 'AUTO_DETECTED';
+
+const mergeSections = (
+  existing: VideoSectionResponse[],
+  additions: VideoSectionResponse[]
+): VideoSectionResponse[] => {
+  if (additions.length === 0) {
+    return existing.slice();
+  }
+
+  const merged = existing.slice();
+  const seen = new Set(merged.map((section) => `${section.startSec}-${section.endSec}`));
+
+  additions.forEach((section) => {
+    const key = `${section.startSec}-${section.endSec}`;
+    if (seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    merged.push(section);
+  });
+
+  merged.sort((a, b) => a.startSec - b.startSec);
+  return merged;
 };
 
 const describeDebugSelectedSource = (source?: string | null): string => {
@@ -631,6 +659,25 @@ export default function App() {
   const [videoSectionPreviewError, setVideoSectionPreviewError] = useState<string | null>(null);
   const [videoSectionPreviewDebug, setVideoSectionPreviewDebug] = useState<VideoSectionPreviewDebugInfo | null>(null);
   const [hasAttemptedVideoSectionPreview, setHasAttemptedVideoSectionPreview] = useState(false);
+  const autoDetectedSections = useMemo<VideoSectionResponse[]>(() => {
+    if (clipCandidates.length === 0) {
+      return [];
+    }
+
+    return clipCandidates.map((candidate, index) => {
+      const trimmedLabel = (candidate.label ?? '').trim();
+      return {
+        title: trimmedLabel.length > 0 ? trimmedLabel : `자동 감지 제안 ${index + 1}`,
+        startSec: candidate.startSec,
+        endSec: candidate.endSec,
+        source: AUTO_DETECTED_SECTION_SOURCE
+      };
+    });
+  }, [clipCandidates]);
+  const previewSectionsWithCandidates = useMemo(
+    () => mergeSections(videoSectionPreview, autoDetectedSections),
+    [videoSectionPreview, autoDetectedSections]
+  );
   const [isLibraryVideoFormOpen, setLibraryVideoFormOpen] = useState(false);
   const [isLibraryClipFormOpen, setLibraryClipFormOpen] = useState(false);
   const isLibraryMediaFormOpen = isLibraryVideoFormOpen || isLibraryClipFormOpen;
@@ -667,12 +714,12 @@ export default function App() {
       !isClipRegistration &&
       hasAttemptedVideoSectionPreview &&
       !isFetchingVideoSections &&
-      (videoSectionPreview.length === 0 || Boolean(videoSectionPreviewError)),
+      (previewSectionsWithCandidates.length === 0 || Boolean(videoSectionPreviewError)),
     [
       hasAttemptedVideoSectionPreview,
       isClipRegistration,
       isFetchingVideoSections,
-      videoSectionPreview.length,
+      previewSectionsWithCandidates.length,
       videoSectionPreviewError
     ]
   );
@@ -2212,6 +2259,10 @@ export default function App() {
     setActiveClipId((previous) => (previous === clip.id ? null : clip.id));
   }, []);
   const selectedVideoData = selectedVideo ? videos.find((video) => video.id === selectedVideo) : null;
+  const selectedVideoSectionsWithCandidates = useMemo(
+    () => mergeSections(selectedVideoData?.sections ?? [], autoDetectedSections),
+    [selectedVideoData, autoDetectedSections]
+  );
   const selectedVideoIsHidden = selectedVideo !== null && hiddenVideoIds.includes(selectedVideo);
   const selectedVideoCategory = useMemo<VideoCategoryKey | null>(
     () => (selectedVideoData ? categorizeVideo(selectedVideoData) : null),
@@ -2612,13 +2663,13 @@ export default function App() {
                             {videoSectionPreviewError && (
                               <p className="login-status__message error">{videoSectionPreviewError}</p>
                             )}
-                            {videoSectionPreview.length > 0 && (
+                            {previewSectionsWithCandidates.length > 0 && (
                               <div className="section-preview">
                                 <p className="artist-preview__hint">
-                                  자동으로 {videoSectionPreview.length}개의 구간을 찾았습니다. 영상 저장 후 아래에서 클립을 등록하세요.
+                                  자동으로 {previewSectionsWithCandidates.length}개의 구간을 찾았습니다. 영상 저장 후 아래에서 클립을 등록하세요.
                                 </p>
                                 <ul className="video-item__sections">
-                                  {videoSectionPreview.map((section, index) => (
+                                  {previewSectionsWithCandidates.map((section, index) => (
                                     <li
                                       key={`${section.startSec}-${section.endSec}-${index}`}
                                       className="video-item__section"
@@ -2780,11 +2831,11 @@ export default function App() {
                                     </optgroup>
                                   )}
                                 </select>
-                                {selectedVideoData?.sections && selectedVideoData.sections.length > 0 ? (
+                                {selectedVideoData && selectedVideoSectionsWithCandidates.length > 0 ? (
                                   <div className="section-preview">
                                     <p className="artist-preview__hint">구간을 클릭하면 시간이 자동으로 입력됩니다.</p>
                                     <ul className="video-item__sections">
-                                      {selectedVideoData.sections.map((section, index) => (
+                                      {selectedVideoSectionsWithCandidates.map((section, index) => (
                                         <li
                                           key={`${section.startSec}-${section.endSec}-${index}`}
                                           className="video-item__section"
@@ -3497,13 +3548,13 @@ export default function App() {
                                 {videoSectionPreviewError && (
                                   <p className="login-status__message error">{videoSectionPreviewError}</p>
                                 )}
-                                {videoSectionPreview.length > 0 && (
+                                {previewSectionsWithCandidates.length > 0 && (
                                   <div className="section-preview">
                                     <p className="artist-preview__hint">
-                                      자동으로 {videoSectionPreview.length}개의 구간을 찾았습니다. 영상 저장 후 아래에서 클립을 등록하세요.
+                                      자동으로 {previewSectionsWithCandidates.length}개의 구간을 찾았습니다. 영상 저장 후 아래에서 클립을 등록하세요.
                                     </p>
                                     <ul className="video-item__sections">
-                                      {videoSectionPreview.map((section, index) => (
+                                      {previewSectionsWithCandidates.map((section, index) => (
                                         <li
                                           key={`${section.startSec}-${section.endSec}-${index}`}
                                           className="video-item__section"
@@ -3648,11 +3699,11 @@ export default function App() {
                                         </optgroup>
                                       )}
                                     </select>
-                                    {selectedVideoData?.sections && selectedVideoData.sections.length > 0 ? (
+                                    {selectedVideoData && selectedVideoSectionsWithCandidates.length > 0 ? (
                                       <div className="section-preview">
                                         <p className="artist-preview__hint">구간을 클릭하면 시간이 자동으로 입력됩니다.</p>
                                         <ul className="video-item__sections">
-                                          {selectedVideoData.sections.map((section, index) => (
+                                          {selectedVideoSectionsWithCandidates.map((section, index) => (
                                             <li
                                               key={`${section.startSec}-${section.endSec}-${index}`}
                                               className="video-item__section"
