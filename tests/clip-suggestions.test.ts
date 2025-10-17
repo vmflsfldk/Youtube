@@ -41,6 +41,7 @@ type VideoTableRow = {
   channel_id: string | null;
   description: string | null;
   captions_json: string | null;
+  category: string | null;
   content_type: string | null;
   hidden: number | null;
 };
@@ -126,6 +127,7 @@ class FakeD1Database implements D1Database {
         channelId,
         description,
         captionsJson,
+        category,
         contentType,
         hidden,
         videoId
@@ -133,6 +135,7 @@ class FakeD1Database implements D1Database {
         number,
         string,
         number | null,
+        string | null,
         string | null,
         string | null,
         string | null,
@@ -152,6 +155,7 @@ class FakeD1Database implements D1Database {
       video.channel_id = channelId ?? null;
       video.description = description ?? null;
       video.captions_json = captionsJson ?? null;
+      video.category = category ?? null;
       video.content_type = contentType ?? null;
       video.hidden = hidden ?? 0;
       return { success: true, meta: { duration: 0, changes: 1 } };
@@ -166,6 +170,7 @@ class FakeD1Database implements D1Database {
         channelId,
         description,
         captionsJson,
+        category,
         contentType,
         hidden
       ] = values as [
@@ -173,6 +178,7 @@ class FakeD1Database implements D1Database {
         string,
         string,
         number | null,
+        string | null,
         string | null,
         string | null,
         string | null,
@@ -191,6 +197,7 @@ class FakeD1Database implements D1Database {
         channel_id: channelId ?? null,
         description: description ?? null,
         captions_json: captionsJson ?? null,
+        category: category ?? null,
         content_type: contentType ?? null,
         hidden: hidden ?? 0
       };
@@ -270,6 +277,7 @@ test("clip suggestions returns existing video without creating duplicates", asyn
     channel_id: "channel-old",
     description: "old",
     captions_json: null,
+    category: null,
     content_type: "OFFICIAL",
     hidden: 0
   };

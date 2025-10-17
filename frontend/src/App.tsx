@@ -213,6 +213,19 @@ const describeVideoContentType = (contentType?: string): string => {
   }
 };
 
+const describeVideoCategory = (category?: string | null): string | null => {
+  switch ((category ?? '').toLowerCase()) {
+    case 'cover':
+      return '커버';
+    case 'live':
+      return '라이브';
+    case 'original':
+      return '오리지널';
+    default:
+      return null;
+  }
+};
+
 const isClipSourceVideo = (video: VideoResponse): boolean =>
   (video.contentType ?? '').toUpperCase() === 'CLIP_SOURCE';
 
@@ -254,6 +267,14 @@ const VIDEO_CATEGORY_KEYWORDS: Record<VideoCategoryKey, string[]> = {
 const normalizeText = (value?: string | null): string => (value ?? '').toLowerCase();
 
 const categorizeVideo = (video: VideoResponse): VideoCategoryKey => {
+  const normalizedCategory = normalizeText(video.category);
+  if (
+    normalizedCategory === 'cover' ||
+    normalizedCategory === 'live' ||
+    normalizedCategory === 'original'
+  ) {
+    return normalizedCategory;
+  }
   const normalizedTitle = normalizeText(video.title);
   const normalizedId = normalizeText(video.youtubeVideoId);
   const contentType = (video.contentType ?? '').toUpperCase();
@@ -275,6 +296,25 @@ const categorizeVideo = (video: VideoResponse): VideoCategoryKey => {
   }
 
   return 'original';
+};
+
+const formatVideoMetaSummary = (
+  video: VideoResponse,
+  options: { includeDuration?: boolean; includeContentType?: boolean } = {}
+): string => {
+  const parts: string[] = [];
+  const categoryLabel = describeVideoCategory(categorizeVideo(video));
+  if (categoryLabel) {
+    parts.push(categoryLabel);
+  }
+  if (options.includeContentType !== false) {
+    parts.push(describeVideoContentType(video.contentType));
+  }
+  if (options.includeDuration !== false) {
+    parts.push(formatSeconds(video.durationSec ?? 0));
+  }
+  const uniqueParts = parts.filter((part, index) => parts.indexOf(part) === index);
+  return uniqueParts.join(' · ');
 };
 
 type ArtistCountryKey = 'availableKo' | 'availableEn' | 'availableJp';
@@ -358,6 +398,7 @@ interface VideoResponse {
   thumbnailUrl?: string;
   channelId?: string;
   contentType?: 'OFFICIAL' | 'CLIP_SOURCE' | string;
+  category?: 'live' | 'cover' | 'original' | null;
   sections?: VideoSectionResponse[];
   hidden?: boolean;
 }
@@ -2346,7 +2387,7 @@ export default function App() {
           <div className="artist-library__video-meta">
             <span className="artist-library__video-title">{videoTitle}</span>
             <span className="artist-library__video-subtitle">
-              {describeVideoContentType(video.contentType)} · {formatSeconds(video.durationSec ?? 0)}
+              {formatVideoMetaSummary(video)}
             </span>
             <div className="artist-library__video-actions">
               <button
@@ -3110,7 +3151,7 @@ export default function App() {
                                           {clipSourceVideos.map((video) => (
                                             <option key={video.id} value={video.id}>
                                               {(video.title || video.youtubeVideoId) ?? video.youtubeVideoId} ·{' '}
-                                              {describeVideoContentType(video.contentType)}
+                                              {formatVideoMetaSummary(video, { includeDuration: false })}
                                             </option>
                                           ))}
                                         </optgroup>
@@ -3120,7 +3161,7 @@ export default function App() {
                                           {officialVideos.map((video) => (
                                             <option key={video.id} value={video.id}>
                                               {(video.title || video.youtubeVideoId) ?? video.youtubeVideoId} ·{' '}
-                                              {describeVideoContentType(video.contentType)}
+                                              {formatVideoMetaSummary(video, { includeDuration: false })}
                                             </option>
                                           ))}
                                         </optgroup>
@@ -3291,7 +3332,10 @@ export default function App() {
                                 {selectedVideoData ? (
                                   <>
                                     <p className="form-hint">
-                                      {describeVideoContentType(selectedVideoData.contentType)} 영상 ·{' '}
+                                      {formatVideoMetaSummary(selectedVideoData, {
+                                        includeDuration: false
+                                      })}{' '}
+                                      영상 ·{' '}
                                       {selectedVideoData.title || selectedVideoData.youtubeVideoId}
                                     </p>
                                     <ClipPlayer
@@ -3327,7 +3371,7 @@ export default function App() {
                                         {clipSourceVideos.map((video) => (
                                           <option key={video.id} value={video.id}>
                                             {(video.title || video.youtubeVideoId) ?? video.youtubeVideoId} ·{' '}
-                                            {describeVideoContentType(video.contentType)}
+                                            {formatVideoMetaSummary(video, { includeDuration: false })}
                                           </option>
                                         ))}
                                       </optgroup>
@@ -3337,7 +3381,7 @@ export default function App() {
                                         {officialVideos.map((video) => (
                                           <option key={video.id} value={video.id}>
                                             {(video.title || video.youtubeVideoId) ?? video.youtubeVideoId} ·{' '}
-                                            {describeVideoContentType(video.contentType)}
+                                            {formatVideoMetaSummary(video, { includeDuration: false })}
                                           </option>
                                         ))}
                                       </optgroup>
@@ -3386,8 +3430,7 @@ export default function App() {
                                     {selectedVideoData.title || selectedVideoData.youtubeVideoId || '제목 없는 영상'}
                                   </span>
                                   <span className="artist-library__video-preview-subtitle">
-                                    {describeVideoContentType(selectedVideoData.contentType)} ·{' '}
-                                    {formatSeconds(selectedVideoData.durationSec ?? 0)}
+                                    {formatVideoMetaSummary(selectedVideoData)}
                                   </span>
                                 </div>
                                 {selectedVideoData.youtubeVideoId ? (
