@@ -1662,7 +1662,7 @@ export default function App() {
 
   useEffect(() => {
     if (!previousAuthRef.current && isAuthenticated) {
-      setActiveSection('mypage');
+      setActiveSection('library');
       closeSignupPopup();
     } else if (previousAuthRef.current && !isAuthenticated && activeSection === 'mypage') {
       setActiveSection('library');
