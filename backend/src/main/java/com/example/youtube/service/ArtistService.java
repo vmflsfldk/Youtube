@@ -104,11 +104,10 @@ public class ArtistService {
     }
 
     @Transactional(readOnly = true)
-    public List<ArtistResponse> search(String name, String tag) {
-        String trimmedName = trimToNull(name);
-        String trimmedTag = trimToNull(tag);
+    public List<ArtistResponse> search(String query) {
+        String trimmedQuery = trimToNull(query);
 
-        List<Artist> artists = artistRepository.search(trimmedName, trimmedTag);
+        List<Artist> artists = artistRepository.searchDirectory(trimmedQuery);
         return artists.stream()
                 .map(this::map)
                 .collect(Collectors.toList());

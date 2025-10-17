@@ -9,6 +9,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import java.util.ArrayList;
 import java.util.List;
@@ -53,6 +54,9 @@ public class Artist {
     @CollectionTable(name = "artist_tags", joinColumns = @JoinColumn(name = "artist_id"))
     @Column(name = "tag", nullable = false)
     private List<String> tags = new ArrayList<>();
+
+    @OneToMany(mappedBy = "artist")
+    private List<Video> videos = new ArrayList<>();
 
     public Artist() {
     }
@@ -155,5 +159,9 @@ public class Artist {
 
     public void setTags(List<String> tags) {
         this.tags = tags == null ? new ArrayList<>() : new ArrayList<>(tags);
+    }
+
+    public List<Video> getVideos() {
+        return videos;
     }
 }
