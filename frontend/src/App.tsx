@@ -1866,37 +1866,52 @@ export default function App() {
     const controller = new AbortController();
     let cancelled = false;
 
-    const loadPlaylistMedia = async () => {
-      if (!isAuthenticated) {
-        try {
-          const response = await http.get<ClipResponse[]>('/public/clips', {
-            signal: controller.signal
-          });
-          if (cancelled) {
-            return;
-          }
-          const normalizedClips = ensureArray(response.data).map(normalizeClip);
-          setPlaylistVideos([]);
-          setPlaylistClips(normalizedClips);
-          setClips([]);
-          setHiddenVideoIds([]);
-          setPlaylistSearchQuery('');
-        } catch (error) {
-          if (controller.signal.aborted) {
-            return;
-          }
-          console.error('Failed to load public clips', error);
-          if (!cancelled) {
-            setPlaylistVideos([]);
-            setPlaylistClips([]);
-            setClips([]);
-            setHiddenVideoIds([]);
-            setPlaylistSearchQuery('');
-          }
+    const loadPublicPlaylist = async () => {
+      try {
+        const response = await http.get<ClipResponse[]>('/public/clips', {
+          signal: controller.signal
+        });
+        if (cancelled) {
+          return;
         }
-        return;
+        const normalizedClips = ensureArray(response.data).map(normalizeClip);
+        setPlaylistVideos([]);
+        setPlaylistClips(normalizedClips);
+        setPlaylistSearchQuery('');
+      } catch (error) {
+        if (controller.signal.aborted) {
+          return;
+        }
+        console.error('Failed to load public clips', error);
+        if (!cancelled) {
+          setPlaylistVideos([]);
+          setPlaylistClips([]);
+          setPlaylistSearchQuery('');
+        }
       }
+    };
 
+    void loadPublicPlaylist();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [http, isAuthenticated]);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setVideos([]);
+      setClips([]);
+      setHiddenVideoIds([]);
+      setSelectedVideo(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    let cancelled = false;
+
+    const loadMediaLibrary = async () => {
       try {
         const response = await http.get<{ videos?: MaybeArray<VideoResponse>; clips?: MaybeArray<ClipResponse> }>(
           '/library/media',
@@ -1914,24 +1929,29 @@ export default function App() {
           thumbnailUrl: video.thumbnailUrl ?? null
         }));
         const normalizedClips = ensureArray(response.data?.clips).map(normalizeClip);
-        setPlaylistVideos(fetchedVideos);
-        setPlaylistClips(normalizedClips);
+        setVideos(fetchedVideos);
         setClips(normalizedClips);
-        setPlaylistSearchQuery('');
+        setHiddenVideoIds((previous) =>
+          previous.filter((id) => fetchedVideos.some((video) => video.id === id))
+        );
+        setSelectedVideo((previous) =>
+          previous && fetchedVideos.some((video) => video.id === previous) ? previous : null
+        );
       } catch (error) {
         if (controller.signal.aborted) {
           return;
         }
         console.error('Failed to load media library', error);
         if (!cancelled) {
-          setPlaylistVideos([]);
-          setPlaylistClips([]);
+          setVideos([]);
           setClips([]);
+          setHiddenVideoIds([]);
+          setSelectedVideo(null);
         }
       }
     };
 
-    void loadPlaylistMedia();
+    void loadMediaLibrary();
 
     return () => {
       cancelled = true;
