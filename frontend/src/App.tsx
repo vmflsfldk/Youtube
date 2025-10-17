@@ -189,15 +189,34 @@ const isClipSourceVideo = (video: VideoResponse): boolean =>
 
 type MediaRegistrationType = 'video' | 'clip';
 
-const resolveMediaRegistrationType = (url: string, selectedVideoId: number | null): MediaRegistrationType => {
+const resolveMediaRegistrationType = (
+  url: string,
+  selectedVideoId: number | null,
+  previewSections: VideoSectionResponse[],
+  previewDurationSec: number | null
+): MediaRegistrationType => {
   const normalized = url.trim().toLowerCase();
-  const isWatchLink = normalized.includes('watch');
-  if (isWatchLink) {
+
+  if (normalized.includes('live')) {
     return 'clip';
   }
+
+  const durationSec =
+    typeof previewDurationSec === 'number' && Number.isFinite(previewDurationSec)
+      ? previewDurationSec
+      : null;
+  const hasCommentSections = previewSections.some(
+    (section) => (section.source ?? '').toUpperCase() === 'COMMENT'
+  );
+
+  if (hasCommentSections && durationSec !== null && durationSec >= 15 * 60) {
+    return 'clip';
+  }
+
   if (normalized.length > 0) {
     return 'video';
   }
+
   return selectedVideoId !== null ? 'clip' : 'video';
 };
 
@@ -313,6 +332,11 @@ interface VideoSectionResponse {
   startSec: number;
   endSec: number;
   source: string;
+}
+
+interface VideoSectionPreviewResponse {
+  sections: VideoSectionResponse[];
+  durationSec: number | null;
 }
 
 interface VideoResponse {
@@ -571,6 +595,7 @@ export default function App() {
   const [clipCandidates, setClipCandidates] = useState<ClipCandidateResponse[]>([]);
   const [isFetchingVideoSections, setIsFetchingVideoSections] = useState(false);
   const [videoSectionPreview, setVideoSectionPreview] = useState<VideoSectionResponse[]>([]);
+  const [videoSectionPreviewDurationSec, setVideoSectionPreviewDurationSec] = useState<number | null>(null);
   const [videoSectionPreviewError, setVideoSectionPreviewError] = useState<string | null>(null);
   const [hasAttemptedVideoSectionPreview, setHasAttemptedVideoSectionPreview] = useState(false);
   const [isLibraryVideoFormOpen, setLibraryVideoFormOpen] = useState(false);
@@ -581,6 +606,7 @@ export default function App() {
   const [artistTagQuery, setArtistTagQuery] = useState('');
   const [videoForm, setVideoForm] = useState({ url: '', artistId: '', description: '', captionsJson: '' });
   const [clipForm, setClipForm] = useState<ClipFormState>(() => createInitialClipFormState());
+  const previousVideoUrlRef = useRef(videoForm.url.trim());
   const handleClipTimePartChange = useCallback(
     (key: ClipTimeField) => (event: ChangeEvent<HTMLInputElement>) => {
       const options = key.endsWith('Hours')
@@ -592,8 +618,14 @@ export default function App() {
     []
   );
   const mediaRegistrationType = useMemo(
-    () => resolveMediaRegistrationType(videoForm.url, selectedVideo),
-    [videoForm.url, selectedVideo]
+    () =>
+      resolveMediaRegistrationType(
+        videoForm.url,
+        selectedVideo,
+        videoSectionPreview,
+        videoSectionPreviewDurationSec
+      ),
+    [videoForm.url, selectedVideo, videoSectionPreview, videoSectionPreviewDurationSec]
   );
   const isClipRegistration = mediaRegistrationType === 'clip';
   const shouldShowEmbeddedClipForm = useMemo(
@@ -641,8 +673,11 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (videoForm.url.trim() === '') {
+    const trimmedUrl = videoForm.url.trim();
+    if (trimmedUrl !== previousVideoUrlRef.current) {
+      previousVideoUrlRef.current = trimmedUrl;
       setVideoSectionPreview([]);
+      setVideoSectionPreviewDurationSec(null);
       setVideoSectionPreviewError(null);
       setHasAttemptedVideoSectionPreview(false);
     }
@@ -1424,6 +1459,7 @@ export default function App() {
     if (!trimmedUrl) {
       setVideoSectionPreviewError('영상 링크를 입력해 주세요.');
       setVideoSectionPreview([]);
+      setVideoSectionPreviewDurationSec(null);
       setHasAttemptedVideoSectionPreview(true);
       return;
     }
@@ -1433,11 +1469,16 @@ export default function App() {
     setHasAttemptedVideoSectionPreview(true);
 
     try {
-      const response = await http.get<VideoSectionResponse[]>('/videos/sections/preview', {
+      const response = await http.get<VideoSectionPreviewResponse>('/videos/sections/preview', {
         headers: authHeaders,
         params: { videoUrl: trimmedUrl }
       });
-      setVideoSectionPreview(ensureArray(response.data));
+      const sections = ensureArray(response.data.sections);
+      setVideoSectionPreview(sections);
+      const duration = response.data.durationSec;
+      setVideoSectionPreviewDurationSec(
+        typeof duration === 'number' && Number.isFinite(duration) ? duration : null
+      );
     } catch (error) {
       console.error('Failed to fetch video sections', error);
       let message = '구간 정보를 불러오지 못했습니다.';
@@ -1458,6 +1499,7 @@ export default function App() {
       }
       setVideoSectionPreviewError(message);
       setVideoSectionPreview([]);
+      setVideoSectionPreviewDurationSec(null);
     } finally {
       setIsFetchingVideoSections(false);
     }
@@ -1827,13 +1869,27 @@ export default function App() {
 
   const handleMediaUrlChange = useCallback(
     (value: string) => {
+      const trimmedValue = value.trim();
+      previousVideoUrlRef.current = trimmedValue;
       setVideoForm((prev) => ({ ...prev, url: value }));
       setClipForm((prev) => ({ ...prev, videoUrl: value }));
-      if (value.trim().length > 0) {
+      setVideoSectionPreview([]);
+      setVideoSectionPreviewDurationSec(null);
+      setVideoSectionPreviewError(null);
+      setHasAttemptedVideoSectionPreview(false);
+      if (trimmedValue.length > 0) {
         setSelectedVideo(null);
       }
     },
-    [setClipForm, setSelectedVideo, setVideoForm]
+    [
+      setClipForm,
+      setHasAttemptedVideoSectionPreview,
+      setSelectedVideo,
+      setVideoForm,
+      setVideoSectionPreview,
+      setVideoSectionPreviewDurationSec,
+      setVideoSectionPreviewError
+    ]
   );
 
   const runAutoDetect = async () => {
@@ -2470,7 +2526,7 @@ export default function App() {
                             </button>
                           )}
                         </div>
-                        <p className="form-hint">watch가 포함된 URL은 자동으로 클립 등록으로 분류됩니다.</p>
+                        <p className="form-hint">live가 포함된 URL은 자동으로 클립 등록으로 분류됩니다.</p>
                         {!isClipRegistration && (
                           <>
                             {videoSectionPreviewError && (
@@ -3266,7 +3322,7 @@ export default function App() {
                             </span>
                           </div>
                           <form onSubmit={handleMediaSubmit} className="stacked-form artist-library__form">
-                            <p className="form-hint">YouTube URL에 watch가 포함되면 자동으로 클립 등록으로 전환됩니다.</p>
+                            <p className="form-hint">YouTube URL에 live가 포함되면 자동으로 클립 등록으로 전환됩니다.</p>
                             <label htmlFor="libraryMediaUrl">YouTube URL</label>
                             <div className="number-row">
                               <input

@@ -2,7 +2,7 @@ package com.example.youtube.controller;
 
 import com.example.youtube.dto.VideoCreateRequest;
 import com.example.youtube.dto.VideoResponse;
-import com.example.youtube.dto.VideoSectionResponse;
+import com.example.youtube.dto.VideoSectionPreviewResponse;
 import com.example.youtube.service.VideoService;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -34,7 +34,7 @@ public class VideoController {
     }
 
     @GetMapping("/sections/preview")
-    public List<VideoSectionResponse> previewSections(@RequestParam("videoUrl") String videoUrl) {
+    public VideoSectionPreviewResponse previewSections(@RequestParam("videoUrl") String videoUrl) {
         return videoService.previewSections(videoUrl);
     }
 }
