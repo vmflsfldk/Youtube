@@ -109,72 +109,6 @@ const ARTIST_COUNTRY_METADATA: ReadonlyArray<{
 const AUTH_TOKEN_STORAGE_KEY = 'yt-clip.auth-token';
 const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000;
 
-const DEFAULT_GOOGLE_CLIENT_ID = '245943329145-os94mkp21415hadulir67v1i0lqjrcnq.apps.googleusercontent.com';
-
-const extractGoogleClientId = (value: unknown): string | null => {
-  if (typeof value === 'string') {
-    const trimmed = value.trim();
-    if (!trimmed) {
-      return null;
-    }
-
-    if (trimmed.startsWith('[')) {
-      try {
-        const parsed = JSON.parse(trimmed);
-        if (Array.isArray(parsed)) {
-          const firstValid = parsed.find((item): item is string => typeof item === 'string' && item.trim().length > 0);
-          if (firstValid) {
-            return firstValid.trim();
-          }
-        }
-      } catch (error) {
-        console.warn('[yt-clip] Failed to parse JSON formatted Google client ID value', error);
-      }
-    }
-
-    const [firstCandidate] = trimmed
-      .split(/[\n,]/)
-      .map((item) => item.trim())
-      .filter((item) => item.length > 0);
-    if (firstCandidate) {
-      return firstCandidate;
-    }
-
-    return trimmed;
-  }
-
-  if (Array.isArray(value)) {
-    const firstValid = value.find((item): item is string => typeof item === 'string' && item.trim().length > 0);
-    if (firstValid) {
-      return firstValid.trim();
-    }
-  }
-
-  return null;
-};
-
-const resolveGoogleClientId = (): string => {
-  const envValue = extractGoogleClientId(import.meta.env?.VITE_GOOGLE_CLIENT_ID);
-  if (envValue) {
-    return envValue;
-  }
-
-  if (typeof window !== 'undefined') {
-    const globalValue = extractGoogleClientId(
-      (window as typeof window & { __YT_CLIP_GOOGLE_CLIENT_ID__?: unknown }).__YT_CLIP_GOOGLE_CLIENT_ID__
-    );
-    if (globalValue) {
-      return globalValue;
-    }
-  }
-
-  console.warn(
-    '[yt-clip] VITE_GOOGLE_CLIENT_ID가 설정되지 않았습니다. 기본 클라이언트 ID를 사용합니다. 배포 환경에서는 고유한 Google OAuth 클라이언트 ID를 설정하세요.'
-  );
-
-  return DEFAULT_GOOGLE_CLIENT_ID;
-};
-
 interface ArtistResponse {
   id: number;
   name: string;
@@ -210,7 +144,7 @@ interface VideoResponse {
 
 interface ClipResponse {
   id: number;
-  videoId: number | null;
+  videoId: number;
   title: string;
   startSec: number;
   endSec: number;
@@ -432,7 +366,6 @@ const decodeGoogleToken = (token: string): GoogleIdTokenPayload | null => {
 };
 
 export default function App() {
-  const googleClientId = useMemo(() => resolveGoogleClientId(), []);
   const [authToken, setAuthToken] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<UserResponse | null>(null);
   const [isLoadingUser, setIsLoadingUser] = useState(false);
@@ -1342,19 +1275,14 @@ export default function App() {
       setClipForm({ title: '', startSec: 0, endSec: 0, tags: '', videoUrl: '' });
       setVideoForm((prev) => ({ ...prev, url: '' }));
       setClipCandidates([]);
-      const responseVideoId = response.data.videoId ?? null;
-      if (options?.hiddenSource && responseVideoId !== null) {
+      if (options?.hiddenSource) {
         setHiddenVideoIds((prev) =>
-          prev.includes(responseVideoId) ? prev : [...prev, responseVideoId]
+          prev.includes(response.data.videoId) ? prev : [...prev, response.data.videoId]
         );
       }
-      if (responseVideoId !== null) {
-        if (responseVideoId !== selectedVideo) {
-          setSelectedVideo(responseVideoId);
-          setClips([normalizedClip]);
-        } else {
-          setClips((prev) => [...prev, normalizedClip]);
-        }
+      if (response.data.videoId !== selectedVideo) {
+        setSelectedVideo(response.data.videoId);
+        setClips([normalizedClip]);
       } else {
         setClips((prev) => [...prev, normalizedClip]);
       }
@@ -1929,7 +1857,7 @@ export default function App() {
         icon: (
           <svg viewBox="0 0 24 24" role="presentation" aria-hidden="true">
             <path
-              d="M4 5a1 1 0 0 1 1 -1h10.5a1 1 0 0 1 0 2H5a1 1 0 0 1 -1 -1Zm0 5a1 1 0 0 1 1 -1h10.5a1 1 0 0 1 0 2H5a1 1 0 0 1 -1 -1Zm14 2.75a2.75 2.75 0 1 1 2.75 2.75A2.75 2.75 0 0 1 18 12.75Zm0 4.5a4.5 4.5 0 1 0 -3.583 -1.75l -0.752 1.503a1 1 0 1 0 1.788 0.894l 0.719 -1.437a4.47 4.47 0 0 0 1.828 0.39Z"
+              d="M4 5a1 1 0 0 1 1-1h10.5a1 1 0 0 1 0 2H5a1 1 0 0 1-1-1Zm0 5a1 1 0 0 1 1-1h10.5a1 1 0 0 1 0 2H5a1 1 0 0 1-1-1Zm14a2.75 2.75 0 1 1 2.75 2.75A2.75 2.75 0 0 1 18 12.75Zm0 4.5a4.5 4.5 0 1 0-3.583-1.75l-.752 1.503a1 1 0 1 0 1.788.894l.719-1.437a4.47 4.47 0 0 0 1.828.39Z"
               fill="currentColor"
             />
           </svg>
@@ -2015,7 +1943,10 @@ export default function App() {
             <div className="sidebar__auth-content">
               <div className="sidebar__auth-social">
                 {isGoogleReady ? (
-                  <GoogleLoginButton clientId={googleClientId} onCredential={handleGoogleCredential} />
+                  <GoogleLoginButton
+                    clientId="245943329145-os94mkp21415hadulir67v1i0lqjrcnq.apps.googleusercontent.com"
+                    onCredential={handleGoogleCredential}
+                  />
                 ) : (
                   <span className="sidebar__auth-muted">구글 로그인 준비 중...</span>
                 )}
