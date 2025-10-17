@@ -1576,6 +1576,10 @@ export default function App() {
 
   const handleArtistClick = (artistId: number) => {
     setVideoForm((prev) => ({ ...prev, artistId: String(artistId) }));
+    setSelectedVideo(null);
+    setActiveClipId(null);
+    setClipCandidates([]);
+    setClips([]);
   };
 
   const handleArtistClear = () => {
