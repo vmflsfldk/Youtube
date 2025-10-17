@@ -607,6 +607,7 @@ export default function App() {
   const [videoForm, setVideoForm] = useState({ url: '', artistId: '', description: '', captionsJson: '' });
   const [clipForm, setClipForm] = useState<ClipFormState>(() => createInitialClipFormState());
   const previousVideoUrlRef = useRef(videoForm.url.trim());
+  const autoFetchedCommentSectionsUrlRef = useRef<string | null>(null);
   const handleClipTimePartChange = useCallback(
     (key: ClipTimeField) => (event: ChangeEvent<HTMLInputElement>) => {
       const options = key.endsWith('Hours')
@@ -1877,6 +1878,7 @@ export default function App() {
       setVideoSectionPreviewDurationSec(null);
       setVideoSectionPreviewError(null);
       setHasAttemptedVideoSectionPreview(false);
+      autoFetchedCommentSectionsUrlRef.current = null;
       if (trimmedValue.length > 0) {
         setSelectedVideo(null);
       }
@@ -1891,6 +1893,42 @@ export default function App() {
       setVideoSectionPreviewError
     ]
   );
+
+  useEffect(() => {
+    if (!isClipRegistration) {
+      autoFetchedCommentSectionsUrlRef.current = null;
+      return;
+    }
+
+    const trimmedUrl = videoForm.url.trim();
+
+    if (!trimmedUrl) {
+      autoFetchedCommentSectionsUrlRef.current = null;
+      return;
+    }
+
+    if (creationDisabled) {
+      return;
+    }
+
+    if (hasAttemptedVideoSectionPreview) {
+      autoFetchedCommentSectionsUrlRef.current = trimmedUrl;
+      return;
+    }
+
+    if (autoFetchedCommentSectionsUrlRef.current === trimmedUrl) {
+      return;
+    }
+
+    autoFetchedCommentSectionsUrlRef.current = trimmedUrl;
+    void handleVideoSectionPreviewFetch();
+  }, [
+    creationDisabled,
+    handleVideoSectionPreviewFetch,
+    hasAttemptedVideoSectionPreview,
+    isClipRegistration,
+    videoForm.url
+  ]);
 
   const runAutoDetect = async () => {
     if (!selectedVideo) {
