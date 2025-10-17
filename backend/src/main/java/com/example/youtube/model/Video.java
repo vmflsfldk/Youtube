@@ -1,6 +1,8 @@
 package com.example.youtube.model;
 
 import jakarta.persistence.*;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "videos")
@@ -35,6 +37,9 @@ public class Video {
     @Lob
     @Column(name = "captions_json")
     private String captionsJson;
+
+    @OneToMany(mappedBy = "video")
+    private List<Clip> clips = new ArrayList<>();
 
     public Video() {
     }
@@ -111,5 +116,9 @@ public class Video {
 
     public void setCaptionsJson(String captionsJson) {
         this.captionsJson = captionsJson;
+    }
+
+    public List<Clip> getClips() {
+        return clips;
     }
 }
