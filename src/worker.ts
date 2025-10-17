@@ -32,6 +32,7 @@ interface ArtistResponse {
   name: string;
   displayName: string;
   youtubeChannelId: string;
+  youtubeChannelTitle?: string | null;
   profileImageUrl?: string | null;
 }
 
@@ -207,6 +208,7 @@ interface ArtistRow {
   name: string;
   display_name: string | null;
   youtube_channel_id: string;
+  youtube_channel_title: string | null;
   profile_image_url: string | null;
 }
 
@@ -236,6 +238,7 @@ let hasEnsuredSchema = false;
 let hasEnsuredArtistDisplayNameColumn = false;
 let hasEnsuredArtistProfileImageColumn = false;
 let hasEnsuredArtistUpdatedAtColumn = false;
+let hasEnsuredArtistChannelTitleColumn = false;
 let hasEnsuredUserPasswordColumns = false;
 let hasEnsuredVideoContentTypeColumn = false;
 let hasWarnedMissingYouTubeApiKey = false;
@@ -569,6 +572,24 @@ async function ensureArtistProfileImageColumn(db: D1Database): Promise<void> {
   }
 
   hasEnsuredArtistProfileImageColumn = true;
+}
+
+async function ensureArtistChannelTitleColumn(db: D1Database): Promise<void> {
+  if (hasEnsuredArtistChannelTitleColumn) {
+    return;
+  }
+
+  const { results } = await db.prepare("PRAGMA table_info(artists)").all<TableInfoRow>();
+  const hasColumn = (results ?? []).some((column) => column.name?.toLowerCase() === "youtube_channel_title");
+
+  if (!hasColumn) {
+    const alterResult = await db.prepare("ALTER TABLE artists ADD COLUMN youtube_channel_title TEXT").run();
+    if (!alterResult.success && !isDuplicateColumnError(alterResult.error)) {
+      throw new Error(alterResult.error ?? "Failed to add youtube_channel_title column to artists table");
+    }
+  }
+
+  hasEnsuredArtistChannelTitleColumn = true;
 }
 
 async function ensureArtistUpdatedAtColumn(db: D1Database): Promise<void> {
@@ -1184,16 +1205,19 @@ async function createArtist(
   await ensureArtistUpdatedAtColumn(env.DB);
   await ensureArtistDisplayNameColumn(env.DB);
   await ensureArtistProfileImageColumn(env.DB);
+  await ensureArtistChannelTitleColumn(env.DB);
 
   const metadata = await fetchChannelMetadata(env, youtubeChannelId);
   const resolvedChannelId = metadata.channelId?.trim() || youtubeChannelId;
   const displayName = displayNameRaw.trim() || metadata.title || name;
   const profileImageUrl = metadata.profileImageUrl;
+  const normalizedChannelTitle = metadata.title ? metadata.title.trim() : "";
+  const channelTitle = normalizedChannelTitle.length > 0 ? normalizedChannelTitle : null;
 
   const insertResult = await env.DB.prepare(
-    "INSERT INTO artists (name, display_name, youtube_channel_id, created_by) VALUES (?, ?, ?, ?)"
+    "INSERT INTO artists (name, display_name, youtube_channel_id, youtube_channel_title, created_by) VALUES (?, ?, ?, ?, ?)"
   )
-    .bind(name, displayName, resolvedChannelId, user.id)
+    .bind(name, displayName, resolvedChannelId, channelTitle, user.id)
     .run();
   if (!insertResult.success) {
     throw new HttpError(500, insertResult.error ?? "Failed to insert artist");
@@ -1221,6 +1245,7 @@ async function createArtist(
       name,
       displayName,
       youtubeChannelId: resolvedChannelId,
+      youtubeChannelTitle: channelTitle,
       profileImageUrl: finalProfileImageUrl
     } satisfies ArtistResponse,
     201,
@@ -1238,11 +1263,12 @@ async function listArtists(
   await ensureArtistUpdatedAtColumn(env.DB);
   await ensureArtistDisplayNameColumn(env.DB);
   await ensureArtistProfileImageColumn(env.DB);
+  await ensureArtistChannelTitleColumn(env.DB);
   let results: ArtistRow[] | null | undefined;
   if (mine) {
     const requestingUser = requireUser(user);
     const response = await env.DB.prepare(
-      `SELECT a.id, a.name, a.display_name, a.youtube_channel_id, a.profile_image_url
+      `SELECT a.id, a.name, a.display_name, a.youtube_channel_id, a.youtube_channel_title, a.profile_image_url
          FROM artists a
          JOIN user_favorite_artists ufa ON ufa.artist_id = a.id
         WHERE ufa.user_id = ?
@@ -1253,7 +1279,7 @@ async function listArtists(
     results = response.results;
   } else {
     const response = await env.DB.prepare(
-      `SELECT id, name, display_name, youtube_channel_id, profile_image_url
+      `SELECT id, name, display_name, youtube_channel_id, youtube_channel_title, profile_image_url
          FROM artists
         ORDER BY id DESC`
     ).all<ArtistRow>();
@@ -1994,8 +2020,9 @@ async function ensureVideo(env: Env, videoId: number, userId: number): Promise<v
 async function refreshArtistMetadataIfNeeded(env: Env, row: ArtistRow): Promise<ArtistRow> {
   const needsDisplayName = !row.display_name || row.display_name.trim().length === 0;
   const needsProfileImage = !row.profile_image_url || row.profile_image_url.trim().length === 0;
+  const needsChannelTitle = !row.youtube_channel_title || row.youtube_channel_title.trim().length === 0;
 
-  if (!needsDisplayName && !needsProfileImage) {
+  if (!needsDisplayName && !needsProfileImage && !needsChannelTitle) {
     return row;
   }
 
@@ -2011,6 +2038,7 @@ async function refreshArtistMetadataIfNeeded(env: Env, row: ArtistRow): Promise<
   let displayName = row.display_name;
   let profileImageUrl = row.profile_image_url;
   let youtubeChannelId = row.youtube_channel_id;
+  let youtubeChannelTitle = row.youtube_channel_title;
 
   if (metadata.channelId && metadata.channelId.trim() && metadata.channelId !== row.youtube_channel_id) {
     youtubeChannelId = metadata.channelId.trim();
@@ -2018,10 +2046,18 @@ async function refreshArtistMetadataIfNeeded(env: Env, row: ArtistRow): Promise<
     values.push(youtubeChannelId);
   }
 
-  if (needsDisplayName && metadata.title) {
-    displayName = metadata.title;
-    assignments.push("display_name = ?");
-    values.push(metadata.title);
+  const normalizedTitle = metadata.title ? metadata.title.trim() : "";
+  if ((needsDisplayName || needsChannelTitle) && normalizedTitle.length > 0) {
+    if (needsDisplayName) {
+      displayName = normalizedTitle;
+      assignments.push("display_name = ?");
+      values.push(normalizedTitle);
+    }
+    if (needsChannelTitle) {
+      youtubeChannelTitle = normalizedTitle;
+      assignments.push("youtube_channel_title = ?");
+      values.push(normalizedTitle);
+    }
   }
 
   if (needsProfileImage && metadata.profileImageUrl) {
@@ -2046,6 +2082,7 @@ async function refreshArtistMetadataIfNeeded(env: Env, row: ArtistRow): Promise<
     ...row,
     youtube_channel_id: youtubeChannelId ?? row.youtube_channel_id,
     display_name: displayName ?? row.display_name,
+    youtube_channel_title: youtubeChannelTitle ?? row.youtube_channel_title,
     profile_image_url: profileImageUrl ?? row.profile_image_url
   };
 }
@@ -2056,6 +2093,7 @@ function toArtistResponse(row: ArtistRow): ArtistResponse {
     name: row.name,
     displayName: row.display_name ?? row.name,
     youtubeChannelId: row.youtube_channel_id,
+    youtubeChannelTitle: row.youtube_channel_title ?? null,
     profileImageUrl: row.profile_image_url ?? null
   };
 }
