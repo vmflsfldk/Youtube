@@ -123,6 +123,30 @@ interface ClipCandidateResponse {
   label: string;
 }
 
+interface WorkerTestOverrides {
+  fetchVideoMetadata(env: Env, videoId: string): Promise<{
+    title: string;
+    durationSec: number | null;
+    thumbnailUrl: string | null;
+    channelId: string | null;
+    description: string | null;
+  }>;
+  detectFromChapterSources(
+    env: Env,
+    youtubeVideoId: string,
+    durationSec: number | null
+  ): Promise<ClipCandidateResponse[]>;
+  detectFromDescription(video: { durationSec: number | null; description: string | null }): ClipCandidateResponse[];
+  detectFromCaptions(video: { durationSec: number | null; captionsJson: string | null }): ClipCandidateResponse[];
+}
+
+const testOverrides: WorkerTestOverrides = {
+  fetchVideoMetadata,
+  detectFromChapterSources,
+  detectFromDescription,
+  detectFromCaptions
+};
+
 interface CorsConfig {
   origin: string | null;
   requestHeaders: string | null;
@@ -1198,6 +1222,9 @@ async function handleApi(
         return await listVideos(url, env, requireUser(user), cors);
       }
     }
+    if (request.method === "POST" && path === "/api/videos/clip-suggestions") {
+      return await suggestClipCandidates(request, env, requireUser(user), cors);
+    }
     if (path === "/api/clips") {
       if (request.method === "POST") {
         return await createClip(request, env, requireUser(user), cors);
@@ -1404,6 +1431,126 @@ async function toggleFavorite(
   return emptyResponse(204, cors);
 }
 
+interface VideoUrlResolutionParams {
+  artistId: number;
+  videoUrl: string;
+  description?: string | null;
+  captionsJson?: string | null;
+}
+
+async function getOrCreateVideoByUrl(
+  env: Env,
+  user: UserContext,
+  params: VideoUrlResolutionParams
+): Promise<{ row: VideoRow; created: boolean }> {
+  const { artistId, videoUrl } = params;
+  await ensureArtist(env, artistId, user.id);
+  await ensureVideoContentTypeColumn(env.DB);
+  await ensureVideoHiddenColumn(env.DB);
+
+  const videoId = extractVideoId(videoUrl);
+  if (!videoId) {
+    throw new HttpError(400, "Unable to parse videoId from URL");
+  }
+
+  const metadata = await testOverrides.fetchVideoMetadata(env, videoId);
+
+  let description = params.description ?? null;
+  if (!description && metadata.description) {
+    description = metadata.description;
+  }
+
+  const captionsJson = params.captionsJson ?? null;
+
+  const existing = await env.DB.prepare(
+    `SELECT v.*, a.created_by
+       FROM videos v
+       JOIN artists a ON a.id = v.artist_id
+      WHERE v.youtube_video_id = ?`
+  )
+    .bind(videoId)
+    .first<(VideoRow & { created_by: number }) | null>();
+
+  if (existing) {
+    if (existing.created_by !== user.id) {
+      throw new HttpError(403, "이 영상에 접근할 권한이 없습니다.");
+    }
+    if (existing.artist_id !== artistId) {
+      throw new HttpError(409, "다른 아티스트에 이미 등록된 영상입니다.");
+    }
+
+    const updateResult = await env.DB.prepare(
+      `UPDATE videos
+          SET artist_id = ?,
+              title = ?,
+              duration_sec = ?,
+              thumbnail_url = ?,
+              channel_id = ?,
+              description = ?,
+              captions_json = ?,
+              content_type = ?,
+              hidden = ?
+        WHERE id = ?`
+    )
+      .bind(
+        artistId,
+        metadata.title ?? "Untitled",
+        metadata.durationSec,
+        metadata.thumbnailUrl,
+        metadata.channelId,
+        description,
+        captionsJson,
+        "OFFICIAL",
+        0,
+        existing.id
+      )
+      .run();
+
+    if (!updateResult.success) {
+      throw new HttpError(500, updateResult.error ?? "Failed to update video");
+    }
+
+    const row = await env.DB.prepare("SELECT * FROM videos WHERE id = ?")
+      .bind(existing.id)
+      .first<VideoRow>();
+    if (!row) {
+      throw new HttpError(500, "Failed to load updated video");
+    }
+    return { row, created: false };
+  }
+
+  const insertResult = await env.DB.prepare(
+    `INSERT INTO videos (artist_id, youtube_video_id, title, duration_sec, thumbnail_url, channel_id, description, captions_json, content_type, hidden)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  )
+    .bind(
+      artistId,
+      videoId,
+      metadata.title ?? "Untitled",
+      metadata.durationSec,
+      metadata.thumbnailUrl,
+      metadata.channelId,
+      description,
+      captionsJson,
+      "OFFICIAL",
+      0
+    )
+    .run();
+
+  if (!insertResult.success) {
+    throw new HttpError(500, insertResult.error ?? "Failed to insert video");
+  }
+
+  const insertedId = numberFromRowId(insertResult.meta.last_row_id);
+  const row = await env.DB.prepare("SELECT * FROM videos WHERE id = ?")
+    .bind(insertedId)
+    .first<VideoRow>();
+  if (!row) {
+    throw new HttpError(500, "Failed to load created video");
+  }
+  return { row, created: true };
+}
+
 async function createVideo(
   request: Request,
   env: Env,
@@ -1415,88 +1562,50 @@ async function createVideo(
   if (!Number.isFinite(artistId)) {
     throw new HttpError(400, "artistId must be a number");
   }
-  await ensureArtist(env, artistId, user.id);
-  await ensureVideoContentTypeColumn(env.DB);
-  await ensureVideoHiddenColumn(env.DB);
 
   const videoUrl = typeof body.videoUrl === "string" ? body.videoUrl : "";
-  let description = sanitizeMultilineText(body.description);
+  const description = sanitizeMultilineText(body.description);
   const captionsJson = typeof body.captionsJson === "string" ? body.captionsJson : null;
-  const videoId = extractVideoId(videoUrl);
-  if (!videoId) {
-    throw new HttpError(400, "Unable to parse videoId from URL");
+
+  const { row, created } = await getOrCreateVideoByUrl(env, user, {
+    artistId,
+    videoUrl,
+    description,
+    captionsJson
+  });
+
+  return jsonResponse(toVideoResponse(row), created ? 201 : 200, cors);
+}
+
+async function suggestClipCandidates(
+  request: Request,
+  env: Env,
+  user: UserContext,
+  cors: CorsConfig
+): Promise<Response> {
+  const body = await readJson(request);
+  const artistId = Number(body.artistId);
+  if (!Number.isFinite(artistId)) {
+    throw new HttpError(400, "artistId must be a number");
   }
 
-  const metadata = await fetchVideoMetadata(env, videoId);
-  if (!description && metadata.description) {
-    description = metadata.description;
-  }
-  const existing = await env.DB.prepare(
-    "SELECT id, content_type FROM videos WHERE youtube_video_id = ?"
-  )
-    .bind(videoId)
-    .first<Pick<VideoRow, "id" | "content_type">>();
+  const videoUrl = typeof body.videoUrl === "string" ? body.videoUrl : "";
 
-  if (existing) {
-    await env.DB.prepare(
-      `UPDATE videos
-          SET artist_id = ?,
-              title = ?,
-              duration_sec = ?,
-              thumbnail_url = ?,
-              channel_id = ?,
-              description = ?,
-              captions_json = ?,
-              content_type = ?,
-              hidden = 0
-        WHERE id = ?`
-    ).bind(
-      artistId,
-      metadata.title ?? "Untitled",
-      metadata.durationSec,
-      metadata.thumbnailUrl,
-      metadata.channelId,
-      description,
-      captionsJson,
-      "OFFICIAL",
-      existing.id
-    ).run();
-    const row = await env.DB.prepare("SELECT * FROM videos WHERE id = ?")
-      .bind(existing.id)
-      .first<VideoRow>();
-    if (!row) {
-      throw new HttpError(500, "Failed to load updated video");
-    }
-    return jsonResponse(toVideoResponse(row), 200, cors);
-  }
+  const { row } = await getOrCreateVideoByUrl(env, user, {
+    artistId,
+    videoUrl
+  });
 
-  const insertResult = await env.DB.prepare(
-    `INSERT INTO videos (artist_id, youtube_video_id, title, duration_sec, thumbnail_url, channel_id, description, captions_json, content_type, hidden)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`
-  )
-    .bind(
-      artistId,
-      videoId,
-      metadata.title ?? "Untitled",
-      metadata.durationSec,
-      metadata.thumbnailUrl,
-      metadata.channelId,
-      description,
-      captionsJson,
-      "OFFICIAL"
-    )
-    .run();
-  if (!insertResult.success) {
-    throw new HttpError(500, insertResult.error ?? "Failed to insert video");
-  }
-  const insertedId = numberFromRowId(insertResult.meta.last_row_id);
-  const row = await env.DB.prepare("SELECT * FROM videos WHERE id = ?")
-    .bind(insertedId)
-    .first<VideoRow>();
-  if (!row) {
-    throw new HttpError(500, "Failed to load created video");
-  }
-  return jsonResponse(toVideoResponse(row), 201, cors);
+  const candidates = await detectClipCandidatesForVideo(env, row, "chapters");
+
+  return jsonResponse(
+    {
+      video: toVideoResponse(row),
+      candidates
+    },
+    200,
+    cors
+  );
 }
 
 async function listVideos(url: URL, env: Env, user: UserContext, cors: CorsConfig): Promise<Response> {
@@ -1797,6 +1906,45 @@ async function listPublicClips(env: Env, cors: CorsConfig): Promise<Response> {
   return jsonResponse(clips, 200, cors);
 }
 
+type ClipDetectionMode = "chapters" | "captions" | "combined";
+
+const normalizeDetectionMode = (modeRaw: string): ClipDetectionMode => {
+  const normalized = modeRaw.trim().toLowerCase();
+  if (normalized === "captions") {
+    return "captions";
+  }
+  if (normalized === "chapters" || normalized.length === 0) {
+    return "chapters";
+  }
+  return "combined";
+};
+
+async function detectClipCandidatesForVideo(
+  env: Env,
+  row: VideoRow,
+  mode: ClipDetectionMode
+): Promise<ClipCandidateResponse[]> {
+  const video = toVideoRowDetails(row);
+  const youtubeVideoId = row.youtube_video_id ? row.youtube_video_id.trim() : "";
+
+  if (mode === "captions") {
+    return testOverrides.detectFromCaptions(video);
+  }
+
+  if (mode === "chapters") {
+    const chapterCandidates = youtubeVideoId
+      ? await testOverrides.detectFromChapterSources(env, youtubeVideoId, video.durationSec ?? null)
+      : [];
+    const descriptionCandidates = testOverrides.detectFromDescription(video);
+    return mergeClipCandidates(chapterCandidates, descriptionCandidates);
+  }
+
+  return mergeClipCandidates(
+    testOverrides.detectFromDescription(video),
+    testOverrides.detectFromCaptions(video)
+  );
+}
+
 async function autoDetect(
   request: Request,
   env: Env,
@@ -1821,22 +1969,8 @@ async function autoDetect(
   if (!row) {
     throw new HttpError(404, `Video not found: ${videoId}`);
   }
-  const mode = modeRaw ? modeRaw.toLowerCase() : "chapters";
-  const video = toVideoRowDetails(row);
-  const youtubeVideoId = row.youtube_video_id ? row.youtube_video_id.trim() : "";
-
-  let candidates: ClipCandidateResponse[];
-  if (mode === "chapters") {
-    const chapterCandidates = youtubeVideoId
-      ? await detectFromChapterSources(env, youtubeVideoId, video.durationSec ?? null)
-      : [];
-    const descriptionCandidates = detectFromDescription(video);
-    candidates = mergeClipCandidates(chapterCandidates, descriptionCandidates);
-  } else if (mode === "captions") {
-    candidates = detectFromCaptions(video);
-  } else {
-    candidates = mergeClipCandidates(detectFromDescription(video), detectFromCaptions(video));
-  }
+  const mode = normalizeDetectionMode(modeRaw);
+  const candidates = await detectClipCandidatesForVideo(env, row, mode);
   return jsonResponse(candidates, 200, cors);
 }
 
@@ -3858,3 +3992,34 @@ function truncate(text: string): string {
   }
   return `${text.slice(0, 40)}...`;
 }
+
+export function __setWorkerTestOverrides(overrides: Partial<WorkerTestOverrides>): void {
+  if (overrides.fetchVideoMetadata) {
+    testOverrides.fetchVideoMetadata = overrides.fetchVideoMetadata;
+  }
+  if (overrides.detectFromChapterSources) {
+    testOverrides.detectFromChapterSources = overrides.detectFromChapterSources;
+  }
+  if (overrides.detectFromDescription) {
+    testOverrides.detectFromDescription = overrides.detectFromDescription;
+  }
+  if (overrides.detectFromCaptions) {
+    testOverrides.detectFromCaptions = overrides.detectFromCaptions;
+  }
+}
+
+export function __resetWorkerTestState(): void {
+  testOverrides.fetchVideoMetadata = fetchVideoMetadata;
+  testOverrides.detectFromChapterSources = detectFromChapterSources;
+  testOverrides.detectFromDescription = detectFromDescription;
+  testOverrides.detectFromCaptions = detectFromCaptions;
+  hasEnsuredVideoContentTypeColumn = false;
+  hasEnsuredVideoHiddenColumn = false;
+}
+
+export function __setHasEnsuredVideoColumnsForTests(value: boolean): void {
+  hasEnsuredVideoContentTypeColumn = value;
+  hasEnsuredVideoHiddenColumn = value;
+}
+
+export { suggestClipCandidates as __suggestClipCandidatesForTests, getOrCreateVideoByUrl as __getOrCreateVideoByUrlForTests };
