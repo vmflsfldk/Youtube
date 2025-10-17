@@ -1481,7 +1481,9 @@ export default function App() {
         </div>
         <div className="artist-library__info">
           <span className="artist-library__name">{artist.displayName || artist.name}</span>
-          <span className="artist-library__channel">{artist.youtubeChannelId}</span>
+          <span className="artist-library__channel">
+            {artist.displayName || artist.name || artist.youtubeChannelId}
+          </span>
         </div>
         {countryBadges.length > 0 && (
           <div className="artist-library__countries">
