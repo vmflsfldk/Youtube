@@ -76,7 +76,9 @@ type MediaRegistrationType = 'video' | 'clip';
 
 const resolveMediaRegistrationType = (url: string, selectedVideoId: number | null): MediaRegistrationType => {
   const normalized = url.trim().toLowerCase();
-  if (normalized.includes('watch')) {
+  const isWatchLink = normalized.includes('watch');
+  const isLiveLink = /(?:youtube\.com\/live|youtu\.be\/live)/.test(normalized);
+  if (isWatchLink || isLiveLink) {
     return 'clip';
   }
   if (normalized.length > 0) {
