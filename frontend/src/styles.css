@@ -2710,6 +2710,13 @@ button:disabled:hover {
   gap: 16px;
 }
 
+.playlist-clip__player {
+  display: flex;
+  width: 100%;
+  align-items: flex-start;
+  justify-content: center;
+}
+
 .playlist-clip__meta h4 {
   margin: 0 0 6px 0;
   color: var(--color-text-primary);
@@ -2766,18 +2773,19 @@ button:disabled:hover {
   border: none;
   border-radius: 18px;
   width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
 }
 
 @media (min-width: 768px) {
   .playlist-panel__header {
     grid-template-columns: minmax(0, 1fr) minmax(220px, 280px);
   }
-}
 
-@media (min-width: 1024px) {
   .playlist-clip__card {
-    grid-template-columns: minmax(0, 1fr) minmax(240px, 320px);
-    align-items: stretch;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: flex-start;
+    gap: 20px;
   }
 }
 

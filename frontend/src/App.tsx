@@ -3892,12 +3892,14 @@ export default function App() {
                                       )}
                                     </div>
                                     {youtubeVideoId && (
-                                      <ClipPlayer
-                                        youtubeVideoId={youtubeVideoId}
-                                        startSec={clip.startSec}
-                                        endSec={clip.endSec}
-                                        autoplay={false}
-                                      />
+                                      <div className="playlist-clip__player">
+                                        <ClipPlayer
+                                          youtubeVideoId={youtubeVideoId}
+                                          startSec={clip.startSec}
+                                          endSec={clip.endSec}
+                                          autoplay={false}
+                                        />
+                                      </div>
                                     )}
                                   </div>
                                 </li>
