@@ -96,6 +96,37 @@ const parseTags = (value: string): string[] =>
     .map((tag) => tag.trim())
     .filter(Boolean);
 
+const showAlert = (message: string) => {
+  if (typeof window !== 'undefined' && typeof window.alert === 'function') {
+    window.alert(message);
+  } else {
+    console.warn('[yt-clip] alert:', message);
+  }
+};
+
+const normalizeChannelId = (value: string | null | undefined): string =>
+  (value ?? '').trim().toLowerCase();
+
+const extractAxiosErrorMessage = (error: unknown, fallback: string): string => {
+  if (axios.isAxiosError(error)) {
+    const data = error.response?.data;
+    if (typeof data === 'string' && data.trim()) {
+      return data.trim();
+    }
+    if (data && typeof data === 'object') {
+      const { message, error: errorField } = data as {
+        message?: string;
+        error?: string;
+      };
+      const detail = message ?? errorField;
+      if (typeof detail === 'string' && detail.trim()) {
+        return detail.trim();
+      }
+    }
+  }
+  return fallback;
+};
+
 const ARTIST_COUNTRY_METADATA: ReadonlyArray<{
   key: ArtistCountryKey;
   code: string;
@@ -1058,6 +1089,32 @@ export default function App() {
       name: trimmedName,
       countries: { ko, en, jp }
     } as const;
+    const candidateChannelIds = new Set<string>();
+    candidateChannelIds.add(normalizeChannelId(trimmedChannelId));
+    if (artistPreview && artistPreview.inputChannel === trimmedChannelId) {
+      candidateChannelIds.add(normalizeChannelId(artistPreview.data.channelId));
+      const debug = artistPreview.data.debug;
+      if (debug) {
+        candidateChannelIds.add(normalizeChannelId(debug.resolvedChannelId));
+        candidateChannelIds.add(normalizeChannelId(debug.htmlChannelId));
+      }
+    }
+
+    const duplicateArtist = artists.find((artist) =>
+      candidateChannelIds.has(normalizeChannelId(artist.youtubeChannelId))
+    );
+
+    if (duplicateArtist) {
+      const duplicateMessage = duplicateArtist.displayName
+        ? `이미 등록된 유튜브 채널입니다: ${duplicateArtist.displayName}`
+        : '이미 등록된 유튜브 채널입니다.';
+      showAlert(duplicateMessage);
+      setArtistPreview(null);
+      setArtistPreviewReady(false);
+      setArtistPreviewError(duplicateMessage);
+      return;
+    }
+
     if (!hasCountrySelection) {
       setArtistPreviewReady(false);
       setArtistPreviewError('서비스 국가를 최소 한 개 이상 선택해주세요.');
@@ -1138,18 +1195,13 @@ export default function App() {
       await fetchArtists();
     } catch (error) {
       console.error('Failed to create artist', error);
-      let message = '아티스트 등록에 실패했습니다.';
       let responseData: unknown = null;
       if (axios.isAxiosError(error)) {
         responseData = error.response?.data;
-        const detail =
-          typeof error.response?.data === 'object' && error.response?.data !== null
-            ? (error.response?.data as { error?: string; message?: string }).error ||
-              (error.response?.data as { error?: string; message?: string }).message
-            : null;
-        if (typeof detail === 'string' && detail.trim()) {
-          message = detail.trim();
-        }
+      }
+      const message = extractAxiosErrorMessage(error, '아티스트 등록에 실패했습니다.');
+      if (axios.isAxiosError(error) && error.response?.status === 409) {
+        showAlert(message);
       }
       setArtistPreviewError(message);
       appendArtistDebugLog({
@@ -1347,6 +1399,10 @@ export default function App() {
 
       void createClip(payload, creationOptions)
         .catch((error) => {
+          if (axios.isAxiosError(error) && error.response?.status === 409) {
+            const message = extractAxiosErrorMessage(error, '이미 동일한 구간의 클립이 존재합니다.');
+            showAlert(message);
+          }
           console.error('Failed to auto-create clip from comment section', error);
         })
         .finally(() => {
@@ -1496,6 +1552,10 @@ export default function App() {
     try {
       await createClip(payload);
     } catch (error) {
+      if (axios.isAxiosError(error) && error.response?.status === 409) {
+        const message = extractAxiosErrorMessage(error, '이미 동일한 구간의 클립이 존재합니다.');
+        showAlert(message);
+      }
       console.error('Failed to create clip', error);
     }
   }, [
