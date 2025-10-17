@@ -4,7 +4,7 @@ import YouTube, { YouTubePlayer, YouTubeProps } from 'react-youtube';
 interface ClipPlayerProps {
   youtubeVideoId: string;
   startSec: number;
-  endSec: number;
+  endSec?: number;
   autoplay?: boolean;
 }
 
@@ -16,11 +16,13 @@ export default function ClipPlayer({ youtubeVideoId, startSec, endSec, autoplay 
 
   const loadSegment = useCallback(
     (player: YouTubePlayer) => {
-      const config = {
+      const config: { videoId: string; startSeconds: number; endSeconds?: number } = {
         videoId: youtubeVideoId,
-        startSeconds: startSec,
-        endSeconds: endSec
-      } as const;
+        startSeconds: startSec
+      };
+      if (typeof endSec === 'number' && Number.isFinite(endSec)) {
+        config.endSeconds = endSec;
+      }
       if (autoplay) {
         player.loadVideoById(config);
       } else {
@@ -40,11 +42,11 @@ export default function ClipPlayer({ youtubeVideoId, startSec, endSec, autoplay 
 
   const handleStateChange = useCallback<NonNullable<YouTubeProps['onStateChange']>>(
     (event: YouTubeStateChangeEvent) => {
-      if (event.data === window.YT?.PlayerState?.ENDED) {
+      if (typeof endSec === 'number' && Number.isFinite(endSec) && event.data === window.YT?.PlayerState?.ENDED) {
         event.target.seekTo(startSec, true);
       }
     },
-    [startSec]
+    [startSec, endSec]
   );
 
   useEffect(() => {
@@ -61,7 +63,7 @@ export default function ClipPlayer({ youtubeVideoId, startSec, endSec, autoplay 
           autoplay: autoplay ? 1 : 0,
           controls: 1,
           start: startSec,
-          end: endSec
+          ...(typeof endSec === 'number' && Number.isFinite(endSec) ? { end: endSec } : {})
         }
       }}
       onReady={handleReady}
