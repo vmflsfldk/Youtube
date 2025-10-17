@@ -37,8 +37,15 @@ public class ArtistController {
 
     @GetMapping("/artists")
     public List<ArtistResponse> listArtists(@RequestParam(value = "mine", defaultValue = "false") boolean mine,
+                                            @RequestParam(value = "createdByMe", defaultValue = "false") boolean createdByMe,
                                             @RequestAttribute(UserRequestInterceptor.CURRENT_USER_ATTR) UserAccount user) {
-        return mine ? artistService.listMine(user) : artistService.listCreatedBy(user);
+        if (mine) {
+            return artistService.listMine(user);
+        }
+        if (createdByMe) {
+            return artistService.listCreatedBy(user);
+        }
+        return artistService.listAll();
     }
 
     @PutMapping("/artists/{artistId}/tags")

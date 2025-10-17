@@ -77,6 +77,13 @@ public class ArtistService {
                 .collect(Collectors.toList());
     }
 
+    @Transactional(readOnly = true)
+    public List<ArtistResponse> listAll() {
+        return artistRepository.findAll().stream()
+                .map(this::map)
+                .collect(Collectors.toList());
+    }
+
     @Transactional
     public List<ArtistResponse> listCreatedBy(UserAccount user) {
         return artistRepository.findByCreatedBy(user).stream()
