@@ -30,6 +30,9 @@ public class Artist {
     @Column(name = "youtube_channel_id", nullable = false)
     private String youtubeChannelId;
 
+    @Column(name = "youtube_channel_title")
+    private String youtubeChannelTitle;
+
     @Column(name = "profile_image_url")
     private String profileImageUrl;
 
@@ -96,6 +99,14 @@ public class Artist {
 
     public void setYoutubeChannelId(String youtubeChannelId) {
         this.youtubeChannelId = youtubeChannelId;
+    }
+
+    public String getYoutubeChannelTitle() {
+        return youtubeChannelTitle;
+    }
+
+    public void setYoutubeChannelTitle(String youtubeChannelTitle) {
+        this.youtubeChannelTitle = youtubeChannelTitle;
     }
 
     public UserAccount getCreatedBy() {

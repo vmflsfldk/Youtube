@@ -30,10 +30,10 @@ public class ArtistService {
     @Transactional
     public ArtistResponse createArtist(ArtistRequest request, UserAccount creator) {
         ChannelMetadata channelMetadata = channelMetadataProvider.fetch(request.youtubeChannelId());
+        String metadataTitle = channelMetadata.title();
 
         String displayName = request.displayName();
         if (displayName == null || displayName.isBlank()) {
-            String metadataTitle = channelMetadata.title();
             if (metadataTitle != null && !metadataTitle.isBlank()) {
                 displayName = metadataTitle;
             } else {
@@ -50,6 +50,9 @@ public class ArtistService {
                 request.availableEn(),
                 request.availableJp());
         String profileImageUrl = channelMetadata.profileImageUrl();
+        if (metadataTitle != null && !metadataTitle.isBlank()) {
+            artist.setYoutubeChannelTitle(metadataTitle);
+        }
         if (profileImageUrl != null && !profileImageUrl.isBlank()) {
             artist.setProfileImageUrl(profileImageUrl);
         }
@@ -130,6 +133,7 @@ public class ArtistService {
                 resolved.getName(),
                 resolved.getDisplayName(),
                 resolved.getYoutubeChannelId(),
+                resolved.getYoutubeChannelTitle(),
                 resolved.getProfileImageUrl(),
                 resolved.isAvailableKo(),
                 resolved.isAvailableEn(),
@@ -140,8 +144,9 @@ public class ArtistService {
     private Artist refreshMetadataIfNeeded(Artist artist) {
         boolean needsDisplayName = isBlank(artist.getDisplayName());
         boolean needsProfileImage = isBlank(artist.getProfileImageUrl());
+        boolean needsChannelTitle = isBlank(artist.getYoutubeChannelTitle());
 
-        if (!needsDisplayName && !needsProfileImage) {
+        if (!needsDisplayName && !needsProfileImage && !needsChannelTitle) {
             return artist;
         }
 
@@ -153,12 +158,15 @@ public class ArtistService {
         ChannelMetadata channelMetadata = channelMetadataProvider.fetch(channelId);
         boolean updated = false;
 
-        if (needsDisplayName) {
-            String metadataTitle = channelMetadata.title();
-            if (!isBlank(metadataTitle)) {
-                artist.setDisplayName(metadataTitle);
-                updated = true;
-            }
+        String metadataTitle = channelMetadata.title();
+        if (needsDisplayName && !isBlank(metadataTitle)) {
+            artist.setDisplayName(metadataTitle);
+            updated = true;
+        }
+
+        if (needsChannelTitle && !isBlank(metadataTitle)) {
+            artist.setYoutubeChannelTitle(metadataTitle);
+            updated = true;
         }
 
         if (needsProfileImage) {
