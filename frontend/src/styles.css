@@ -2583,34 +2583,6 @@ button:disabled:hover {
   border-radius: 12px;
 }
 
-.candidate-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 16px;
-}
-
-.candidate-card {
-  background: rgba(15, 23, 42, 0.6);
-  border-radius: 18px;
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  box-shadow: var(--shadow-soft);
-  cursor: pointer;
-  text-align: left;
-  transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
-}
-
-.candidate-card:hover,
-.candidate-card:focus-visible {
-  background: rgba(30, 41, 59, 0.75);
-  border-color: rgba(148, 163, 184, 0.4);
-  transform: translateY(-1px);
-  outline: none;
-}
-
 .playlist-list {
   display: flex;
   flex-direction: column;
@@ -2673,7 +2645,6 @@ button:disabled:hover {
 }
 
 .playlist-card iframe,
-.candidate-card iframe,
 .media-card iframe {
   border: none;
   border-radius: 18px;
