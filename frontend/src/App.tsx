@@ -88,6 +88,46 @@ const resolveMediaRegistrationType = (url: string, selectedVideoId: number | nul
 
 const VIDEO_FILTER_KEYWORDS = ['cover', 'original', 'official'];
 
+type VideoCategoryKey = 'cover' | 'live' | 'original';
+
+const VIDEO_CATEGORY_METADATA: ReadonlyArray<{ key: VideoCategoryKey; label: string }> = [
+  { key: 'cover', label: '커버' },
+  { key: 'live', label: '라이브' },
+  { key: 'original', label: '오리지널' }
+];
+
+const VIDEO_CATEGORY_KEYWORDS: Record<VideoCategoryKey, string[]> = {
+  cover: ['cover', '커버', 'カバー'],
+  live: ['live', '라이브', 'ライブ', '生放送'],
+  original: ['original', '오리지널', 'オリジナル']
+};
+
+const normalizeText = (value?: string | null): string => (value ?? '').toLowerCase();
+
+const categorizeVideo = (video: VideoResponse): VideoCategoryKey => {
+  const normalizedTitle = normalizeText(video.title);
+  const normalizedId = normalizeText(video.youtubeVideoId);
+  const contentType = (video.contentType ?? '').toUpperCase();
+  const matchesKeywords = (key: VideoCategoryKey) =>
+    VIDEO_CATEGORY_KEYWORDS[key].some(
+      (keyword) => keyword && (normalizedTitle.includes(keyword) || normalizedId.includes(keyword))
+    );
+
+  if (matchesKeywords('cover')) {
+    return 'cover';
+  }
+
+  if (contentType === 'CLIP_SOURCE' || matchesKeywords('live')) {
+    return 'live';
+  }
+
+  if (contentType === 'OFFICIAL' || matchesKeywords('original') || normalizedId.includes('official')) {
+    return 'original';
+  }
+
+  return 'original';
+};
+
 type ArtistCountryKey = 'availableKo' | 'availableEn' | 'availableJp';
 
 const parseTags = (value: string): string[] =>
@@ -405,6 +445,11 @@ export default function App() {
   const [hiddenVideoIds, setHiddenVideoIds] = useState<number[]>([]);
   const [favoriteVideoIds, setFavoriteVideoIds] = useState<number[]>([]);
   const [playlistVideoIds, setPlaylistVideoIds] = useState<number[]>([]);
+  const [expandedVideoCategories, setExpandedVideoCategories] = useState<Record<VideoCategoryKey, boolean>>({
+    cover: true,
+    live: true,
+    original: true
+  });
   const [clips, setClips] = useState<ClipResponse[]>([]);
   const [publicClips, setPublicClips] = useState<ClipResponse[]>([]);
   const [selectedVideo, setSelectedVideo] = useState<number | null>(null);
@@ -1846,6 +1891,18 @@ export default function App() {
     () => videos.filter((video) => !hiddenVideoIds.includes(video.id)),
     [videos, hiddenVideoIds]
   );
+  const categorizedVideos = useMemo(() => {
+    const groups: Record<VideoCategoryKey, VideoResponse[]> = {
+      cover: [],
+      live: [],
+      original: []
+    };
+    displayableVideos.forEach((video) => {
+      const category = categorizeVideo(video);
+      groups[category].push(video);
+    });
+    return groups;
+  }, [displayableVideos]);
   const clipSourceVideos = useMemo(
     () => displayableVideos.filter((video) => isClipSourceVideo(video)),
     [displayableVideos]
@@ -1876,6 +1933,81 @@ export default function App() {
     ? Math.min(selectedVideoData.durationSec, previewStartSec + 30)
     : previewStartSec + 30;
   const previewEndSec = Number(clipForm.endSec) > previewStartSec ? Number(clipForm.endSec) : fallbackEnd;
+
+  const renderVideoListItem = (video: VideoResponse) => {
+    const isVideoSelected = selectedVideo === video.id;
+    const isVideoFavorited = favoriteVideoIds.includes(video.id);
+    const isVideoQueued = playlistVideoIds.includes(video.id);
+    const videoThumbnail =
+      video.thumbnailUrl ||
+      (video.youtubeVideoId ? `https://img.youtube.com/vi/${video.youtubeVideoId}/hqdefault.jpg` : null);
+    const videoTitle = video.title || video.youtubeVideoId || '제목 없는 영상';
+
+    return (
+      <li key={video.id} className="artist-library__video-item">
+        <div
+          role="button"
+          tabIndex={0}
+          className={`artist-library__video-button${isVideoSelected ? ' selected' : ''}`}
+          onClick={() => handleLibraryVideoSelect(video.id)}
+          onKeyDown={(event) => handleVideoCardKeyDown(event, video.id)}
+          aria-pressed={isVideoSelected}
+        >
+          {videoThumbnail ? (
+            <img
+              className="artist-library__video-thumbnail"
+              src={videoThumbnail}
+              alt={`${videoTitle} 썸네일`}
+              loading="lazy"
+              decoding="async"
+            />
+          ) : (
+            <div className="artist-library__video-thumbnail artist-library__video-thumbnail--placeholder" aria-hidden="true">
+              <span>썸네일 없음</span>
+            </div>
+          )}
+          <div className="artist-library__video-meta">
+            <span className="artist-library__video-title">{videoTitle}</span>
+            <span className="artist-library__video-subtitle">
+              {describeVideoContentType(video.contentType)} · {formatSeconds(video.durationSec ?? 0)}
+            </span>
+            <div className="artist-library__video-actions">
+              <button
+                type="button"
+                className={`artist-library__video-action artist-library__video-action--favorite${
+                  isVideoFavorited ? ' active' : ''
+                }`}
+                aria-pressed={isVideoFavorited}
+                aria-label={isVideoFavorited ? '즐겨찾기에서 제거' : '즐겨찾기에 추가'}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  handleVideoFavoriteToggle(video.id);
+                }}
+              >
+                {isVideoFavorited ? '★' : '☆'}
+              </button>
+              <button
+                type="button"
+                className={`artist-library__video-action artist-library__video-action--playlist${
+                  isVideoQueued ? ' active' : ''
+                }`}
+                aria-pressed={isVideoQueued}
+                aria-label={isVideoQueued ? '재생목록에서 제거' : '재생목록에 추가'}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  handleVideoPlaylistToggle(video.id);
+                }}
+              >
+                {isVideoQueued ? '재생목록 추가됨' : '재생목록에 추가'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </li>
+    );
+  };
 
   const sidebarTabs = useMemo(() => {
     const tabs: {
@@ -3152,81 +3284,38 @@ export default function App() {
                                 )}
                               </li>
                             )}
-                            {displayableVideos.map((video) => {
-                              const isVideoSelected = selectedVideo === video.id;
-                              const isVideoFavorited = favoriteVideoIds.includes(video.id);
-                              const isVideoQueued = playlistVideoIds.includes(video.id);
-                              const videoThumbnail =
-                                video.thumbnailUrl ||
-                                (video.youtubeVideoId
-                                  ? `https://img.youtube.com/vi/${video.youtubeVideoId}/hqdefault.jpg`
-                                  : null);
-                              const videoTitle = video.title || video.youtubeVideoId || '제목 없는 영상';
+                            {VIDEO_CATEGORY_METADATA.map(({ key, label }) => {
+                              const videosInCategory = categorizedVideos[key];
+                              if (videosInCategory.length === 0) {
+                                return null;
+                              }
+                              const isExpanded = expandedVideoCategories[key];
                               return (
-                                <li key={video.id} className="artist-library__video-item">
-                                  <div
-                                    role="button"
-                                    tabIndex={0}
-                                    className={`artist-library__video-button${isVideoSelected ? ' selected' : ''}`}
-                                    onClick={() => handleLibraryVideoSelect(video.id)}
-                                    onKeyDown={(event) => handleVideoCardKeyDown(event, video.id)}
-                                    aria-pressed={isVideoSelected}
+                                <li key={key} className="artist-library__video-category">
+                                  <button
+                                    type="button"
+                                    className="artist-library__video-category-toggle"
+                                    onClick={() =>
+                                      setExpandedVideoCategories((prev) => ({
+                                        ...prev,
+                                        [key]: !prev[key]
+                                      }))
+                                    }
+                                    aria-expanded={isExpanded}
                                   >
-                                    {videoThumbnail ? (
-                                      <img
-                                        className="artist-library__video-thumbnail"
-                                        src={videoThumbnail}
-                                        alt={`${videoTitle} 썸네일`}
-                                        loading="lazy"
-                                        decoding="async"
-                                      />
-                                    ) : (
-                                      <div
-                                        className="artist-library__video-thumbnail artist-library__video-thumbnail--placeholder"
-                                        aria-hidden="true"
-                                      >
-                                        <span>썸네일 없음</span>
-                                      </div>
-                                    )}
-                                    <div className="artist-library__video-meta">
-                                      <span className="artist-library__video-title">{videoTitle}</span>
-                                      <span className="artist-library__video-subtitle">
-                                        {describeVideoContentType(video.contentType)} · {formatSeconds(video.durationSec ?? 0)}
-                                      </span>
-                                      <div className="artist-library__video-actions">
-                                        <button
-                                          type="button"
-                                          className={`artist-library__video-action artist-library__video-action--favorite${
-                                            isVideoFavorited ? ' active' : ''
-                                          }`}
-                                          aria-pressed={isVideoFavorited}
-                                          aria-label={isVideoFavorited ? '즐겨찾기에서 제거' : '즐겨찾기에 추가'}
-                                          onClick={(event) => {
-                                            event.preventDefault();
-                                            event.stopPropagation();
-                                            handleVideoFavoriteToggle(video.id);
-                                          }}
-                                        >
-                                          {isVideoFavorited ? '★' : '☆'}
-                                        </button>
-                                        <button
-                                          type="button"
-                                          className={`artist-library__video-action artist-library__video-action--playlist${
-                                            isVideoQueued ? ' active' : ''
-                                          }`}
-                                          aria-pressed={isVideoQueued}
-                                          aria-label={isVideoQueued ? '재생목록에서 제거' : '재생목록에 추가'}
-                                          onClick={(event) => {
-                                            event.preventDefault();
-                                            event.stopPropagation();
-                                            handleVideoPlaylistToggle(video.id);
-                                          }}
-                                        >
-                                          {isVideoQueued ? '재생목록 추가됨' : '재생목록에 추가'}
-                                        </button>
-                                      </div>
-                                    </div>
-                                  </div>
+                                    <span className="artist-library__video-category-label">{label}</span>
+                                    <span className="artist-library__video-category-count">
+                                      {videosInCategory.length}곡
+                                    </span>
+                                    <span aria-hidden="true" className="artist-library__video-category-icon">
+                                      {isExpanded ? '▾' : '▸'}
+                                    </span>
+                                  </button>
+                                  {isExpanded && (
+                                    <ul className="artist-library__video-sublist">
+                                      {videosInCategory.map((video) => renderVideoListItem(video))}
+                                    </ul>
+                                  )}
                                 </li>
                               );
                             })}
