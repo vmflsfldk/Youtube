@@ -1578,6 +1578,51 @@ button:disabled:hover {
   color: var(--color-text-muted);
 }
 
+.artist-library__video-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.artist-library__video-action {
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  background: rgba(15, 23, 42, 0.52);
+  color: var(--color-text-primary);
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
+}
+
+.artist-library__video-action:hover {
+  background: rgba(30, 41, 59, 0.72);
+  border-color: rgba(99, 102, 241, 0.5);
+  transform: translateY(-1px);
+}
+
+.artist-library__video-action:focus-visible {
+  outline: none;
+  border-color: rgba(99, 102, 241, 0.8);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.28);
+}
+
+.artist-library__video-action.active {
+  border-color: rgba(99, 102, 241, 0.7);
+  color: var(--accent-secondary);
+}
+
+.artist-library__video-action--favorite {
+  font-size: 1.1rem;
+  line-height: 1;
+  padding: 4px 10px;
+}
+
 .artist-library__clip-card {
   border-radius: 18px;
   border: 1px solid rgba(148, 163, 184, 0.24);
