@@ -39,6 +39,9 @@ interface ArtistResponse {
 const VIDEO_CONTENT_TYPES = ["OFFICIAL", "CLIP_SOURCE"] as const;
 type VideoContentType = (typeof VIDEO_CONTENT_TYPES)[number];
 
+const VIDEO_CATEGORIES = ["live", "cover", "original"] as const;
+type VideoCategory = (typeof VIDEO_CATEGORIES)[number];
+
 const isVideoContentType = (value: unknown): value is VideoContentType => {
   if (typeof value !== "string") {
     return false;
@@ -52,6 +55,43 @@ const normalizeVideoContentType = (value: string | null | undefined): VideoConte
   }
   const normalized = value.trim().toUpperCase();
   return isVideoContentType(normalized) ? (normalized as VideoContentType) : null;
+};
+
+const isVideoCategory = (value: unknown): value is VideoCategory => {
+  if (typeof value !== "string") {
+    return false;
+  }
+  return (VIDEO_CATEGORIES as readonly string[]).includes(value.toLowerCase());
+};
+
+const normalizeVideoCategory = (value: string | null | undefined): VideoCategory | null => {
+  if (!value) {
+    return null;
+  }
+  const normalized = value.trim().toLowerCase();
+  return isVideoCategory(normalized) ? (normalized as VideoCategory) : null;
+};
+
+const deriveVideoCategoryFromTitle = (
+  title: string | null | undefined
+): VideoCategory | null => {
+  if (!title) {
+    return null;
+  }
+
+  const normalized = title.toLowerCase();
+
+  if (normalized.includes("歌枠") || normalized.includes("live")) {
+    return "live";
+  }
+  if (normalized.includes("cover")) {
+    return "cover";
+  }
+  if (normalized.includes("original")) {
+    return "original";
+  }
+
+  return null;
 };
 
 type VideoSectionSource = "YOUTUBE_CHAPTER" | "COMMENT" | "VIDEO_DESCRIPTION";
@@ -72,6 +112,7 @@ interface VideoResponse {
   thumbnailUrl?: string | null;
   channelId?: string | null;
   contentType: VideoContentType;
+  category: VideoCategory | null;
   hidden?: boolean;
 }
 
@@ -276,6 +317,7 @@ let hasEnsuredArtistChannelTitleColumn = false;
 let hasEnsuredUserPasswordColumns = false;
 let hasEnsuredVideoContentTypeColumn = false;
 let hasEnsuredVideoHiddenColumn = false;
+let hasEnsuredVideoCategoryColumn = false;
 let hasWarnedMissingYouTubeApiKey = false;
 
 const warnMissingYouTubeApiKey = (): void => {
@@ -723,6 +765,24 @@ async function ensureVideoHiddenColumn(db: D1Database): Promise<void> {
   hasEnsuredVideoHiddenColumn = true;
 }
 
+async function ensureVideoCategoryColumn(db: D1Database): Promise<void> {
+  if (hasEnsuredVideoCategoryColumn) {
+    return;
+  }
+
+  const { results } = await db.prepare("PRAGMA table_info(videos)").all<TableInfoRow>();
+  const hasColumn = (results ?? []).some((column) => column.name?.toLowerCase() === "category");
+
+  if (!hasColumn) {
+    const alterResult = await db.prepare("ALTER TABLE videos ADD COLUMN category TEXT").run();
+    if (!alterResult.success && !isDuplicateColumnError(alterResult.error)) {
+      throw new Error(alterResult.error ?? "Failed to add category column to videos table");
+    }
+  }
+
+  hasEnsuredVideoCategoryColumn = true;
+}
+
 async function ensureUserPasswordColumns(db: D1Database): Promise<void> {
   if (hasEnsuredUserPasswordColumns) {
     return;
@@ -867,6 +927,7 @@ interface VideoRow {
   channel_id: string | null;
   description: string | null;
   captions_json: string | null;
+  category: string | null;
   content_type: string | null;
   hidden: number | null;
 }
@@ -1414,6 +1475,7 @@ async function getOrCreateVideoByUrl(
   await ensureArtist(env, artistId, user.id);
   await ensureVideoContentTypeColumn(env.DB);
   await ensureVideoHiddenColumn(env.DB);
+  await ensureVideoCategoryColumn(env.DB);
 
   const videoId = extractVideoId(videoUrl);
   if (!videoId) {
@@ -1421,6 +1483,8 @@ async function getOrCreateVideoByUrl(
   }
 
   const metadata = await testOverrides.fetchVideoMetadata(env, videoId);
+
+  const derivedCategory = deriveVideoCategoryFromTitle(metadata.title);
 
   let description = params.description ?? null;
   if (!description && metadata.description) {
@@ -1455,6 +1519,7 @@ async function getOrCreateVideoByUrl(
               channel_id = ?,
               description = ?,
               captions_json = ?,
+              category = ?,
               content_type = ?,
               hidden = ?
         WHERE id = ?`
@@ -1467,6 +1532,7 @@ async function getOrCreateVideoByUrl(
         metadata.channelId,
         description,
         captionsJson,
+        derivedCategory,
         "OFFICIAL",
         0,
         existing.id
@@ -1487,8 +1553,8 @@ async function getOrCreateVideoByUrl(
   }
 
   const insertResult = await env.DB.prepare(
-    `INSERT INTO videos (artist_id, youtube_video_id, title, duration_sec, thumbnail_url, channel_id, description, captions_json, content_type, hidden)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO videos (artist_id, youtube_video_id, title, duration_sec, thumbnail_url, channel_id, description, captions_json, category, content_type, hidden)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
     .bind(
       artistId,
@@ -1499,6 +1565,7 @@ async function getOrCreateVideoByUrl(
       metadata.channelId,
       description,
       captionsJson,
+      derivedCategory,
       "OFFICIAL",
       0
     )
@@ -1584,6 +1651,7 @@ async function listVideos(url: URL, env: Env, user: UserContext, cors: CorsConfi
   await ensureArtist(env, artistId, user.id);
   await ensureVideoContentTypeColumn(env.DB);
   await ensureVideoHiddenColumn(env.DB);
+  await ensureVideoCategoryColumn(env.DB);
 
   const requestedContentType = normalizeVideoContentType(url.searchParams.get("contentType"));
 
@@ -1630,6 +1698,7 @@ async function createClip(
   }
   await ensureVideoContentTypeColumn(env.DB);
   await ensureVideoHiddenColumn(env.DB);
+  await ensureVideoCategoryColumn(env.DB);
 
   let resolvedVideoId: number | null = Number.isFinite(rawVideoId) ? rawVideoId : null;
 
@@ -1665,10 +1734,11 @@ async function createClip(
       }
     } else {
       const metadata = await fetchVideoMetadata(env, extractedVideoId);
+      const clipCategory = deriveVideoCategoryFromTitle(metadata.title);
       const insertClipSource = await env.DB
         .prepare(
-          `INSERT INTO videos (artist_id, youtube_video_id, title, duration_sec, thumbnail_url, channel_id, description, captions_json, content_type, hidden)
-           VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)`
+          `INSERT INTO videos (artist_id, youtube_video_id, title, duration_sec, thumbnail_url, channel_id, description, captions_json, category, content_type, hidden)
+           VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)`
         )
         .bind(
           artistIdParam,
@@ -1678,6 +1748,7 @@ async function createClip(
           metadata.thumbnailUrl,
           metadata.channelId,
           metadata.description,
+          clipCategory,
           "CLIP_SOURCE",
           videoHiddenFlag ? 1 : 0
         )
@@ -2319,6 +2390,7 @@ function toVideoResponse(row: VideoRow): VideoResponse {
     thumbnailUrl: row.thumbnail_url ?? null,
     channelId: row.channel_id ?? null,
     contentType: normalizeVideoContentType(row.content_type) ?? "OFFICIAL",
+    category: normalizeVideoCategory(row.category),
     hidden: Number(row.hidden ?? 0) === 1
   };
 }
@@ -3875,11 +3947,13 @@ export function __resetWorkerTestState(): void {
   testOverrides.detectFromCaptions = detectFromCaptions;
   hasEnsuredVideoContentTypeColumn = false;
   hasEnsuredVideoHiddenColumn = false;
+  hasEnsuredVideoCategoryColumn = false;
 }
 
 export function __setHasEnsuredVideoColumnsForTests(value: boolean): void {
   hasEnsuredVideoContentTypeColumn = value;
   hasEnsuredVideoHiddenColumn = value;
+  hasEnsuredVideoCategoryColumn = value;
 }
 
 export { suggestClipCandidates as __suggestClipCandidatesForTests, getOrCreateVideoByUrl as __getOrCreateVideoByUrlForTests };
