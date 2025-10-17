@@ -151,7 +151,7 @@ const isActivationKey = (key: string): boolean =>
   key === 'Enter' || key === ' ' || key === 'Space' || key === 'Spacebar';
 
 const handleInteractiveListItemKeyDown = (
-  event: KeyboardEvent<HTMLLIElement>,
+  event: KeyboardEvent<HTMLElement>,
   action: () => void
 ) => {
   if (isActivationKey(event.key)) {
@@ -688,6 +688,8 @@ export default function App() {
   const [clipForm, setClipForm] = useState<ClipFormState>(() => createInitialClipFormState());
   const previousVideoUrlRef = useRef(videoForm.url.trim());
   const autoFetchedCommentSectionsUrlRef = useRef<string | null>(null);
+  const autoDetectInFlightRef = useRef(false);
+  const autoDetectedVideoIdRef = useRef<number | null>(null);
   const handleClipTimePartChange = useCallback(
     (key: ClipTimeField) => (event: ChangeEvent<HTMLInputElement>) => {
       const options = key.endsWith('Hours')
@@ -1680,6 +1682,8 @@ export default function App() {
       }));
 
       const normalizedSource = (section.source ?? '').toUpperCase();
+      const isAutoCreatableSource =
+        normalizedSource === 'COMMENT' || normalizedSource === AUTO_DETECTED_SECTION_SOURCE;
       const trimmedVideoUrl = clipForm.videoUrl.trim();
       const parsedArtistId = Number(videoForm.artistId);
       const hasSelectedVideo = selectedVideo !== null;
@@ -1688,7 +1692,7 @@ export default function App() {
 
       const shouldAutoCreate =
         !creationDisabled &&
-        normalizedSource === 'COMMENT' &&
+        isAutoCreatableSource &&
         (hasSelectedVideo || canCreateWithVideoUrl);
 
       if (!shouldAutoCreate) {
@@ -1744,6 +1748,19 @@ export default function App() {
   const handlePreviewSectionApply = useCallback(
     (section: VideoSectionResponse, index: number) => {
       applyVideoSectionToClip(section, section.title || `구간 ${index + 1}`);
+    },
+    [applyVideoSectionToClip]
+  );
+
+  const handleClipCandidateApply = useCallback(
+    (candidate: ClipCandidateResponse, index: number) => {
+      const section: VideoSectionResponse = {
+        title: candidate.label ?? '',
+        startSec: candidate.startSec,
+        endSec: candidate.endSec,
+        source: AUTO_DETECTED_SECTION_SOURCE
+      };
+      applyVideoSectionToClip(section, candidate.label || `자동 감지 제안 ${index + 1}`);
     },
     [applyVideoSectionToClip]
   );
@@ -2019,7 +2036,7 @@ export default function App() {
     videoForm.url
   ]);
 
-  const runAutoDetect = async () => {
+  const runAutoDetect = useCallback(async () => {
     if (!selectedVideo) {
       return;
     }
@@ -2027,6 +2044,11 @@ export default function App() {
       console.warn('Authentication is required to run auto-detection.');
       return;
     }
+    if (autoDetectInFlightRef.current) {
+      return;
+    }
+    autoDetectInFlightRef.current = true;
+    autoDetectedVideoIdRef.current = selectedVideo;
     try {
       const response = await http.post<ClipCandidateResponse[]>(
         '/clips/auto-detect',
@@ -2037,8 +2059,10 @@ export default function App() {
     } catch (error) {
       console.error('Failed to auto-detect clips', error);
       setClipCandidates([]);
+    } finally {
+      autoDetectInFlightRef.current = false;
     }
-  };
+  }, [selectedVideo, creationDisabled, http, autoDetectMode, authHeaders]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -2263,6 +2287,44 @@ export default function App() {
     () => mergeSections(selectedVideoData?.sections ?? [], autoDetectedSections),
     [selectedVideoData, autoDetectedSections]
   );
+  useEffect(() => {
+    if (!isLibraryClipFormOpen || !isClipRegistration) {
+      return;
+    }
+
+    if (!selectedVideo || !selectedVideoData) {
+      return;
+    }
+
+    if (!isClipSourceVideo(selectedVideoData)) {
+      if (clipCandidates.length > 0) {
+        setClipCandidates([]);
+      }
+      return;
+    }
+
+    if (creationDisabled) {
+      return;
+    }
+
+    if (
+      autoDetectedVideoIdRef.current === selectedVideo &&
+      (clipCandidates.length > 0 || autoDetectInFlightRef.current)
+    ) {
+      return;
+    }
+
+    autoDetectedVideoIdRef.current = selectedVideo;
+    void runAutoDetect();
+  }, [
+    clipCandidates.length,
+    creationDisabled,
+    isClipRegistration,
+    isLibraryClipFormOpen,
+    runAutoDetect,
+    selectedVideo,
+    selectedVideoData
+  ]);
   const selectedVideoIsHidden = selectedVideo !== null && hiddenVideoIds.includes(selectedVideo);
   const selectedVideoCategory = useMemo<VideoCategoryKey | null>(
     () => (selectedVideoData ? categorizeVideo(selectedVideoData) : null),
@@ -4074,7 +4136,18 @@ export default function App() {
                   <h3>자동 감지된 클립 제안</h3>
                   <div className="candidate-grid">
                     {clipCandidates.map((candidate, index) => (
-                      <div className="candidate-card" key={`${candidate.startSec}-${candidate.endSec}-${index}`}>
+                      <div
+                        className="candidate-card"
+                        key={`${candidate.startSec}-${candidate.endSec}-${index}`}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => handleClipCandidateApply(candidate, index)}
+                        onKeyDown={(event) =>
+                          handleInteractiveListItemKeyDown(event, () =>
+                            handleClipCandidateApply(candidate, index)
+                          )
+                        }
+                      >
                         <div>
                           <h4>{candidate.label || `세그먼트 ${index + 1}`}</h4>
                           <p>
