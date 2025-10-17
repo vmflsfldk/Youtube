@@ -10,6 +10,7 @@ public record ClipCreateRequest(
         @NotBlank String title,
         @Min(0) int startSec,
         @Min(0) int endSec,
-        List<String> tags
+        List<String> tags,
+        Boolean videoHidden
 ) {
 }

@@ -1632,6 +1632,41 @@ button:disabled:hover {
   flex-direction: column;
   gap: 8px;
   box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.06);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.artist-library__clip-card--active {
+  border-color: rgba(99, 102, 241, 0.75);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.28);
+}
+
+.artist-library__clip-card--disabled {
+  opacity: 0.75;
+}
+
+.artist-library__clip-card-button {
+  background: transparent;
+  border: none;
+  color: inherit;
+  font: inherit;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-align: left;
+  align-items: flex-start;
+  width: 100%;
+  cursor: pointer;
+}
+
+.artist-library__clip-card-button:focus-visible {
+  outline: none;
+}
+
+.artist-library__clip-card-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 .artist-library__clip-title {
@@ -1661,6 +1696,16 @@ button:disabled:hover {
 
 .artist-library__clip-link:hover {
   text-decoration: underline;
+}
+
+.artist-library__clip-footer {
+  margin-top: 4px;
+}
+
+.artist-library__clip-player {
+  margin-top: 12px;
+  border-radius: 12px;
+  overflow: hidden;
 }
 
 @media (max-width: 1024px) {
