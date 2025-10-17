@@ -3531,42 +3531,6 @@ export default function App() {
                 )}
               </div>
 
-              {clipCandidates.length > 0 && (
-                <div className="media-card full">
-                  <h3>자동 감지된 클립 제안</h3>
-                  <div className="candidate-grid">
-                    {clipCandidates.map((candidate, index) => (
-                      <div
-                        className="candidate-card"
-                        key={`${candidate.startSec}-${candidate.endSec}-${index}`}
-                        role="button"
-                        tabIndex={0}
-                        onClick={() => handleClipCandidateApply(candidate, index)}
-                        onKeyDown={(event) =>
-                          handleInteractiveListItemKeyDown(event, () =>
-                            handleClipCandidateApply(candidate, index)
-                          )
-                        }
-                      >
-                        <div>
-                          <h4>{candidate.label || `세그먼트 ${index + 1}`}</h4>
-                          <p>
-                            {candidate.startSec}s → {candidate.endSec}s (신뢰도 {(candidate.score * 100).toFixed(0)}%)
-                          </p>
-                        </div>
-                        {selectedVideoData && (
-                          <ClipPlayer
-                            youtubeVideoId={selectedVideoData.youtubeVideoId}
-                            startSec={candidate.startSec}
-                            endSec={candidate.endSec}
-                            autoplay={false}
-                          />
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
           </section>
 
