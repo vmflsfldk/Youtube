@@ -89,6 +89,12 @@ const VIDEO_FILTER_KEYWORDS = ['cover', 'original', 'official'];
 
 type ArtistCountryKey = 'availableKo' | 'availableEn' | 'availableJp';
 
+const parseTags = (value: string): string[] =>
+  value
+    .split(',')
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+
 const ARTIST_COUNTRY_METADATA: ReadonlyArray<{
   key: ArtistCountryKey;
   code: string;
@@ -153,6 +159,16 @@ interface ClipCandidateResponse {
 }
 
 type ClipLike = Omit<ClipResponse, 'tags'> & { tags?: unknown };
+
+type ClipCreationPayload = {
+  title: string;
+  startSec: number;
+  endSec: number;
+  tags: string[];
+  videoId?: number;
+  videoUrl?: string;
+  artistId?: number;
+};
 
 type ArtistFormState = {
   name: string;
@@ -1200,18 +1216,6 @@ export default function App() {
     }
   }, [authHeaders, creationDisabled, videoForm.url]);
 
-  const applyVideoSectionToClip = useCallback(
-    (section: VideoSectionResponse, fallbackTitle: string) => {
-      setClipForm((prev) => ({
-        ...prev,
-        title: prev.title || section.title || fallbackTitle,
-        startSec: section.startSec,
-        endSec: section.endSec
-      }));
-    },
-    []
-  );
-
   const reloadArtistVideos = useCallback(
     async (options?: { signal?: AbortSignal }) => {
       const currentArtistId = Number(videoForm.artistId);
@@ -1254,6 +1258,68 @@ export default function App() {
       }
     },
     [videoForm.artistId, authHeaders]
+  );
+
+  const createClip = useCallback(
+    async (payload: ClipCreationPayload) => {
+      const response = await http.post<ClipResponse>('/clips', payload, { headers: authHeaders });
+      const normalizedClip = normalizeClip(response.data);
+      setClipForm({ title: '', startSec: 0, endSec: 0, tags: '', videoUrl: '' });
+      setVideoForm((prev) => ({ ...prev, url: '' }));
+      setClipCandidates([]);
+      if (response.data.videoId !== selectedVideo) {
+        setSelectedVideo(response.data.videoId);
+        setClips([normalizedClip]);
+      } else {
+        setClips((prev) => [...prev, normalizedClip]);
+      }
+      reloadArtistVideos().catch((error) => console.error('Failed to refresh videos after clip creation', error));
+      return normalizedClip;
+    },
+    [authHeaders, http, reloadArtistVideos, selectedVideo]
+  );
+
+  const applyVideoSectionToClip = useCallback(
+    (section: VideoSectionResponse, fallbackTitle: string) => {
+      const resolvedTitle = clipForm.title || section.title || fallbackTitle;
+
+      setClipForm((prev) => ({
+        ...prev,
+        title: resolvedTitle,
+        startSec: section.startSec,
+        endSec: section.endSec
+      }));
+
+      const shouldAutoCreate =
+        !creationDisabled &&
+        selectedVideo !== null &&
+        (section.source ?? '').toUpperCase() === 'COMMENT' &&
+        clipForm.videoUrl.trim().length === 0;
+
+      if (!shouldAutoCreate) {
+        return;
+      }
+
+      const tags = parseTags(clipForm.tags);
+
+      void createClip({
+        title: resolvedTitle,
+        startSec: section.startSec,
+        endSec: section.endSec,
+        tags,
+        videoId: selectedVideo
+      }).catch((error) => {
+        console.error('Failed to auto-create clip from comment section', error);
+      });
+    },
+    [
+      clipForm.tags,
+      clipForm.title,
+      clipForm.videoUrl,
+      createClip,
+      creationDisabled,
+      selectedVideo
+    ]
   );
 
   const submitVideo = useCallback(async () => {
@@ -1354,17 +1420,14 @@ export default function App() {
       return;
     }
     const trimmedVideoUrl = clipForm.videoUrl.trim();
-    const tags = clipForm.tags
-      .split(',')
-      .map((tag) => tag.trim())
-      .filter(Boolean);
+    const tags = parseTags(clipForm.tags);
 
     if (!trimmedVideoUrl && !selectedVideo) {
       console.warn('클립을 저장하려면 라이브 영상 URL을 입력하거나 기존 영상을 선택해 주세요.');
       return;
     }
 
-    const payload: Record<string, unknown> = {
+    const payload: ClipCreationPayload = {
       title: clipForm.title,
       startSec: Number(clipForm.startSec),
       endSec: Number(clipForm.endSec),
@@ -1384,18 +1447,7 @@ export default function App() {
     }
 
     try {
-      const response = await http.post<ClipResponse>('/clips', payload, { headers: authHeaders });
-      const normalizedClip = normalizeClip(response.data);
-      setClipForm({ title: '', startSec: 0, endSec: 0, tags: '', videoUrl: '' });
-      setVideoForm((prev) => ({ ...prev, url: '' }));
-      setClipCandidates([]);
-      if (response.data.videoId !== selectedVideo) {
-        setSelectedVideo(response.data.videoId);
-        setClips([normalizedClip]);
-      } else {
-        setClips((prev) => [...prev, normalizedClip]);
-      }
-      reloadArtistVideos().catch((error) => console.error('Failed to refresh videos after clip creation', error));
+      await createClip(payload);
     } catch (error) {
       console.error('Failed to create clip', error);
     }
@@ -1408,9 +1460,7 @@ export default function App() {
     clipForm.endSec,
     selectedVideo,
     videoForm.artistId,
-    http,
-    authHeaders,
-    reloadArtistVideos
+    createClip
   ]);
 
   const handleClipSubmit = useCallback(
