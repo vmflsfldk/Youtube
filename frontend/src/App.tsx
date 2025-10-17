@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { FormEvent, KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import ClipPlayer from './components/ClipPlayer';
 import GoogleLoginButton from './components/GoogleLoginButton';
@@ -339,6 +339,8 @@ export default function App() {
   const [isLoadingUser, setIsLoadingUser] = useState(false);
   const [artists, setArtists] = useState<ArtistResponse[]>([]);
   const [videos, setVideos] = useState<VideoResponse[]>([]);
+  const [favoriteVideoIds, setFavoriteVideoIds] = useState<number[]>([]);
+  const [playlistVideoIds, setPlaylistVideoIds] = useState<number[]>([]);
   const [clips, setClips] = useState<ClipResponse[]>([]);
   const [publicClips, setPublicClips] = useState<ClipResponse[]>([]);
   const [selectedVideo, setSelectedVideo] = useState<number | null>(null);
@@ -1411,6 +1413,25 @@ export default function App() {
 
   const handleLibraryVideoSelect = (videoId: number) => {
     setSelectedVideo(videoId);
+  };
+
+  const handleVideoFavoriteToggle = useCallback((videoId: number) => {
+    setFavoriteVideoIds((prev) =>
+      prev.includes(videoId) ? prev.filter((id) => id !== videoId) : [...prev, videoId]
+    );
+  }, []);
+
+  const handleVideoPlaylistToggle = useCallback((videoId: number) => {
+    setPlaylistVideoIds((prev) =>
+      prev.includes(videoId) ? prev.filter((id) => id !== videoId) : [...prev, videoId]
+    );
+  }, []);
+
+  const handleVideoCardKeyDown = (event: KeyboardEvent<HTMLDivElement>, videoId: number) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      handleLibraryVideoSelect(videoId);
+    }
   };
 
   const ArtistLibraryCard = ({
@@ -2816,6 +2837,8 @@ export default function App() {
                             )}
                             {videos.map((video) => {
                               const isVideoSelected = selectedVideo === video.id;
+                              const isVideoFavorited = favoriteVideoIds.includes(video.id);
+                              const isVideoQueued = playlistVideoIds.includes(video.id);
                               const videoThumbnail =
                                 video.thumbnailUrl ||
                                 (video.youtubeVideoId
@@ -2824,10 +2847,13 @@ export default function App() {
                               const videoTitle = video.title || video.youtubeVideoId || '제목 없는 영상';
                               return (
                                 <li key={video.id} className="artist-library__video-item">
-                                  <button
-                                    type="button"
+                                  <div
+                                    role="button"
+                                    tabIndex={0}
                                     className={`artist-library__video-button${isVideoSelected ? ' selected' : ''}`}
                                     onClick={() => handleLibraryVideoSelect(video.id)}
+                                    onKeyDown={(event) => handleVideoCardKeyDown(event, video.id)}
+                                    aria-pressed={isVideoSelected}
                                   >
                                     {videoThumbnail ? (
                                       <img
@@ -2850,8 +2876,40 @@ export default function App() {
                                       <span className="artist-library__video-subtitle">
                                         {describeVideoContentType(video.contentType)} · {formatSeconds(video.durationSec ?? 0)}
                                       </span>
+                                      <div className="artist-library__video-actions">
+                                        <button
+                                          type="button"
+                                          className={`artist-library__video-action artist-library__video-action--favorite${
+                                            isVideoFavorited ? ' active' : ''
+                                          }`}
+                                          aria-pressed={isVideoFavorited}
+                                          aria-label={isVideoFavorited ? '즐겨찾기에서 제거' : '즐겨찾기에 추가'}
+                                          onClick={(event) => {
+                                            event.preventDefault();
+                                            event.stopPropagation();
+                                            handleVideoFavoriteToggle(video.id);
+                                          }}
+                                        >
+                                          {isVideoFavorited ? '★' : '☆'}
+                                        </button>
+                                        <button
+                                          type="button"
+                                          className={`artist-library__video-action artist-library__video-action--playlist${
+                                            isVideoQueued ? ' active' : ''
+                                          }`}
+                                          aria-pressed={isVideoQueued}
+                                          aria-label={isVideoQueued ? '재생목록에서 제거' : '재생목록에 추가'}
+                                          onClick={(event) => {
+                                            event.preventDefault();
+                                            event.stopPropagation();
+                                            handleVideoPlaylistToggle(video.id);
+                                          }}
+                                        >
+                                          {isVideoQueued ? '재생목록 추가됨' : '재생목록에 추가'}
+                                        </button>
+                                      </div>
                                     </div>
-                                  </button>
+                                  </div>
                                 </li>
                               );
                             })}
