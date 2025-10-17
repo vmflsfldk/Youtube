@@ -12,19 +12,10 @@ public interface ArtistRepository extends JpaRepository<Artist, Long> {
 
     @Query("""
             SELECT DISTINCT a FROM Artist a
-            LEFT JOIN a.tags artistTag
-            LEFT JOIN a.videos v
-            LEFT JOIN v.clips clip
-            LEFT JOIN clip.tags clipTag
-            WHERE (:query IS NULL OR :query = ''
-                   OR LOWER(a.name) LIKE LOWER(CONCAT('%', :query, '%'))
-                   OR LOWER(a.displayName) LIKE LOWER(CONCAT('%', :query, '%'))
-                   OR LOWER(a.youtubeChannelId) LIKE LOWER(CONCAT('%', :query, '%'))
-                   OR LOWER(a.youtubeChannelTitle) LIKE LOWER(CONCAT('%', :query, '%'))
-                   OR LOWER(artistTag) LIKE LOWER(CONCAT('%', :query, '%'))
-                   OR LOWER(v.title) LIKE LOWER(CONCAT('%', :query, '%'))
-                   OR LOWER(clip.title) LIKE LOWER(CONCAT('%', :query, '%'))
-                   OR LOWER(clipTag) LIKE LOWER(CONCAT('%', :query, '%')))
+            LEFT JOIN a.tags t
+            WHERE (:name IS NULL OR :name = '' OR LOWER(a.name) LIKE LOWER(CONCAT('%', :name, '%'))
+                   OR LOWER(a.displayName) LIKE LOWER(CONCAT('%', :name, '%')))
+              AND (:tag IS NULL OR :tag = '' OR LOWER(t) LIKE LOWER(CONCAT('%', :tag, '%')))
             """)
-    List<Artist> searchDirectory(@Param("query") String query);
+    List<Artist> search(@Param("name") String name, @Param("tag") String tag);
 }
