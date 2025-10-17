@@ -201,13 +201,6 @@ const mergeSections = (
   return merged;
 };
 
-const describeDebugSelectedSource = (source?: string | null): string => {
-  if (!source || source.toUpperCase() === 'NONE') {
-    return '선택된 데이터 없음';
-  }
-  return describeSectionSource(source);
-};
-
 const describeVideoContentType = (contentType?: string): string => {
   switch ((contentType ?? '').toUpperCase()) {
     case 'CLIP_SOURCE':
@@ -226,25 +219,11 @@ type MediaRegistrationType = 'video' | 'clip';
 
 const resolveMediaRegistrationType = (
   url: string,
-  selectedVideoId: number | null,
-  previewSections: VideoSectionResponse[],
-  previewDurationSec: number | null
+  selectedVideoId: number | null
 ): MediaRegistrationType => {
   const normalized = url.trim().toLowerCase();
 
   if (normalized.includes('live')) {
-    return 'clip';
-  }
-
-  const durationSec =
-    typeof previewDurationSec === 'number' && Number.isFinite(previewDurationSec)
-      ? previewDurationSec
-      : null;
-  const hasCommentSections = previewSections.some(
-    (section) => (section.source ?? '').toUpperCase() === 'COMMENT'
-  );
-
-  if (hasCommentSections && durationSec !== null && durationSec >= 15 * 60) {
     return 'clip';
   }
 
@@ -367,36 +346,6 @@ interface VideoSectionResponse {
   startSec: number;
   endSec: number;
   source: string;
-}
-
-interface VideoSectionPreviewCommentDebug {
-  text: string;
-  authorDisplayName?: string | null;
-  likeCount?: number | null;
-  commentId?: string | null;
-  url?: string | null;
-  publishedAt?: string | null;
-  updatedAt?: string | null;
-}
-
-interface VideoSectionPreviewDebugSource {
-  source: string;
-  sectionCount: number;
-  comment?: VideoSectionPreviewCommentDebug | null;
-  descriptionAvailable?: boolean;
-  descriptionSample?: string | null;
-}
-
-interface VideoSectionPreviewDebugInfo {
-  durationSec: number | null;
-  selectedSource: string;
-  sources: VideoSectionPreviewDebugSource[];
-}
-
-interface VideoSectionPreviewResponse {
-  sections: VideoSectionResponse[];
-  durationSec: number | null;
-  debug?: VideoSectionPreviewDebugInfo;
 }
 
 interface VideoResponse {
@@ -666,12 +615,6 @@ export default function App() {
     { type: 'success' | 'info' | 'error'; message: string }
   | null
   >(null);
-  const [isFetchingVideoSections, setIsFetchingVideoSections] = useState(false);
-  const [videoSectionPreview, setVideoSectionPreview] = useState<VideoSectionResponse[]>([]);
-  const [videoSectionPreviewDurationSec, setVideoSectionPreviewDurationSec] = useState<number | null>(null);
-  const [videoSectionPreviewError, setVideoSectionPreviewError] = useState<string | null>(null);
-  const [videoSectionPreviewDebug, setVideoSectionPreviewDebug] = useState<VideoSectionPreviewDebugInfo | null>(null);
-  const [hasAttemptedVideoSectionPreview, setHasAttemptedVideoSectionPreview] = useState(false);
   const autoDetectedSections = useMemo<VideoSectionResponse[]>(() => {
     if (clipCandidates.length === 0) {
       return [];
@@ -687,10 +630,6 @@ export default function App() {
       };
     });
   }, [clipCandidates]);
-  const previewSectionsWithCandidates = useMemo(
-    () => mergeSections(videoSectionPreview, autoDetectedSections),
-    [videoSectionPreview, autoDetectedSections]
-  );
   const [isLibraryVideoFormOpen, setLibraryVideoFormOpen] = useState(false);
   const [isLibraryClipFormOpen, setLibraryClipFormOpen] = useState(false);
   const isLibraryMediaFormOpen = isLibraryVideoFormOpen || isLibraryClipFormOpen;
@@ -699,8 +638,6 @@ export default function App() {
   const [artistTagQuery, setArtistTagQuery] = useState('');
   const [videoForm, setVideoForm] = useState({ url: '', artistId: '', description: '', captionsJson: '' });
   const [clipForm, setClipForm] = useState<ClipFormState>(() => createInitialClipFormState());
-  const previousVideoUrlRef = useRef(videoForm.url.trim());
-  const autoFetchedCommentSectionsUrlRef = useRef<string | null>(null);
   const autoDetectInFlightRef = useRef(false);
   const autoDetectedVideoIdRef = useRef<number | null>(null);
   const handleClipTimePartChange = useCallback(
@@ -714,36 +651,12 @@ export default function App() {
     []
   );
   const mediaRegistrationType = useMemo(
-    () =>
-      resolveMediaRegistrationType(
-        videoForm.url,
-        selectedVideo,
-        videoSectionPreview,
-        videoSectionPreviewDurationSec
-      ),
-    [videoForm.url, selectedVideo, videoSectionPreview, videoSectionPreviewDurationSec]
+    () => resolveMediaRegistrationType(videoForm.url, selectedVideo),
+    [videoForm.url, selectedVideo]
   );
   const isClipRegistration = mediaRegistrationType === 'clip';
-  const shouldShowEmbeddedClipForm = useMemo(
-    () =>
-      !isClipRegistration &&
-      hasAttemptedVideoSectionPreview &&
-      !isFetchingVideoSections &&
-      (previewSectionsWithCandidates.length === 0 || Boolean(videoSectionPreviewError)),
-    [
-      hasAttemptedVideoSectionPreview,
-      isClipRegistration,
-      isFetchingVideoSections,
-      previewSectionsWithCandidates.length,
-      videoSectionPreviewError
-    ]
-  );
-  const hasManualClipInput = useMemo(
-    () => shouldShowEmbeddedClipForm && clipForm.title.trim().length > 0,
-    [shouldShowEmbeddedClipForm, clipForm.title]
-  );
-  const clipFieldsRequired = isClipRegistration || hasManualClipInput;
-  const showClipFields = isClipRegistration || shouldShowEmbeddedClipForm;
+  const clipFieldsRequired = isClipRegistration;
+  const showClipFields = isClipRegistration;
   const [autoDetectMode, setAutoDetectMode] = useState('chapters');
   const [isArtistVideosLoading, setArtistVideosLoading] = useState(false);
   const [isGoogleReady, setIsGoogleReady] = useState(false);
@@ -767,18 +680,6 @@ export default function App() {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     setArtistDebugLog((prev) => [{ ...entry, id }, ...prev].slice(0, 50));
   }, []);
-
-  useEffect(() => {
-    const trimmedUrl = videoForm.url.trim();
-    if (trimmedUrl !== previousVideoUrlRef.current) {
-      previousVideoUrlRef.current = trimmedUrl;
-      setVideoSectionPreview([]);
-      setVideoSectionPreviewDurationSec(null);
-      setVideoSectionPreviewError(null);
-      setVideoSectionPreviewDebug(null);
-      setHasAttemptedVideoSectionPreview(false);
-    }
-  }, [videoForm.url]);
 
   useEffect(() => {
     const trimmedChannel = artistForm.channelId.trim();
@@ -1557,65 +1458,6 @@ export default function App() {
     ]
   );
 
-  const handleVideoSectionPreviewFetch = useCallback(async () => {
-    if (creationDisabled) {
-      console.warn('Authentication is required to preview video sections.');
-      return;
-    }
-    const trimmedUrl = videoForm.url.trim();
-    if (!trimmedUrl) {
-      setVideoSectionPreviewError('영상 링크를 입력해 주세요.');
-      setVideoSectionPreview([]);
-      setVideoSectionPreviewDurationSec(null);
-      setVideoSectionPreviewDebug(null);
-      setHasAttemptedVideoSectionPreview(true);
-      return;
-    }
-
-    setIsFetchingVideoSections(true);
-    setVideoSectionPreviewError(null);
-    setVideoSectionPreviewDebug(null);
-    setHasAttemptedVideoSectionPreview(true);
-
-    try {
-      const response = await http.get<VideoSectionPreviewResponse>('/videos/sections/preview', {
-        headers: authHeaders,
-        params: { videoUrl: trimmedUrl }
-      });
-      const sections = ensureArray(response.data.sections);
-      setVideoSectionPreview(sections);
-      const duration = response.data.durationSec;
-      setVideoSectionPreviewDurationSec(
-        typeof duration === 'number' && Number.isFinite(duration) ? duration : null
-      );
-      setVideoSectionPreviewDebug(response.data.debug ?? null);
-    } catch (error) {
-      console.error('Failed to fetch video sections', error);
-      let message = '구간 정보를 불러오지 못했습니다.';
-      if (axios.isAxiosError(error)) {
-        const data = error.response?.data;
-        if (typeof data === 'string' && data.trim()) {
-          message = data.trim();
-        } else if (data && typeof data === 'object') {
-          const { message: messageField, error: errorField } = data as {
-            message?: string;
-            error?: string;
-          };
-          const detail = messageField ?? errorField;
-          if (detail && detail.trim()) {
-            message = detail.trim();
-          }
-        }
-      }
-      setVideoSectionPreviewError(message);
-      setVideoSectionPreview([]);
-      setVideoSectionPreviewDurationSec(null);
-      setVideoSectionPreviewDebug(null);
-    } finally {
-      setIsFetchingVideoSections(false);
-    }
-  }, [authHeaders, creationDisabled, videoForm.url]);
-
   const reloadArtistVideos = useCallback(
     async (options?: { signal?: AbortSignal }) => {
       const currentArtistId = Number(videoForm.artistId);
@@ -1860,13 +1702,6 @@ export default function App() {
     ]
   );
 
-  const handlePreviewSectionApply = useCallback(
-    (section: VideoSectionResponse, index: number) => {
-      applyVideoSectionToClip(section, section.title || `구간 ${index + 1}`);
-    },
-    [applyVideoSectionToClip]
-  );
-
   const handleClipCandidateApply = useCallback(
     (candidate: ClipCandidateResponse, index: number) => {
       const section: VideoSectionResponse = {
@@ -1905,22 +1740,15 @@ export default function App() {
         result.message ??
         (result.created
           ? candidateCount > 0
-            ? `영상이 등록되었습니다. ${candidateCount}개의 추천 구간을 찾았습니다.`
-            : '영상이 등록되었습니다. 추천 구간을 찾지 못했습니다.'
+            ? `영상이 등록되었습니다. ${candidateCount}개의 추천 구간을 찾았습니다. 아래 자동 감지된 클립 제안에서 확인하세요.`
+            : '영상이 등록되었습니다. 추천 구간을 찾지 못했습니다. 영상 목록에서 직접 구간을 추가해 주세요.'
           : candidateCount > 0
-          ? '이미 등록된 영상을 불러왔습니다. 추천 구간을 새로 불러왔습니다.'
+          ? '이미 등록된 영상을 불러왔습니다. 추천 구간을 새로 불러왔습니다. 아래 자동 감지된 클립 제안에서 확인하세요.'
           : '이미 등록된 영상을 불러왔습니다. 추천 구간을 찾지 못했습니다.');
 
       setVideoSubmissionStatus({ type: result.created ? 'success' : 'info', message: defaultMessage });
-      setVideoSectionPreview([]);
-      setVideoSectionPreviewDurationSec(null);
-      setVideoSectionPreviewError(null);
-      setVideoSectionPreviewDebug(null);
-      setHasAttemptedVideoSectionPreview(false);
       setVideoForm((prev) => ({ ...prev, url: '', description: '', captionsJson: '' }));
       setClipForm((prev) => ({ ...prev, videoUrl: '' }));
-      previousVideoUrlRef.current = '';
-      autoFetchedCommentSectionsUrlRef.current = null;
       reloadArtistVideos().catch((error) => console.error('Failed to refresh videos after save', error));
       return result.video;
     } catch (error) {
@@ -2040,10 +1868,10 @@ export default function App() {
           registration.message ??
           (registration.created
             ? candidateCount > 0
-              ? `영상이 등록되었습니다. ${candidateCount}개의 추천 구간을 찾았습니다.`
-              : '영상이 등록되었습니다. 추천 구간을 찾지 못했습니다.'
+              ? `영상이 등록되었습니다. ${candidateCount}개의 추천 구간을 찾았습니다. 아래 자동 감지된 클립 제안에서 확인하세요.`
+              : '영상이 등록되었습니다. 추천 구간을 찾지 못했습니다. 영상 목록에서 직접 구간을 추가해 주세요.'
             : candidateCount > 0
-            ? '이미 등록된 영상을 불러왔습니다. 추천 구간을 새로 불러왔습니다.'
+            ? '이미 등록된 영상을 불러왔습니다. 추천 구간을 새로 불러왔습니다. 아래 자동 감지된 클립 제안에서 확인하세요.'
             : '이미 등록된 영상을 불러왔습니다. 추천 구간을 찾지 못했습니다.');
         setVideoSubmissionStatus({ type: registration.created ? 'success' : 'info', message: infoMessage });
       } catch (error) {
@@ -2108,88 +1936,23 @@ export default function App() {
         await submitClip();
         return;
       }
-      const shouldCreateClip = shouldShowEmbeddedClipForm && clipForm.title.trim().length > 0;
-      const video = await submitVideo();
-      if (!video) {
-        return;
-      }
-      if (shouldCreateClip) {
-        await submitClip({ videoId: video.id });
-      }
+      await submitVideo();
     },
-    [
-      clipForm.title,
-      isClipRegistration,
-      shouldShowEmbeddedClipForm,
-      submitClip,
-      submitVideo
-    ]
+    [isClipRegistration, submitClip, submitVideo]
   );
 
   const handleMediaUrlChange = useCallback(
     (value: string) => {
       const trimmedValue = value.trim();
-      previousVideoUrlRef.current = trimmedValue;
       setVideoForm((prev) => ({ ...prev, url: value }));
       setClipForm((prev) => ({ ...prev, videoUrl: value }));
       setVideoSubmissionStatus(null);
-      setVideoSectionPreview([]);
-      setVideoSectionPreviewDurationSec(null);
-      setVideoSectionPreviewError(null);
-      setVideoSectionPreviewDebug(null);
-      setHasAttemptedVideoSectionPreview(false);
-      autoFetchedCommentSectionsUrlRef.current = null;
       if (trimmedValue.length > 0) {
         setSelectedVideo(null);
       }
     },
-    [
-      setClipForm,
-      setHasAttemptedVideoSectionPreview,
-      setSelectedVideo,
-      setVideoForm,
-      setVideoSectionPreview,
-      setVideoSectionPreviewDurationSec,
-      setVideoSectionPreviewError,
-      setVideoSectionPreviewDebug
-    ]
+    [setClipForm, setSelectedVideo, setVideoForm]
   );
-
-  useEffect(() => {
-    if (!isClipRegistration) {
-      autoFetchedCommentSectionsUrlRef.current = null;
-      return;
-    }
-
-    const trimmedUrl = videoForm.url.trim();
-
-    if (!trimmedUrl) {
-      autoFetchedCommentSectionsUrlRef.current = null;
-      return;
-    }
-
-    if (creationDisabled) {
-      return;
-    }
-
-    if (hasAttemptedVideoSectionPreview) {
-      autoFetchedCommentSectionsUrlRef.current = trimmedUrl;
-      return;
-    }
-
-    if (autoFetchedCommentSectionsUrlRef.current === trimmedUrl) {
-      return;
-    }
-
-    autoFetchedCommentSectionsUrlRef.current = trimmedUrl;
-    void handleVideoSectionPreviewFetch();
-  }, [
-    creationDisabled,
-    handleVideoSectionPreviewFetch,
-    hasAttemptedVideoSectionPreview,
-    isClipRegistration,
-    videoForm.url
-  ]);
 
   const runAutoDetect = useCallback(async () => {
     if (!selectedVideo) {
@@ -3284,15 +3047,6 @@ export default function App() {
                                 required={!isClipRegistration}
                                 disabled={creationDisabled}
                               />
-                              {!isClipRegistration && (
-                                <button
-                                  type="button"
-                                  onClick={handleVideoSectionPreviewFetch}
-                                  disabled={creationDisabled || isFetchingVideoSections}
-                                >
-                                  {isFetchingVideoSections ? '구간 불러오는 중...' : '구간 불러오기'}
-                                </button>
-                              )}
                             </div>
                             {videoSubmissionStatus && (
                               <p
@@ -3306,118 +3060,9 @@ export default function App() {
                               </p>
                             )}
                             {!isClipRegistration && (
-                              <>
-                                {videoSectionPreviewError && (
-                                  <p className="login-status__message error">{videoSectionPreviewError}</p>
-                                )}
-                                {previewSectionsWithCandidates.length > 0 && (
-                                  <div className="section-preview">
-                                    <p className="artist-preview__hint">
-                                      자동으로 {previewSectionsWithCandidates.length}개의 구간을 찾았습니다. 영상 저장 후 아래에서 클립을 등록하세요.
-                                    </p>
-                                    <ul className="video-item__sections">
-                                      {previewSectionsWithCandidates.map((section, index) => (
-                                        <li
-                                          key={`${section.startSec}-${section.endSec}-${index}`}
-                                          className="video-item__section"
-                                          onClick={() => handlePreviewSectionApply(section, index)}
-                                          role="button"
-                                          tabIndex={0}
-                                          onKeyDown={(event) =>
-                                            handleInteractiveListItemKeyDown(event, () =>
-                                              handlePreviewSectionApply(section, index)
-                                            )
-                                          }
-                                        >
-                                          <span className="video-item__section-time">
-                                            {formatSeconds(section.startSec)} → {formatSeconds(section.endSec)}
-                                          </span>
-                                          <span className="video-item__section-title">
-                                            {section.title || `구간 ${index + 1}`}
-                                          </span>
-                                          <span className="video-item__section-source">
-                                            {describeSectionSource(section.source)}
-                                          </span>
-                                        </li>
-                                      ))}
-                                    </ul>
-                                  </div>
-                                )}
-                                {videoSectionPreviewDebug && (
-                                  <details className="section-preview-debug">
-                                    <summary>구간 탐색 디버그 보기</summary>
-                                    <div className="section-preview-debug__content">
-                                      <p className="section-preview-debug__selected">
-                                        사용된 데이터: <strong>{describeDebugSelectedSource(videoSectionPreviewDebug.selectedSource)}</strong>
-                                      </p>
-                                      <ul className="section-preview-debug__sources">
-                                        {videoSectionPreviewDebug.sources.map((entry) => {
-                                          const normalizedSource = (entry.source ?? '').toUpperCase();
-                                          return (
-                                            <li key={entry.source} className="section-preview-debug__source">
-                                              <div className="section-preview-debug__source-header">
-                                                <span className="section-preview-debug__source-name">
-                                                  {describeSectionSource(entry.source)}
-                                                </span>
-                                                <span className="section-preview-debug__source-count">
-                                                  {entry.sectionCount}개 구간 후보
-                                                </span>
-                                              </div>
-                                              {normalizedSource === 'COMMENT' && entry.comment && (
-                                                <div className="section-preview-debug__comment">
-                                                  <p className="section-preview-debug__comment-meta">
-                                                    {entry.comment.authorDisplayName && (
-                                                      <span>작성자: {entry.comment.authorDisplayName}</span>
-                                                    )}
-                                                    {typeof entry.comment.likeCount === 'number' && (
-                                                      <span>좋아요: {entry.comment.likeCount.toLocaleString()}</span>
-                                                    )}
-                                                    {entry.comment.publishedAt && (
-                                                      <span>게시: {entry.comment.publishedAt}</span>
-                                                    )}
-                                                    {entry.comment.updatedAt && entry.comment.updatedAt !== entry.comment.publishedAt && (
-                                                      <span>수정: {entry.comment.updatedAt}</span>
-                                                    )}
-                                                  </p>
-                                                  {entry.comment.url && (
-                                                    <p className="section-preview-debug__comment-link">
-                                                      <a href={entry.comment.url} target="_blank" rel="noreferrer">
-                                                        원본 댓글 열기
-                                                      </a>
-                                                    </p>
-                                                  )}
-                                                  <pre className="section-preview-debug__comment-text">{entry.comment.text}</pre>
-                                                </div>
-                                              )}
-                                              {normalizedSource === 'VIDEO_DESCRIPTION' && (
-                                                <div className="section-preview-debug__description">
-                                                  {entry.descriptionAvailable === false ? (
-                                                    <p>영상 설명이 제공되지 않았습니다.</p>
-                                                  ) : entry.sectionCount > 0 ? (
-                                                    <p>영상 설명에서 타임스탬프를 찾았습니다.</p>
-                                                  ) : entry.descriptionSample ? (
-                                                    <>
-                                                      <p>설명 예시:</p>
-                                                      <pre className="section-preview-debug__description-text">{entry.descriptionSample}</pre>
-                                                    </>
-                                                  ) : (
-                                                    <p>영상 설명에서 타임스탬프를 찾지 못했습니다.</p>
-                                                  )}
-                                                </div>
-                                              )}
-                                            </li>
-                                          );
-                                        })}
-                                      </ul>
-                                    </div>
-                                  </details>
-                                )}
-                                {shouldShowEmbeddedClipForm && (
-                                  <p className="artist-preview__hint">
-                                    자동 구간을 찾지 못했습니다. 아래에서 직접 구간을 입력해 영상을 저장하면서 클립을 등록할 수 있습니다.
-                                  </p>
-                                )}
-                              </>
+                              <p className="artist-preview__hint">
+                                영상 등록을 완료하면 아래 <strong>자동 감지된 클립 제안</strong>에서 추천 구간을 확인할 수 있습니다.
+                              </p>
                             )}
                             {showClipFields && (
                               <>
@@ -3616,11 +3261,7 @@ export default function App() {
                               </>
                             )}
                             <button type="submit" disabled={creationDisabled}>
-                              {isClipRegistration
-                                ? '클립 등록'
-                                : hasManualClipInput
-                                  ? '영상 및 클립 저장'
-                                  : '영상 메타데이터 저장'}
+                              {isClipRegistration ? '클립 등록' : '영상 메타데이터 저장'}
                             </button>
                           </form>
                           {isClipRegistration && (
