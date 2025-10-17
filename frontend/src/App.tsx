@@ -2514,6 +2514,34 @@ export default function App() {
                           <p className="artist-library__empty">등록된 영상이 없습니다.</p>
                         ) : (
                           <ul className="artist-library__video-list">
+                            {selectedVideoData && (
+                              <li className="artist-library__video-preview">
+                                <div className="artist-library__video-preview-meta">
+                                  <span className="artist-library__video-preview-title">
+                                    {selectedVideoData.title || selectedVideoData.youtubeVideoId || '제목 없는 영상'}
+                                  </span>
+                                  <span className="artist-library__video-preview-subtitle">
+                                    {describeVideoContentType(selectedVideoData.contentType)} ·{' '}
+                                    {formatSeconds(selectedVideoData.durationSec ?? 0)}
+                                  </span>
+                                </div>
+                                {selectedVideoData.youtubeVideoId ? (
+                                  <ClipPlayer
+                                    youtubeVideoId={selectedVideoData.youtubeVideoId}
+                                    startSec={0}
+                                    endSec={
+                                      selectedVideoData.durationSec && selectedVideoData.durationSec > 0
+                                        ? selectedVideoData.durationSec
+                                        : undefined
+                                    }
+                                  />
+                                ) : (
+                                  <p className="artist-library__video-preview-empty">
+                                    유튜브 영상 정보가 없어 재생할 수 없습니다.
+                                  </p>
+                                )}
+                              </li>
+                            )}
                             {videos.map((video) => {
                               const isVideoSelected = selectedVideo === video.id;
                               const videoThumbnail =

@@ -1408,6 +1408,46 @@ button:disabled:hover {
   gap: 14px;
 }
 
+.artist-library__video-preview {
+  border-radius: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background: rgba(15, 23, 42, 0.7);
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.08);
+}
+
+.artist-library__video-preview-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.artist-library__video-preview-title {
+  font-weight: 600;
+  font-size: 1.05rem;
+}
+
+.artist-library__video-preview-subtitle {
+  font-size: 0.86rem;
+  color: var(--color-text-muted);
+}
+
+.artist-library__video-preview iframe {
+  border: none;
+  border-radius: 16px;
+  width: 100%;
+  min-height: 220px;
+}
+
+.artist-library__video-preview-empty {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--color-text-muted);
+}
+
 .artist-library__video-button {
   width: 100%;
   border-radius: 18px;
