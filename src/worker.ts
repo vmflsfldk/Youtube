@@ -63,36 +63,6 @@ interface VideoSectionResponse {
   source: VideoSectionSource;
 }
 
-interface VideoSectionPreviewCommentDebug {
-  text: string;
-  authorDisplayName?: string | null;
-  likeCount?: number | null;
-  commentId?: string | null;
-  url?: string | null;
-  publishedAt?: string | null;
-  updatedAt?: string | null;
-}
-
-interface VideoSectionPreviewDebugSource {
-  source: VideoSectionSource;
-  sectionCount: number;
-  comment?: VideoSectionPreviewCommentDebug | null;
-  descriptionAvailable?: boolean;
-  descriptionSample?: string | null;
-}
-
-interface VideoSectionPreviewDebugInfo {
-  durationSec: number | null;
-  selectedSource: VideoSectionSource | "NONE";
-  sources: VideoSectionPreviewDebugSource[];
-}
-
-interface VideoSectionPreviewResponse {
-  sections: VideoSectionResponse[];
-  durationSec: number | null;
-  debug?: VideoSectionPreviewDebugInfo;
-}
-
 interface VideoResponse {
   id: number;
   artistId: number;
@@ -1211,9 +1181,6 @@ async function handleApi(
     if (request.method === "POST" && path === "/api/users/me/favorites") {
       return await toggleFavorite(request, env, requireUser(user), cors);
     }
-    if (request.method === "GET" && path === "/api/videos/sections/preview") {
-      return await previewVideoSections(url, env, requireUser(user), cors);
-    }
     if (path === "/api/videos") {
       if (request.method === "POST") {
         return await createVideo(request, env, requireUser(user), cors);
@@ -1634,85 +1601,6 @@ async function listVideos(url: URL, env: Env, user: UserContext, cors: CorsConfi
   const { results } = await statement.all<VideoRow>();
   const videos = (results ?? []).map(toVideoResponse);
   return jsonResponse(videos, 200, cors);
-}
-
-async function previewVideoSections(
-  url: URL,
-  env: Env,
-  _user: UserContext,
-  cors: CorsConfig
-): Promise<Response> {
-  const videoUrl = url.searchParams.get("videoUrl");
-  if (!videoUrl || !videoUrl.trim()) {
-    throw new HttpError(400, "videoUrl is required");
-  }
-
-  const videoId = extractVideoId(videoUrl.trim());
-  if (!videoId) {
-    throw new HttpError(400, "Unable to parse videoId from URL");
-  }
-
-  const metadata = await fetchVideoMetadata(env, videoId);
-  const durationSec = metadata.durationSec ?? null;
-
-  const apiSections = await fetchVideoSectionsFromApi(env, videoId, durationSec);
-  let sections = apiSections;
-  let selectedSource: VideoSectionSource | "NONE" = apiSections.length > 0 ? "YOUTUBE_CHAPTER" : "NONE";
-  const debugSources: VideoSectionPreviewDebugSource[] = [
-    {
-      source: "YOUTUBE_CHAPTER",
-      sectionCount: apiSections.length,
-    },
-  ];
-
-  if (sections.length === 0) {
-    const commentResult = await fetchVideoSectionsFromComments(env, videoId, durationSec);
-    debugSources.push({
-      source: "COMMENT",
-      sectionCount: commentResult.sections.length,
-      comment: commentResult.debugComment ?? null,
-    });
-    if (commentResult.sections.length > 0) {
-      sections = commentResult.sections;
-      selectedSource = "COMMENT";
-    }
-  }
-
-  if (sections.length === 0) {
-    if (metadata.description) {
-      const descriptionSections = extractSectionsFromText(metadata.description, durationSec, "VIDEO_DESCRIPTION");
-      const descriptionSample = metadata.description.trim().slice(0, 200) || null;
-      debugSources.push({
-        source: "VIDEO_DESCRIPTION",
-        sectionCount: descriptionSections.length,
-        descriptionAvailable: true,
-        descriptionSample,
-      });
-      if (descriptionSections.length > 0) {
-        sections = descriptionSections;
-        selectedSource = "VIDEO_DESCRIPTION";
-      }
-    } else {
-      debugSources.push({
-        source: "VIDEO_DESCRIPTION",
-        sectionCount: 0,
-        descriptionAvailable: false,
-        descriptionSample: null,
-      });
-    }
-  }
-
-  const payload: VideoSectionPreviewResponse = {
-    sections,
-    durationSec,
-    debug: {
-      durationSec,
-      selectedSource,
-      sources: debugSources,
-    },
-  };
-
-  return jsonResponse(payload, 200, cors);
 }
 
 async function createClip(
@@ -2806,20 +2694,15 @@ async function fetchVideoSectionsFromApi(
   return sections;
 }
 
-interface CommentSectionResult {
-  sections: VideoSectionResponse[];
-  debugComment?: VideoSectionPreviewCommentDebug;
-}
-
 async function fetchVideoSectionsFromComments(
   env: Env,
   videoId: string,
   durationSec: number | null
-): Promise<CommentSectionResult> {
+): Promise<VideoSectionResponse[]> {
   const apiKey = env.YOUTUBE_API_KEY?.trim();
   if (!apiKey) {
     warnMissingYouTubeApiKey();
-    return { sections: [] };
+    return [];
   }
 
   const url = new URL("https://www.googleapis.com/youtube/v3/commentThreads");
@@ -2835,12 +2718,12 @@ async function fetchVideoSectionsFromComments(
     response = await fetch(url.toString(), { method: "GET" });
   } catch (error) {
     console.warn(`[yt-clip] Failed to fetch YouTube comments for ${videoId}`, error);
-    return { sections: [] };
+    return [];
   }
 
   if (!response.ok) {
     console.warn(`[yt-clip] YouTube comments API responded with status ${response.status} for video ${videoId}`);
-    return { sections: [] };
+    return [];
   }
 
   let payload: YouTubeCommentThreadsResponse;
@@ -2848,7 +2731,7 @@ async function fetchVideoSectionsFromComments(
     payload = (await response.json()) as YouTubeCommentThreadsResponse;
   } catch (error) {
     console.warn(`[yt-clip] Failed to parse YouTube comments response for ${videoId}`, error);
-    return { sections: [] };
+    return [];
   }
 
   const items = Array.isArray(payload.items) ? payload.items : [];
@@ -2860,34 +2743,11 @@ async function fetchVideoSectionsFromComments(
     }
     const sections = extractSectionsFromText(text, durationSec, "COMMENT");
     if (sections.length >= 2) {
-      const rawCommentId = typeof item?.id === "string" ? item.id.trim() : "";
-      const topLevelCommentId = typeof item?.snippet?.topLevelComment?.id === "string"
-        ? item.snippet.topLevelComment.id.trim()
-        : "";
-      const commentId = rawCommentId || topLevelCommentId;
-      const commentUrl = commentId ? `https://www.youtube.com/watch?v=${videoId}&lc=${commentId}` : null;
-      const authorDisplayName = snippet?.authorDisplayName?.trim();
-      const likeCountValue = snippet?.likeCount;
-      const likeCount = typeof likeCountValue === "number" && Number.isFinite(likeCountValue) ? likeCountValue : null;
-      const publishedAt = snippet?.publishedAt?.trim() || null;
-      const updatedAt = snippet?.updatedAt?.trim() || null;
-
-      return {
-        sections,
-        debugComment: {
-          text,
-          authorDisplayName: authorDisplayName || null,
-          likeCount,
-          commentId: commentId || null,
-          url: commentUrl,
-          publishedAt,
-          updatedAt,
-        },
-      };
+      return sections;
     }
   }
 
-  return { sections: [] };
+  return [];
 }
 
 function extractSectionsFromText(
@@ -3900,11 +3760,11 @@ async function detectFromChapterSources(
     return apiSections.map(toClipCandidateFromSection);
   }
 
-  const commentSectionsResult = await fetchVideoSectionsFromComments(env, normalizedVideoId, durationSec);
-  if (commentSectionsResult.sections.length === 0) {
+  const commentSections = await fetchVideoSectionsFromComments(env, normalizedVideoId, durationSec);
+  if (commentSections.length === 0) {
     return [];
   }
-  return commentSectionsResult.sections.map(toClipCandidateFromSection);
+  return commentSections.map(toClipCandidateFromSection);
 }
 
 function detectFromCaptions(video: { durationSec: number | null; captionsJson: string | null }): ClipCandidateResponse[] {

@@ -2,7 +2,6 @@ package com.example.youtube.controller;
 
 import com.example.youtube.dto.VideoCreateRequest;
 import com.example.youtube.dto.VideoResponse;
-import com.example.youtube.dto.VideoSectionPreviewResponse;
 import com.example.youtube.service.VideoService;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -33,8 +32,4 @@ public class VideoController {
         return videoService.listByArtist(artistId);
     }
 
-    @GetMapping("/sections/preview")
-    public VideoSectionPreviewResponse previewSections(@RequestParam("videoUrl") String videoUrl) {
-        return videoService.previewSections(videoUrl);
-    }
 }
