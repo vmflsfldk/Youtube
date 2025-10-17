@@ -72,6 +72,19 @@ const describeVideoContentType = (contentType?: string): string => {
 const isClipSourceVideo = (video: VideoResponse): boolean =>
   (video.contentType ?? '').toUpperCase() === 'CLIP_SOURCE';
 
+type MediaRegistrationType = 'video' | 'clip';
+
+const resolveMediaRegistrationType = (url: string, selectedVideoId: number | null): MediaRegistrationType => {
+  const normalized = url.trim().toLowerCase();
+  if (normalized.includes('watch')) {
+    return 'clip';
+  }
+  if (normalized.length > 0) {
+    return 'video';
+  }
+  return selectedVideoId !== null ? 'clip' : 'video';
+};
+
 const VIDEO_FILTER_KEYWORDS = ['cover', 'original', 'official'];
 
 type ArtistCountryKey = 'availableKo' | 'availableEn' | 'availableJp';
@@ -351,11 +364,17 @@ export default function App() {
   const [hasAttemptedVideoSectionPreview, setHasAttemptedVideoSectionPreview] = useState(false);
   const [isLibraryVideoFormOpen, setLibraryVideoFormOpen] = useState(false);
   const [isLibraryClipFormOpen, setLibraryClipFormOpen] = useState(false);
+  const isLibraryMediaFormOpen = isLibraryVideoFormOpen || isLibraryClipFormOpen;
   const [artistForm, setArtistForm] = useState<ArtistFormState>(() => createInitialArtistFormState());
   const [artistSearchQuery, setArtistSearchQuery] = useState('');
   const [artistTagQuery, setArtistTagQuery] = useState('');
   const [videoForm, setVideoForm] = useState({ url: '', artistId: '', description: '', captionsJson: '' });
   const [clipForm, setClipForm] = useState({ title: '', startSec: 0, endSec: 0, tags: '', videoUrl: '' });
+  const mediaRegistrationType = useMemo(
+    () => resolveMediaRegistrationType(videoForm.url, selectedVideo),
+    [videoForm.url, selectedVideo]
+  );
+  const isClipRegistration = mediaRegistrationType === 'clip';
   const [autoDetectMode, setAutoDetectMode] = useState('chapters');
   const [isArtistVideosLoading, setArtistVideosLoading] = useState(false);
   const [isGoogleReady, setIsGoogleReady] = useState(false);
@@ -1125,10 +1144,12 @@ export default function App() {
   const applyPreviewVideoToForm = useCallback(
     (video: ArtistPreviewVideo) => {
       setVideoForm((prev) => ({ ...prev, url: video.url }));
+      setClipForm((prev) => ({ ...prev, videoUrl: video.url }));
+      setSelectedVideo(null);
       setActiveSection('management');
       setActiveManagementTab('media');
     },
-    [setActiveManagementTab, setActiveSection, setVideoForm]
+    [setActiveManagementTab, setActiveSection, setClipForm, setSelectedVideo, setVideoForm]
   );
 
   const handleVideoSectionPreviewFetch = useCallback(async () => {
@@ -1235,8 +1256,7 @@ export default function App() {
     [videoForm.artistId, authHeaders]
   );
 
-  const handleVideoSubmit = async (event: FormEvent) => {
-    event.preventDefault();
+  const submitVideo = useCallback(async () => {
     if (creationDisabled) {
       console.warn('Authentication is required to register videos.');
       return;
@@ -1261,11 +1281,29 @@ export default function App() {
       setVideoSectionPreviewError(null);
       setHasAttemptedVideoSectionPreview(false);
       setVideoForm((prev) => ({ ...prev, url: '', description: '', captionsJson: '' }));
+      setClipForm((prev) => ({ ...prev, videoUrl: '' }));
       reloadArtistVideos().catch((error) => console.error('Failed to refresh videos after save', error));
     } catch (error) {
       console.error('Failed to save video', error);
     }
-  };
+  }, [
+    creationDisabled,
+    http,
+    videoForm.url,
+    videoForm.artistId,
+    videoForm.description,
+    videoForm.captionsJson,
+    authHeaders,
+    reloadArtistVideos
+  ]);
+
+  const handleVideoSubmit = useCallback(
+    async (event: FormEvent) => {
+      event.preventDefault();
+      await submitVideo();
+    },
+    [submitVideo]
+  );
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -1310,8 +1348,7 @@ export default function App() {
     })();
   }, [isAuthenticated]);
 
-  const handleClipSubmit = async (event: FormEvent) => {
-    event.preventDefault();
+  const submitClip = useCallback(async () => {
     if (creationDisabled) {
       console.warn('Authentication is required to create clips.');
       return;
@@ -1350,6 +1387,7 @@ export default function App() {
       const response = await http.post<ClipResponse>('/clips', payload, { headers: authHeaders });
       const normalizedClip = normalizeClip(response.data);
       setClipForm({ title: '', startSec: 0, endSec: 0, tags: '', videoUrl: '' });
+      setVideoForm((prev) => ({ ...prev, url: '' }));
       setClipCandidates([]);
       if (response.data.videoId !== selectedVideo) {
         setSelectedVideo(response.data.videoId);
@@ -1361,7 +1399,50 @@ export default function App() {
     } catch (error) {
       console.error('Failed to create clip', error);
     }
-  };
+  }, [
+    creationDisabled,
+    clipForm.videoUrl,
+    clipForm.tags,
+    clipForm.title,
+    clipForm.startSec,
+    clipForm.endSec,
+    selectedVideo,
+    videoForm.artistId,
+    http,
+    authHeaders,
+    reloadArtistVideos
+  ]);
+
+  const handleClipSubmit = useCallback(
+    async (event: FormEvent) => {
+      event.preventDefault();
+      await submitClip();
+    },
+    [submitClip]
+  );
+
+  const handleMediaSubmit = useCallback(
+    async (event: FormEvent) => {
+      event.preventDefault();
+      if (isClipRegistration) {
+        await submitClip();
+        return;
+      }
+      await submitVideo();
+    },
+    [isClipRegistration, submitClip, submitVideo]
+  );
+
+  const handleMediaUrlChange = useCallback(
+    (value: string) => {
+      setVideoForm((prev) => ({ ...prev, url: value }));
+      setClipForm((prev) => ({ ...prev, videoUrl: value }));
+      if (value.trim().length > 0) {
+        setSelectedVideo(null);
+      }
+    },
+    [setClipForm, setSelectedVideo, setVideoForm]
+  );
 
   const runAutoDetect = async () => {
     if (!selectedVideo) {
@@ -1843,62 +1924,69 @@ export default function App() {
                 {activeManagementTab === 'media' && (
                   <>
                     <div className="management-section">
-                      <h3>영상 등록</h3>
-                      <form onSubmit={handleVideoSubmit} className="stacked-form">
-                        <label htmlFor="videoUrl">YouTube 영상 URL</label>
+                      <h3>영상·클립 등록</h3>
+                      <form onSubmit={handleMediaSubmit} className="stacked-form">
+                        <label htmlFor="mediaUrl">YouTube URL</label>
                         <div className="number-row">
                           <input
-                            id="videoUrl"
+                            id="mediaUrl"
                             placeholder="https://www.youtube.com/watch?v=..."
                             value={videoForm.url}
-                            onChange={(event) => setVideoForm((prev) => ({ ...prev, url: event.target.value }))}
-                            required
+                            onChange={(event) => handleMediaUrlChange(event.target.value)}
+                            required={!isClipRegistration}
                             disabled={creationDisabled}
                           />
-                          <button
-                            type="button"
-                            onClick={handleVideoSectionPreviewFetch}
-                            disabled={creationDisabled || isFetchingVideoSections}
-                          >
-                            {isFetchingVideoSections ? '구간 불러오는 중...' : '구간 불러오기'}
-                          </button>
-                        </div>
-                        {videoSectionPreviewError && (
-                          <p className="login-status__message error">{videoSectionPreviewError}</p>
-                        )}
-                        {videoSectionPreview.length > 0 && (
-                          <div className="section-preview">
-                            <p className="artist-preview__hint">
-                              자동으로 {videoSectionPreview.length}개의 구간을 찾았습니다. 영상 저장 후 아래에서 클립을 등록하세요.
-                            </p>
-                            <ul className="video-item__sections">
-                              {videoSectionPreview.map((section, index) => (
-                                <li key={`${section.startSec}-${section.endSec}-${index}`} className="video-item__section">
-                                  <span className="video-item__section-time">
-                                    {formatSeconds(section.startSec)} → {formatSeconds(section.endSec)}
-                                  </span>
-                                  <span className="video-item__section-title">
-                                    {section.title || `구간 ${index + 1}`}
-                                  </span>
-                                  <span className="video-item__section-source">
-                                    {describeSectionSource(section.source)}
-                                  </span>
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-                        {hasAttemptedVideoSectionPreview &&
-                          !isFetchingVideoSections &&
-                          !videoSectionPreviewError &&
-                          videoSectionPreview.length === 0 && (
-                            <p className="artist-preview__hint">
-                              자동 구간을 찾지 못했습니다. 영상 저장 후 아래에서 직접 구간을 지정하세요.
-                            </p>
+                          {!isClipRegistration && (
+                            <button
+                              type="button"
+                              onClick={handleVideoSectionPreviewFetch}
+                              disabled={creationDisabled || isFetchingVideoSections}
+                            >
+                              {isFetchingVideoSections ? '구간 불러오는 중...' : '구간 불러오기'}
+                            </button>
                           )}
-                        <label htmlFor="videoArtistId">아티스트 선택</label>
+                        </div>
+                        <p className="form-hint">watch가 포함된 URL은 자동으로 클립 등록으로 분류됩니다.</p>
+                        {!isClipRegistration && (
+                          <>
+                            {videoSectionPreviewError && (
+                              <p className="login-status__message error">{videoSectionPreviewError}</p>
+                            )}
+                            {videoSectionPreview.length > 0 && (
+                              <div className="section-preview">
+                                <p className="artist-preview__hint">
+                                  자동으로 {videoSectionPreview.length}개의 구간을 찾았습니다. 영상 저장 후 아래에서 클립을 등록하세요.
+                                </p>
+                                <ul className="video-item__sections">
+                                  {videoSectionPreview.map((section, index) => (
+                                    <li key={`${section.startSec}-${section.endSec}-${index}`} className="video-item__section">
+                                      <span className="video-item__section-time">
+                                        {formatSeconds(section.startSec)} → {formatSeconds(section.endSec)}
+                                      </span>
+                                      <span className="video-item__section-title">
+                                        {section.title || `구간 ${index + 1}`}
+                                      </span>
+                                      <span className="video-item__section-source">
+                                        {describeSectionSource(section.source)}
+                                      </span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                            {hasAttemptedVideoSectionPreview &&
+                              !isFetchingVideoSections &&
+                              !videoSectionPreviewError &&
+                              videoSectionPreview.length === 0 && (
+                                <p className="artist-preview__hint">
+                                  자동 구간을 찾지 못했습니다. 영상 저장 후 아래에서 직접 구간을 지정하세요.
+                                </p>
+                              )}
+                          </>
+                        )}
+                        <label htmlFor="mediaArtistId">아티스트 선택</label>
                         <select
-                          id="videoArtistId"
+                          id="mediaArtistId"
                           value={videoForm.artistId}
                           onChange={(event) => setVideoForm((prev) => ({ ...prev, artistId: event.target.value }))}
                           required
@@ -1913,227 +2001,218 @@ export default function App() {
                             </option>
                           ))}
                         </select>
-                        <button type="submit" disabled={creationDisabled}>
-                          영상 메타데이터 저장
-                        </button>
-                      </form>
-                    </div>
-                    <div className="management-section">
-                      <h3>새로운 클립 등록</h3>
-                      <form onSubmit={handleClipSubmit} className="stacked-form">
-                        <label htmlFor="clipVideoId">영상 선택</label>
-                        <p className="form-hint">등록된 라이브 영상을 선택하거나 아래 입력란에 새로운 URL을 추가하세요.</p>
-                        <select
-                          id="clipVideoId"
-                          value={selectedVideo ?? ''}
-                          onChange={(event) => {
-                            const { value } = event.target;
-                            if (value === '') {
-                              setSelectedVideo(null);
-                              return;
-                            }
-                            const parsed = Number(value);
-                            setSelectedVideo(Number.isNaN(parsed) ? null : parsed);
-                          }}
-                          disabled={creationDisabled || videos.length === 0}
-                        >
-                          <option value="">선택 안 함</option>
-                          {clipSourceVideos.length > 0 && (
-                            <optgroup label="라이브/클립 원본">
-                              {clipSourceVideos.map((video) => (
-                                <option key={video.id} value={video.id}>
-                                  {(video.title || video.youtubeVideoId) ?? video.youtubeVideoId} ·{' '}
-                                  {describeVideoContentType(video.contentType)}
-                                </option>
-                              ))}
-                            </optgroup>
-                          )}
-                          {officialVideos.length > 0 && (
-                            <optgroup label="공식 영상">
-                              {officialVideos.map((video) => (
-                                <option key={video.id} value={video.id}>
-                                  {(video.title || video.youtubeVideoId) ?? video.youtubeVideoId} ·{' '}
-                                  {describeVideoContentType(video.contentType)}
-                                </option>
-                              ))}
-                            </optgroup>
-                          )}
-                        </select>
-                        <label htmlFor="clipVideoUrl">라이브 영상 URL</label>
-                        <input
-                          id="clipVideoUrl"
-                          placeholder="https://www.youtube.com/watch?v=..."
-                          value={clipForm.videoUrl}
-                          onChange={(event) => setClipForm((prev) => ({ ...prev, videoUrl: event.target.value }))}
-                          disabled={creationDisabled}
-                        />
-                        <p className="form-hint">라이브 영상 URL을 입력하면 자동으로 클립 원본으로 등록됩니다.</p>
-                        {selectedVideoData?.sections && selectedVideoData.sections.length > 0 ? (
-                          <div className="section-preview">
-                            <p className="artist-preview__hint">구간을 클릭하면 시간이 자동으로 입력됩니다.</p>
-                            <ul className="video-item__sections">
-                              {selectedVideoData.sections.map((section, index) => (
-                                <li
-                                  key={`${section.startSec}-${section.endSec}-${index}`}
-                                  className="video-item__section"
-                                  onClick={() => applyVideoSectionToClip(section, `구간 ${index + 1}`)}
-                                  role="button"
-                                  tabIndex={0}
-                                  onKeyDown={(event) => {
-                                    if (
-                                      event.key === 'Enter' ||
-                                      event.key === ' ' ||
-                                      event.key === 'Space' ||
-                                      event.key === 'Spacebar'
-                                    ) {
-                                      event.preventDefault();
-                                      applyVideoSectionToClip(section, `구간 ${index + 1}`);
-                                    }
-                                  }}
-                                >
-                                  <span className="video-item__section-time">
-                                    {formatSeconds(section.startSec)} → {formatSeconds(section.endSec)}
-                                  </span>
-                                  <span className="video-item__section-title">
-                                    {section.title || `구간 ${index + 1}`}
-                                  </span>
-                                  <span className="video-item__section-source">
-                                    {describeSectionSource(section.source)}
-                                  </span>
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        ) : (
-                          selectedVideo && (
-                            <p className="artist-preview__hint">
-                              저장된 구간이 없습니다. 아래에서 직접 시간을 입력하세요.
-                            </p>
-                          )
-                        )}
-                        <label htmlFor="clipTitle">클립 제목</label>
-                        <input
-                          id="clipTitle"
-                          placeholder="클립 제목"
-                          value={clipForm.title}
-                          onChange={(event) => setClipForm((prev) => ({ ...prev, title: event.target.value }))}
-                          required
-                          disabled={creationDisabled}
-                        />
-                        <div className="number-row">
-                          <div>
-                            <label htmlFor="clipStartSec">시작 시간 (초)</label>
-                            <input
-                              id="clipStartSec"
-                              type="number"
-                              min="0"
-                              value={clipForm.startSec}
-                              onChange={(event) =>
-                                setClipForm((prev) => ({ ...prev, startSec: Number(event.target.value) }))
-                              }
-                              required
-                              disabled={creationDisabled}
-                            />
-                          </div>
-                          <div>
-                            <label htmlFor="clipEndSec">종료 시간 (초)</label>
-                            <input
-                              id="clipEndSec"
-                              type="number"
-                              min="0"
-                              value={clipForm.endSec}
-                              onChange={(event) =>
-                                setClipForm((prev) => ({ ...prev, endSec: Number(event.target.value) }))
-                              }
-                              required
-                              disabled={creationDisabled}
-                            />
-                          </div>
-                        </div>
-                        <label htmlFor="clipTags">태그 (쉼표로 구분)</label>
-                        <input
-                          id="clipTags"
-                          placeholder="예: 하이라이트, 라이브"
-                          value={clipForm.tags}
-                          onChange={(event) => setClipForm((prev) => ({ ...prev, tags: event.target.value }))}
-                          disabled={creationDisabled}
-                        />
-                        <button type="submit" disabled={creationDisabled}>
-                          클립 등록
-                        </button>
-                      </form>
-                      <div className="clip-preview">
-                        <h4>프리뷰</h4>
-                        {selectedVideoData ? (
+                        {isClipRegistration && (
                           <>
-                            <p className="form-hint">
-                              {describeVideoContentType(selectedVideoData.contentType)} 영상 ·{' '}
-                              {selectedVideoData.title || selectedVideoData.youtubeVideoId}
-                            </p>
-                            <ClipPlayer
-                              youtubeVideoId={selectedVideoData.youtubeVideoId}
-                              startSec={previewStartSec}
-                              endSec={previewEndSec}
-                              autoplay={false}
+                            <label htmlFor="clipVideoId">영상 선택</label>
+                            <p className="form-hint">등록된 라이브 영상을 선택하거나 URL을 입력해 새로운 클립 원본을 등록하세요.</p>
+                            <select
+                              id="clipVideoId"
+                              value={selectedVideo ?? ''}
+                              onChange={(event) => {
+                                const { value } = event.target;
+                                if (value === '') {
+                                  setSelectedVideo(null);
+                                  return;
+                                }
+                                const parsed = Number(value);
+                                setSelectedVideo(Number.isNaN(parsed) ? null : parsed);
+                              }}
+                              disabled={creationDisabled || videos.length === 0}
+                            >
+                              <option value="">선택 안 함</option>
+                              {clipSourceVideos.length > 0 && (
+                                <optgroup label="라이브/클립 원본">
+                                  {clipSourceVideos.map((video) => (
+                                    <option key={video.id} value={video.id}>
+                                      {(video.title || video.youtubeVideoId) ?? video.youtubeVideoId} ·{' '}
+                                      {describeVideoContentType(video.contentType)}
+                                    </option>
+                                  ))}
+                                </optgroup>
+                              )}
+                              {officialVideos.length > 0 && (
+                                <optgroup label="공식 영상">
+                                  {officialVideos.map((video) => (
+                                    <option key={video.id} value={video.id}>
+                                      {(video.title || video.youtubeVideoId) ?? video.youtubeVideoId} ·{' '}
+                                      {describeVideoContentType(video.contentType)}
+                                    </option>
+                                  ))}
+                                </optgroup>
+                              )}
+                            </select>
+                            {selectedVideoData?.sections && selectedVideoData.sections.length > 0 ? (
+                              <div className="section-preview">
+                                <p className="artist-preview__hint">구간을 클릭하면 시간이 자동으로 입력됩니다.</p>
+                                <ul className="video-item__sections">
+                                  {selectedVideoData.sections.map((section, index) => (
+                                    <li
+                                      key={`${section.startSec}-${section.endSec}-${index}`}
+                                      className="video-item__section"
+                                      onClick={() => applyVideoSectionToClip(section, `구간 ${index + 1}`)}
+                                      role="button"
+                                      tabIndex={0}
+                                      onKeyDown={(event) => {
+                                        if (
+                                          event.key === 'Enter' ||
+                                          event.key === ' ' ||
+                                          event.key === 'Space' ||
+                                          event.key === 'Spacebar'
+                                        ) {
+                                          event.preventDefault();
+                                          applyVideoSectionToClip(section, `구간 ${index + 1}`);
+                                        }
+                                      }}
+                                    >
+                                      <span className="video-item__section-time">
+                                        {formatSeconds(section.startSec)} → {formatSeconds(section.endSec)}
+                                      </span>
+                                      <span className="video-item__section-title">
+                                        {section.title || `구간 ${index + 1}`}
+                                      </span>
+                                      <span className="video-item__section-source">
+                                        {describeSectionSource(section.source)}
+                                      </span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            ) : (
+                              selectedVideo && (
+                                <p className="artist-preview__hint">
+                                  저장된 구간이 없습니다. 아래에서 직접 시간을 입력하세요.
+                                </p>
+                              )
+                            )}
+                            <label htmlFor="clipTitle">클립 제목</label>
+                            <input
+                              id="clipTitle"
+                              placeholder="클립 제목"
+                              value={clipForm.title}
+                              onChange={(event) => setClipForm((prev) => ({ ...prev, title: event.target.value }))}
+                              required
+                              disabled={creationDisabled}
+                            />
+                            <div className="number-row">
+                              <div>
+                                <label htmlFor="clipStartSec">시작 시간 (초)</label>
+                                <input
+                                  id="clipStartSec"
+                                  type="number"
+                                  min="0"
+                                  value={clipForm.startSec}
+                                  onChange={(event) =>
+                                    setClipForm((prev) => ({ ...prev, startSec: Number(event.target.value) }))
+                                  }
+                                  required
+                                  disabled={creationDisabled}
+                                />
+                              </div>
+                              <div>
+                                <label htmlFor="clipEndSec">종료 시간 (초)</label>
+                                <input
+                                  id="clipEndSec"
+                                  type="number"
+                                  min="0"
+                                  value={clipForm.endSec}
+                                  onChange={(event) =>
+                                    setClipForm((prev) => ({ ...prev, endSec: Number(event.target.value) }))
+                                  }
+                                  required
+                                  disabled={creationDisabled}
+                                />
+                              </div>
+                            </div>
+                            <label htmlFor="clipTags">태그 (쉼표로 구분)</label>
+                            <input
+                              id="clipTags"
+                              placeholder="예: 하이라이트, 라이브"
+                              value={clipForm.tags}
+                              onChange={(event) => setClipForm((prev) => ({ ...prev, tags: event.target.value }))}
+                              disabled={creationDisabled}
                             />
                           </>
-                        ) : (
-                          <p className="empty-state">클립 프리뷰를 확인하려면 영상을 선택하세요.</p>
                         )}
-                      </div>
-                      <div className="auto-detect">
-                        <div className="number-row">
-                          <select
-                            id="detectVideo"
-                            value={selectedVideo ?? ''}
-                            onChange={(event) => {
-                              const { value } = event.target;
-                              if (value === '') {
-                                setSelectedVideo(null);
-                                return;
-                              }
-                              const parsed = Number(value);
-                              setSelectedVideo(Number.isNaN(parsed) ? null : parsed);
-                            }}
-                            disabled={creationDisabled || videos.length === 0}
-                          >
-                            <option value="">선택 안 함</option>
-                            {clipSourceVideos.length > 0 && (
-                              <optgroup label="라이브/클립 원본">
-                                {clipSourceVideos.map((video) => (
-                                  <option key={video.id} value={video.id}>
-                                    {(video.title || video.youtubeVideoId) ?? video.youtubeVideoId} ·{' '}
-                                    {describeVideoContentType(video.contentType)}
-                                  </option>
-                                ))}
-                              </optgroup>
-                            )}
-                            {officialVideos.length > 0 && (
-                              <optgroup label="공식 영상">
-                                {officialVideos.map((video) => (
-                                  <option key={video.id} value={video.id}>
-                                    {(video.title || video.youtubeVideoId) ?? video.youtubeVideoId} ·{' '}
-                                    {describeVideoContentType(video.contentType)}
-                                  </option>
-                                ))}
-                              </optgroup>
-                            )}
-                          </select>
-                          <select
-                            id="detectMode"
-                            value={autoDetectMode}
-                            onChange={(event) => setAutoDetectMode(event.target.value)}
-                            disabled={creationDisabled}
-                          >
-                            <option value="chapters">챕터 기반</option>
-                            <option value="captions">자막 기반</option>
-                            <option value="combined">혼합</option>
-                          </select>
-                        </div>
-                        <button type="button" onClick={runAutoDetect} disabled={creationDisabled || !selectedVideo}>
-                          자동으로 클립 제안 받기
+                        <button type="submit" disabled={creationDisabled}>
+                          {isClipRegistration ? '클립 등록' : '영상 메타데이터 저장'}
                         </button>
-                      </div>
+                      </form>
+                      {isClipRegistration && (
+                        <>
+                          <div className="clip-preview">
+                            <h4>프리뷰</h4>
+                            {selectedVideoData ? (
+                              <>
+                                <p className="form-hint">
+                                  {describeVideoContentType(selectedVideoData.contentType)} 영상 ·{' '}
+                                  {selectedVideoData.title || selectedVideoData.youtubeVideoId}
+                                </p>
+                                <ClipPlayer
+                                  youtubeVideoId={selectedVideoData.youtubeVideoId}
+                                  startSec={previewStartSec}
+                                  endSec={previewEndSec}
+                                  autoplay={false}
+                                />
+                              </>
+                            ) : (
+                              <p className="empty-state">클립 프리뷰를 확인하려면 영상을 선택하세요.</p>
+                            )}
+                          </div>
+                          <div className="auto-detect">
+                            <div className="number-row">
+                              <select
+                                id="detectVideo"
+                                value={selectedVideo ?? ''}
+                                onChange={(event) => {
+                                  const { value } = event.target;
+                                  if (value === '') {
+                                    setSelectedVideo(null);
+                                    return;
+                                  }
+                                  const parsed = Number(value);
+                                  setSelectedVideo(Number.isNaN(parsed) ? null : parsed);
+                                }}
+                                disabled={creationDisabled || videos.length === 0}
+                              >
+                                <option value="">선택 안 함</option>
+                                {clipSourceVideos.length > 0 && (
+                                  <optgroup label="라이브/클립 원본">
+                                    {clipSourceVideos.map((video) => (
+                                      <option key={video.id} value={video.id}>
+                                        {(video.title || video.youtubeVideoId) ?? video.youtubeVideoId} ·{' '}
+                                        {describeVideoContentType(video.contentType)}
+                                      </option>
+                                    ))}
+                                  </optgroup>
+                                )}
+                                {officialVideos.length > 0 && (
+                                  <optgroup label="공식 영상">
+                                    {officialVideos.map((video) => (
+                                      <option key={video.id} value={video.id}>
+                                        {(video.title || video.youtubeVideoId) ?? video.youtubeVideoId} ·{' '}
+                                        {describeVideoContentType(video.contentType)}
+                                      </option>
+                                    ))}
+                                  </optgroup>
+                                )}
+                              </select>
+                              <select
+                                id="detectMode"
+                                value={autoDetectMode}
+                                onChange={(event) => setAutoDetectMode(event.target.value)}
+                                disabled={creationDisabled}
+                              >
+                                <option value="chapters">챕터 기반</option>
+                                <option value="captions">자막 기반</option>
+                                <option value="combined">혼합</option>
+                              </select>
+                            </div>
+                            <button type="button" onClick={runAutoDetect} disabled={creationDisabled || !selectedVideo}>
+                              자동으로 클립 제안 받기
+                            </button>
+                          </div>
+                        </>
+                      )}
                     </div>
                   </>
                 )}
@@ -2578,220 +2657,238 @@ export default function App() {
                           <span className="artist-library__action-hint">로그인 후 등록할 수 있습니다.</span>
                         )}
                       </div>
-                      {isLibraryVideoFormOpen && selectedArtist && (
+                      {isLibraryMediaFormOpen && selectedArtist && (
                         <section className="artist-library__detail-section artist-library__form-section">
                           <div className="artist-library__section-header">
-                            <h4>영상 등록</h4>
+                            <h4>영상·클립 등록</h4>
                             <span className="artist-library__status">
-                              {selectedArtist.displayName || selectedArtist.name}
+                              {isClipRegistration
+                                ? selectedVideoData
+                                  ? selectedVideoData.title || selectedVideoData.youtubeVideoId
+                                  : '등록할 영상을 선택하세요.'
+                                : selectedArtist.displayName || selectedArtist.name}
                             </span>
                           </div>
-                          <form onSubmit={handleVideoSubmit} className="stacked-form artist-library__form">
-                            <p className="form-hint">
-                              선택된 아티스트의 유튜브 영상을 등록하면 자동으로 라이브러리에 반영됩니다.
-                            </p>
-                            <label htmlFor="libraryVideoUrl">YouTube 영상 URL</label>
+                          <form onSubmit={handleMediaSubmit} className="stacked-form artist-library__form">
+                            <p className="form-hint">YouTube URL에 watch가 포함되면 자동으로 클립 등록으로 전환됩니다.</p>
+                            <label htmlFor="libraryMediaUrl">YouTube URL</label>
                             <div className="number-row">
                               <input
-                                id="libraryVideoUrl"
+                                id="libraryMediaUrl"
                                 placeholder="https://www.youtube.com/watch?v=..."
                                 value={videoForm.url}
-                                onChange={(event) =>
-                                  setVideoForm((prev) => ({ ...prev, url: event.target.value }))
-                                }
-                                required
+                                onChange={(event) => handleMediaUrlChange(event.target.value)}
+                                required={!isClipRegistration}
                                 disabled={creationDisabled}
                               />
-                              <button
-                                type="button"
-                                onClick={handleVideoSectionPreviewFetch}
-                                disabled={creationDisabled || isFetchingVideoSections}
-                              >
-                                {isFetchingVideoSections ? '구간 불러오는 중...' : '구간 불러오기'}
-                              </button>
-                            </div>
-                            {videoSectionPreviewError && (
-                              <p className="login-status__message error">{videoSectionPreviewError}</p>
-                            )}
-                            {videoSectionPreview.length > 0 && (
-                              <div className="section-preview">
-                                <p className="artist-preview__hint">
-                                  자동으로 {videoSectionPreview.length}개의 구간을 찾았습니다. 영상 저장 후 아래에서 클립을 등록하세요.
-                                </p>
-                                <ul className="video-item__sections">
-                                  {videoSectionPreview.map((section, index) => (
-                                    <li key={`${section.startSec}-${section.endSec}-${index}`} className="video-item__section">
-                                      <span className="video-item__section-time">
-                                        {formatSeconds(section.startSec)} → {formatSeconds(section.endSec)}
-                                      </span>
-                                      <span className="video-item__section-title">
-                                        {section.title || `구간 ${index + 1}`}
-                                      </span>
-                                      <span className="video-item__section-source">
-                                        {describeSectionSource(section.source)}
-                                      </span>
-                                    </li>
-                                  ))}
-                                </ul>
-                              </div>
-                            )}
-                            {hasAttemptedVideoSectionPreview &&
-                              !isFetchingVideoSections &&
-                              !videoSectionPreviewError &&
-                              videoSectionPreview.length === 0 && (
-                                <p className="artist-preview__hint">
-                                  자동 구간을 찾지 못했습니다. 영상 저장 후 아래에서 직접 구간을 지정하세요.
-                                </p>
+                              {!isClipRegistration && (
+                                <button
+                                  type="button"
+                                  onClick={handleVideoSectionPreviewFetch}
+                                  disabled={creationDisabled || isFetchingVideoSections}
+                                >
+                                  {isFetchingVideoSections ? '구간 불러오는 중...' : '구간 불러오기'}
+                                </button>
                               )}
-                            <button type="submit" disabled={creationDisabled}>
-                              영상 메타데이터 저장
-                            </button>
-                          </form>
-                        </section>
-                      )}
-                      {isLibraryClipFormOpen && (
-                        <section className="artist-library__detail-section artist-library__form-section">
-                          <div className="artist-library__section-header">
-                            <h4>클립 등록</h4>
-                            {selectedVideoData ? (
-                              <span className="artist-library__status">
-                                {selectedVideoData.title || selectedVideoData.youtubeVideoId}
-                              </span>
-                            ) : (
-                              <span className="artist-library__status">등록할 영상을 선택하세요.</span>
-                            )}
-                          </div>
-                          <form onSubmit={handleClipSubmit} className="stacked-form artist-library__form">
-                            <p className="form-hint">
-                              라이브러리에서 영상을 선택하거나 새 라이브 영상 URL을 입력해 클립을 등록하세요.
-                            </p>
-                            <label htmlFor="libraryClipVideoUrl">라이브 영상 URL (선택)</label>
-                            <input
-                              id="libraryClipVideoUrl"
-                              placeholder="https://www.youtube.com/watch?v=..."
-                              value={clipForm.videoUrl}
-                              onChange={(event) =>
-                                setClipForm((prev) => ({ ...prev, videoUrl: event.target.value }))
-                              }
-                              disabled={creationDisabled}
-                            />
-                            {selectedVideoData?.sections && selectedVideoData.sections.length > 0 ? (
-                              <div className="section-preview">
-                                <p className="artist-preview__hint">구간을 클릭하면 시간이 자동으로 입력됩니다.</p>
-                                <ul className="video-item__sections">
-                                  {selectedVideoData.sections.map((section, index) => (
-                                    <li
-                                      key={`${section.startSec}-${section.endSec}-${index}`}
-                                      className="video-item__section"
-                                      onClick={() => applyVideoSectionToClip(section, `구간 ${index + 1}`)}
-                                      role="button"
-                                      tabIndex={0}
-                                      onKeyDown={(event) => {
-                                        if (
-                                          event.key === 'Enter' ||
-                                          event.key === ' ' ||
-                                          event.key === 'Space' ||
-                                          event.key === 'Spacebar'
-                                        ) {
-                                          event.preventDefault();
-                                          applyVideoSectionToClip(section, `구간 ${index + 1}`);
-                                        }
-                                      }}
-                                    >
-                                      <span className="video-item__section-time">
-                                        {formatSeconds(section.startSec)} → {formatSeconds(section.endSec)}
-                                      </span>
-                                      <span className="video-item__section-title">
-                                        {section.title || `구간 ${index + 1}`}
-                                      </span>
-                                      <span className="video-item__section-source">
-                                        {describeSectionSource(section.source)}
-                                      </span>
-                                    </li>
-                                  ))}
-                                </ul>
-                              </div>
-                            ) : (
-                              selectedVideo && (
-                                <p className="artist-preview__hint">
-                                  저장된 구간이 없습니다. 아래에서 직접 시간을 입력하세요.
-                                </p>
-                              )
-                            )}
-                            <label htmlFor="libraryClipTitle">클립 제목</label>
-                            <input
-                              id="libraryClipTitle"
-                              placeholder="클립 제목"
-                              value={clipForm.title}
-                              onChange={(event) =>
-                                setClipForm((prev) => ({ ...prev, title: event.target.value }))
-                              }
-                              required
-                              disabled={creationDisabled}
-                            />
-                            <div className="number-row">
-                              <div>
-                                <label htmlFor="libraryClipStartSec">시작 시간 (초)</label>
-                                <input
-                                  id="libraryClipStartSec"
-                                  type="number"
-                                  min="0"
-                                  value={clipForm.startSec}
-                                  onChange={(event) =>
-                                    setClipForm((prev) => ({ ...prev, startSec: Number(event.target.value) }))
-                                  }
-                                  required
-                                  disabled={creationDisabled}
-                                />
-                              </div>
-                              <div>
-                                <label htmlFor="libraryClipEndSec">종료 시간 (초)</label>
-                                <input
-                                  id="libraryClipEndSec"
-                                  type="number"
-                                  min="0"
-                                  value={clipForm.endSec}
-                                  onChange={(event) =>
-                                    setClipForm((prev) => ({ ...prev, endSec: Number(event.target.value) }))
-                                  }
-                                  required
-                                  disabled={creationDisabled}
-                                />
-                              </div>
                             </div>
-                            <label htmlFor="libraryClipTags">태그 (쉼표로 구분)</label>
-                            <input
-                              id="libraryClipTags"
-                              placeholder="예: 하이라이트, 라이브"
-                              value={clipForm.tags}
-                              onChange={(event) =>
-                                setClipForm((prev) => ({ ...prev, tags: event.target.value }))
-                              }
-                              disabled={creationDisabled}
-                            />
-                            <button type="submit" disabled={creationDisabled}>
-                              클립 등록
-                            </button>
-                          </form>
-                          <div className="clip-preview">
-                            <h4>프리뷰</h4>
-                            {selectedVideoData ? (
+                            {!isClipRegistration && (
                               <>
-                                <p className="form-hint">
-                                  {describeVideoContentType(selectedVideoData.contentType)} 영상 ·{' '}
-                                  {selectedVideoData.title || selectedVideoData.youtubeVideoId}
-                                </p>
-                                <ClipPlayer
-                                  youtubeVideoId={selectedVideoData.youtubeVideoId}
-                                  startSec={previewStartSec}
-                                  endSec={previewEndSec}
-                                  autoplay={false}
+                                {videoSectionPreviewError && (
+                                  <p className="login-status__message error">{videoSectionPreviewError}</p>
+                                )}
+                                {videoSectionPreview.length > 0 && (
+                                  <div className="section-preview">
+                                    <p className="artist-preview__hint">
+                                      자동으로 {videoSectionPreview.length}개의 구간을 찾았습니다. 영상 저장 후 아래에서 클립을 등록하세요.
+                                    </p>
+                                    <ul className="video-item__sections">
+                                      {videoSectionPreview.map((section, index) => (
+                                        <li key={`${section.startSec}-${section.endSec}-${index}`} className="video-item__section">
+                                          <span className="video-item__section-time">
+                                            {formatSeconds(section.startSec)} → {formatSeconds(section.endSec)}
+                                          </span>
+                                          <span className="video-item__section-title">
+                                            {section.title || `구간 ${index + 1}`}
+                                          </span>
+                                          <span className="video-item__section-source">
+                                            {describeSectionSource(section.source)}
+                                          </span>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                )}
+                                {hasAttemptedVideoSectionPreview &&
+                                  !isFetchingVideoSections &&
+                                  !videoSectionPreviewError &&
+                                  videoSectionPreview.length === 0 && (
+                                    <p className="artist-preview__hint">
+                                      자동 구간을 찾지 못했습니다. 영상 저장 후 아래에서 직접 구간을 지정하세요.
+                                    </p>
+                                  )}
+                              </>
+                            )}
+                            {isClipRegistration && (
+                              <>
+                                <label htmlFor="libraryClipVideoId">영상 선택</label>
+                                <p className="form-hint">등록된 라이브 영상을 선택하거나 URL을 입력해 새로운 클립 원본을 등록하세요.</p>
+                                <select
+                                  id="libraryClipVideoId"
+                                  value={selectedVideo ?? ''}
+                                  onChange={(event) => {
+                                    const { value } = event.target;
+                                    if (value === '') {
+                                      setSelectedVideo(null);
+                                      return;
+                                    }
+                                    const parsed = Number(value);
+                                    setSelectedVideo(Number.isNaN(parsed) ? null : parsed);
+                                  }}
+                                  disabled={creationDisabled || videos.length === 0}
+                                >
+                                  <option value="">선택 안 함</option>
+                                  {clipSourceVideos.length > 0 && (
+                                    <optgroup label="라이브/클립 원본">
+                                      {clipSourceVideos.map((video) => (
+                                        <option key={video.id} value={video.id}>
+                                          {(video.title || video.youtubeVideoId) ?? video.youtubeVideoId} ·{' '}
+                                          {describeVideoContentType(video.contentType)}
+                                        </option>
+                                      ))}
+                                    </optgroup>
+                                  )}
+                                  {officialVideos.length > 0 && (
+                                    <optgroup label="공식 영상">
+                                      {officialVideos.map((video) => (
+                                        <option key={video.id} value={video.id}>
+                                          {(video.title || video.youtubeVideoId) ?? video.youtubeVideoId} ·{' '}
+                                          {describeVideoContentType(video.contentType)}
+                                        </option>
+                                      ))}
+                                    </optgroup>
+                                  )}
+                                </select>
+                                {selectedVideoData?.sections && selectedVideoData.sections.length > 0 ? (
+                                  <div className="section-preview">
+                                    <p className="artist-preview__hint">구간을 클릭하면 시간이 자동으로 입력됩니다.</p>
+                                    <ul className="video-item__sections">
+                                      {selectedVideoData.sections.map((section, index) => (
+                                        <li
+                                          key={`${section.startSec}-${section.endSec}-${index}`}
+                                          className="video-item__section"
+                                          onClick={() => applyVideoSectionToClip(section, `구간 ${index + 1}`)}
+                                          role="button"
+                                          tabIndex={0}
+                                          onKeyDown={(event) => {
+                                            if (
+                                              event.key === 'Enter' ||
+                                              event.key === ' ' ||
+                                              event.key === 'Space' ||
+                                              event.key === 'Spacebar'
+                                            ) {
+                                              event.preventDefault();
+                                              applyVideoSectionToClip(section, `구간 ${index + 1}`);
+                                            }
+                                          }}
+                                        >
+                                          <span className="video-item__section-time">
+                                            {formatSeconds(section.startSec)} → {formatSeconds(section.endSec)}
+                                          </span>
+                                          <span className="video-item__section-title">
+                                            {section.title || `구간 ${index + 1}`}
+                                          </span>
+                                          <span className="video-item__section-source">
+                                            {describeSectionSource(section.source)}
+                                          </span>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                ) : (
+                                  selectedVideo && (
+                                    <p className="artist-preview__hint">
+                                      저장된 구간이 없습니다. 아래에서 직접 시간을 입력하세요.
+                                    </p>
+                                  )
+                                )}
+                                <label htmlFor="libraryClipTitle">클립 제목</label>
+                                <input
+                                  id="libraryClipTitle"
+                                  placeholder="클립 제목"
+                                  value={clipForm.title}
+                                  onChange={(event) =>
+                                    setClipForm((prev) => ({ ...prev, title: event.target.value }))
+                                  }
+                                  required
+                                  disabled={creationDisabled}
+                                />
+                                <div className="number-row">
+                                  <div>
+                                    <label htmlFor="libraryClipStartSec">시작 시간 (초)</label>
+                                    <input
+                                      id="libraryClipStartSec"
+                                      type="number"
+                                      min="0"
+                                      value={clipForm.startSec}
+                                      onChange={(event) =>
+                                        setClipForm((prev) => ({ ...prev, startSec: Number(event.target.value) }))
+                                      }
+                                      required
+                                      disabled={creationDisabled}
+                                    />
+                                  </div>
+                                  <div>
+                                    <label htmlFor="libraryClipEndSec">종료 시간 (초)</label>
+                                    <input
+                                      id="libraryClipEndSec"
+                                      type="number"
+                                      min="0"
+                                      value={clipForm.endSec}
+                                      onChange={(event) =>
+                                        setClipForm((prev) => ({ ...prev, endSec: Number(event.target.value) }))
+                                      }
+                                      required
+                                      disabled={creationDisabled}
+                                    />
+                                  </div>
+                                </div>
+                                <label htmlFor="libraryClipTags">태그 (쉼표로 구분)</label>
+                                <input
+                                  id="libraryClipTags"
+                                  placeholder="예: 하이라이트, 라이브"
+                                  value={clipForm.tags}
+                                  onChange={(event) =>
+                                    setClipForm((prev) => ({ ...prev, tags: event.target.value }))
+                                  }
+                                  disabled={creationDisabled}
                                 />
                               </>
-                            ) : (
-                              <p className="empty-state">클립 프리뷰를 확인하려면 영상을 선택하세요.</p>
                             )}
-                          </div>
+                            <button type="submit" disabled={creationDisabled}>
+                              {isClipRegistration ? '클립 등록' : '영상 메타데이터 저장'}
+                            </button>
+                          </form>
+                          {isClipRegistration && (
+                            <div className="clip-preview">
+                              <h4>프리뷰</h4>
+                              {selectedVideoData ? (
+                                <>
+                                  <p className="form-hint">
+                                    {describeVideoContentType(selectedVideoData.contentType)} 영상 ·{' '}
+                                    {selectedVideoData.title || selectedVideoData.youtubeVideoId}
+                                  </p>
+                                  <ClipPlayer
+                                    youtubeVideoId={selectedVideoData.youtubeVideoId}
+                                    startSec={previewStartSec}
+                                    endSec={previewEndSec}
+                                    autoplay={false}
+                                  />
+                                </>
+                              ) : (
+                                <p className="empty-state">클립 프리뷰를 확인하려면 영상을 선택하세요.</p>
+                              )}
+                            </div>
+                          )}
                         </section>
                       )}
                       <section className="artist-library__detail-section">
