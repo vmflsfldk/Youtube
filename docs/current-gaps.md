@@ -7,8 +7,8 @@
 - 백엔드 워커 역시 헤더 값만으로 사용자를 생성/조회하며, 별도의 서명 검증이나 만료 검사 없이 계정을 발급합니다. 【F:src/worker.ts†L778-L839】
 
 ## 2. YouTube 메타데이터 연동 제한
-- `fetchVideoMetadata`는 이제 `YOUTUBE_API_KEY` 시크릿을 사용해 YouTube Data API v3를 호출하지만, 키가 없거나 쿼터 초과 시 기본 제목/썸네일로 폴백합니다. 운영 환경에서는 반드시 시크릿을 구성하고 모니터링이 필요합니다. 【F:src/worker.ts†L1849-L2003】
-- 영상 생성 시에도 사용자 입력으로만 `description`, `captionsJson`을 받기 때문에 YouTube에서 자동으로 설명/자막을 가져오는 기능이 존재하지 않습니다. 【F:src/worker.ts†L670-L726】
+- `fetchVideoMetadata`는 `YOUTUBE_API_KEY` 시크릿을 사용해 YouTube Data API v3를 호출하지만, 키가 없거나 쿼터 초과 시 기본 제목/썸네일로 폴백합니다. 운영 환경에서는 반드시 시크릿을 구성하고 모니터링이 필요합니다. 【F:src/worker.ts†L2298-L2378】
+- 영상 생성 시 YouTube 응답에 설명이 포함되어 있으면 자동으로 저장되지만, `captionsJson`은 여전히 사용자 입력에 의존합니다. 향후 자막 자동 수집 기능이 필요합니다. 【F:src/worker.ts†L1338-L1376】
 
 ## 3. 공개 범위 제어 부재
 - 비로그인 사용자가 호출하는 `/api/public/clips` 엔드포인트는 모든 사용자 클립을 제한 없이 반환합니다. 공개 여부를 제어할 수 있는 별도 플래그나 필터가 없어서 개인 클립도 자동으로 공개 리스트에 노출됩니다. 【F:src/worker.ts†L744-L769】

@@ -1336,7 +1336,7 @@ async function createVideo(
   await ensureVideoContentTypeColumn(env.DB);
 
   const videoUrl = typeof body.videoUrl === "string" ? body.videoUrl : "";
-  const description = typeof body.description === "string" ? body.description : null;
+  let description = sanitizeMultilineText(body.description);
   const captionsJson = typeof body.captionsJson === "string" ? body.captionsJson : null;
   const videoId = extractVideoId(videoUrl);
   if (!videoId) {
@@ -1344,6 +1344,9 @@ async function createVideo(
   }
 
   const metadata = await fetchVideoMetadata(env, videoId);
+  if (!description && metadata.description) {
+    description = metadata.description;
+  }
   const existing = await env.DB.prepare(
     "SELECT id, content_type FROM videos WHERE youtube_video_id = ?"
   )
@@ -1501,7 +1504,7 @@ async function createClip(
       const insertClipSource = await env.DB
         .prepare(
           `INSERT INTO videos (artist_id, youtube_video_id, title, duration_sec, thumbnail_url, channel_id, description, captions_json, content_type)
-           VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, ?)`
+           VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?)`
         )
         .bind(
           artistIdParam,
@@ -1510,6 +1513,7 @@ async function createClip(
           metadata.durationSec,
           metadata.thumbnailUrl,
           metadata.channelId,
+          metadata.description,
           "CLIP_SOURCE"
         )
         .run();
@@ -2293,17 +2297,28 @@ function selectThumbnailUrl(thumbnails: YouTubeThumbnails | undefined): string |
   return null;
 }
 
+function sanitizeMultilineText(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const normalized = value.replace(/\r\n?/g, "\n");
+  const trimmed = normalized.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
 async function fetchVideoMetadata(env: Env, videoId: string): Promise<{
   title: string;
   durationSec: number | null;
   thumbnailUrl: string | null;
   channelId: string | null;
+  description: string | null;
 }> {
   const fallback = {
     title: `Video ${videoId}`,
     durationSec: null,
     thumbnailUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
-    channelId: null
+    channelId: null,
+    description: null
   };
 
   const apiKey = env.YOUTUBE_API_KEY?.trim();
@@ -2353,11 +2368,14 @@ async function fetchVideoMetadata(env: Env, videoId: string): Promise<{
   const thumbnailUrl = selectThumbnailUrl(snippet?.thumbnails) ?? fallback.thumbnailUrl;
   const durationSec = parseIso8601Duration(contentDetails?.duration) ?? fallback.durationSec;
 
+  const description = sanitizeMultilineText(snippet?.description);
+
   return {
     title,
     durationSec,
     thumbnailUrl,
-    channelId
+    channelId,
+    description
   };
 }
 
