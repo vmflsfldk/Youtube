@@ -1753,16 +1753,19 @@ async function autoDetect(
   }
   const mode = modeRaw ? modeRaw.toLowerCase() : "chapters";
   const video = toVideoRowDetails(row);
+  const youtubeVideoId = row.youtube_video_id ? row.youtube_video_id.trim() : "";
 
   let candidates: ClipCandidateResponse[];
   if (mode === "chapters") {
-    candidates = detectFromDescription(video);
+    const chapterCandidates = youtubeVideoId
+      ? await detectFromChapterSources(env, youtubeVideoId, video.durationSec ?? null)
+      : [];
+    const descriptionCandidates = detectFromDescription(video);
+    candidates = mergeClipCandidates(chapterCandidates, descriptionCandidates);
   } else if (mode === "captions") {
     candidates = detectFromCaptions(video);
   } else {
-    const combined = [...detectFromDescription(video), ...detectFromCaptions(video)];
-    combined.sort((a, b) => a.startSec - b.startSec);
-    candidates = combined;
+    candidates = mergeClipCandidates(detectFromDescription(video), detectFromCaptions(video));
   }
   return jsonResponse(candidates, 200, cors);
 }
@@ -3604,6 +3607,66 @@ function detectFromDescription(video: { durationSec: number | null; description:
     });
   }
   return responses;
+}
+
+function scoreForSectionSource(source: VideoSectionSource): number {
+  switch (source) {
+    case "YOUTUBE_CHAPTER":
+      return 0.95;
+    case "COMMENT":
+      return 0.85;
+    case "VIDEO_DESCRIPTION":
+      return 0.6;
+    default:
+      return 0.5;
+  }
+}
+
+function toClipCandidateFromSection(section: VideoSectionResponse): ClipCandidateResponse {
+  return {
+    startSec: section.startSec,
+    endSec: section.endSec,
+    score: scoreForSectionSource(section.source),
+    label: section.title
+  };
+}
+
+function mergeClipCandidates(...lists: ClipCandidateResponse[][]): ClipCandidateResponse[] {
+  const merged = new Map<string, ClipCandidateResponse>();
+  for (const list of lists) {
+    for (const candidate of list) {
+      const key = `${candidate.startSec}-${candidate.endSec}`;
+      const existing = merged.get(key);
+      if (!existing || candidate.score > existing.score) {
+        merged.set(key, candidate);
+      }
+    }
+  }
+  const result = Array.from(merged.values());
+  result.sort((a, b) => a.startSec - b.startSec);
+  return result;
+}
+
+async function detectFromChapterSources(
+  env: Env,
+  youtubeVideoId: string,
+  durationSec: number | null
+): Promise<ClipCandidateResponse[]> {
+  const normalizedVideoId = youtubeVideoId.trim();
+  if (!normalizedVideoId) {
+    return [];
+  }
+
+  const apiSections = await fetchVideoSectionsFromApi(env, normalizedVideoId, durationSec);
+  if (apiSections.length > 0) {
+    return apiSections.map(toClipCandidateFromSection);
+  }
+
+  const commentSections = await fetchVideoSectionsFromComments(env, normalizedVideoId, durationSec);
+  if (commentSections.length === 0) {
+    return [];
+  }
+  return commentSections.map(toClipCandidateFromSection);
 }
 
 function detectFromCaptions(video: { durationSec: number | null; captionsJson: string | null }): ClipCandidateResponse[] {
