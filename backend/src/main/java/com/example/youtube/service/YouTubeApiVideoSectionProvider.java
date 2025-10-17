@@ -148,7 +148,7 @@ public class YouTubeApiVideoSectionProvider implements YouTubeVideoSectionProvid
                 if (commentSnippet == null) {
                     continue;
                 }
-                String text = commentSnippet.textDisplay();
+                String text = normalizeCommentText(commentSnippet);
                 List<VideoSectionData> sections = extractSections(text, durationSec, VideoSectionSource.COMMENT);
                 if (sections.size() >= 2) {
                     return sections;
@@ -355,6 +355,21 @@ public class YouTubeApiVideoSectionProvider implements YouTubeVideoSectionProvid
         return trimmed;
     }
 
+    private String normalizeCommentText(CommentSnippet snippet) {
+        if (snippet == null) {
+            return "";
+        }
+        String original = snippet.textOriginal();
+        if (original != null) {
+            String trimmed = original.trim();
+            if (!trimmed.isEmpty()) {
+                return trimmed;
+            }
+        }
+        String display = snippet.textDisplay();
+        return display == null ? "" : display.trim();
+    }
+
     private record CommentThreadsResponse(List<CommentThreadItem> items) {
     }
 
@@ -367,7 +382,7 @@ public class YouTubeApiVideoSectionProvider implements YouTubeVideoSectionProvid
     private record TopLevelComment(CommentSnippet snippet) {
     }
 
-    private record CommentSnippet(String textDisplay) {
+    private record CommentSnippet(String textDisplay, String textOriginal) {
     }
 
     private record SectionCandidate(int start, String label) {
