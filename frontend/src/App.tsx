@@ -2431,57 +2431,49 @@ export default function App() {
     return map;
   }, [playlistVideos]);
 
-  type PlaylistGroup = { video: VideoResponse | null; clips: ClipResponse[] };
+  type PlaylistEntry =
+    | { type: 'video'; video: VideoResponse }
+    | { type: 'clip'; clip: ClipResponse; parentVideo: VideoResponse | null };
 
-  const playlistGroups = useMemo<PlaylistGroup[]>(() => {
-    const groups = new Map<number, { video: VideoResponse; clips: ClipResponse[] }>();
-    const orphanClips: ClipResponse[] = [];
-
+  const playlistEntries = useMemo<PlaylistEntry[]>(() => {
+    const clipsByVideoId = new Map<number, ClipResponse[]>();
     playlistClips.forEach((clip) => {
-      const video = playlistVideoMap.get(clip.videoId);
-      if (video) {
-        const group = groups.get(video.id);
-        if (group) {
-          group.clips.push(clip);
-        } else {
-          groups.set(video.id, { video, clips: [clip] });
-        }
+      const existing = clipsByVideoId.get(clip.videoId);
+      if (existing) {
+        existing.push(clip);
       } else {
-        orphanClips.push(clip);
+        clipsByVideoId.set(clip.videoId, [clip]);
       }
     });
+
+    const entries: PlaylistEntry[] = [];
 
     playlistVideos.forEach((video) => {
-      if (!groups.has(video.id)) {
-        groups.set(video.id, { video, clips: [] });
+      entries.push({ type: 'video', video });
+      const associatedClips = clipsByVideoId.get(video.id);
+      if (associatedClips) {
+        associatedClips.forEach((clip) => {
+          entries.push({ type: 'clip', clip, parentVideo: video });
+        });
+        clipsByVideoId.delete(video.id);
       }
     });
 
-    const ordered: PlaylistGroup[] = [];
-    playlistVideos.forEach((video) => {
-      const group = groups.get(video.id);
-      if (group) {
-        ordered.push(group);
-        groups.delete(video.id);
-      }
+    clipsByVideoId.forEach((remainingClips, videoId) => {
+      const parentVideo = playlistVideoMap.get(videoId) ?? null;
+      remainingClips.forEach((clip) => {
+        entries.push({ type: 'clip', clip, parentVideo });
+      });
     });
 
-    groups.forEach((group) => {
-      ordered.push(group);
-    });
-
-    if (orphanClips.length > 0) {
-      ordered.push({ video: null, clips: orphanClips });
-    }
-
-    return ordered;
+    return entries;
   }, [playlistClips, playlistVideoMap, playlistVideos]);
 
   const normalizedPlaylistQuery = playlistSearchQuery.trim().toLowerCase();
 
-  const filteredPlaylistGroups = useMemo<PlaylistGroup[]>(() => {
+  const filteredPlaylistEntries = useMemo<PlaylistEntry[]>(() => {
     if (normalizedPlaylistQuery.length === 0) {
-      return playlistGroups;
+      return playlistEntries;
     }
 
     const matchesVideo = (video: VideoResponse): boolean => {
@@ -2514,25 +2506,57 @@ export default function App() {
       return fields.some((field) => field && field.toLowerCase().includes(normalizedPlaylistQuery));
     };
 
-    return playlistGroups.reduce<PlaylistGroup[]>((accumulator, group) => {
-      const { video, clips: groupClips } = group;
-      const videoMatches = video ? matchesVideo(video) : false;
-      if (videoMatches) {
-        accumulator.push(group);
-        return accumulator;
+    const results: PlaylistEntry[] = [];
+    let pendingVideoEntry: PlaylistEntry | null = null;
+    let pendingVideoMatches = false;
+    let pendingClipEntries: PlaylistEntry[] = [];
+    let pendingClipMatches: PlaylistEntry[] = [];
+
+    const flushPending = () => {
+      if (!pendingVideoEntry) {
+        return;
+      }
+      if (pendingVideoMatches) {
+        results.push(pendingVideoEntry, ...pendingClipEntries);
+      } else if (pendingClipMatches.length > 0) {
+        results.push(pendingVideoEntry, ...pendingClipMatches);
+      }
+      pendingVideoEntry = null;
+      pendingVideoMatches = false;
+      pendingClipEntries = [];
+      pendingClipMatches = [];
+    };
+
+    playlistEntries.forEach((entry) => {
+      if (entry.type === 'video') {
+        flushPending();
+        pendingVideoEntry = entry;
+        pendingVideoMatches = matchesVideo(entry.video);
+        pendingClipEntries = [];
+        pendingClipMatches = [];
+        return;
       }
 
-      const matchingClips = groupClips.filter((clip) => matchesClip(clip, video ?? null));
-      if (matchingClips.length > 0) {
-        accumulator.push({ video: video ?? null, clips: matchingClips });
-      }
-      return accumulator;
-    }, []);
-  }, [normalizedPlaylistQuery, playlistGroups]);
+      const clipParent = entry.parentVideo;
+      const clipMatches = matchesClip(entry.clip, clipParent);
 
-  const playlistHasResults = filteredPlaylistGroups.some(
-    (group) => group.video !== null || group.clips.length > 0
-  );
+      if (pendingVideoEntry && pendingVideoEntry.type === 'video' && clipParent && clipParent.id === pendingVideoEntry.video.id) {
+        pendingClipEntries.push(entry);
+        if (clipMatches) {
+          pendingClipMatches.push(entry);
+        }
+      } else if (clipMatches) {
+        flushPending();
+        results.push(entry);
+      }
+    });
+
+    flushPending();
+
+    return results;
+  }, [normalizedPlaylistQuery, playlistEntries]);
+
+  const playlistHasResults = filteredPlaylistEntries.length > 0;
   useEffect(() => {
     setActiveClipId((previous) =>
       previous && selectedVideoClips.some((clip) => clip.id === previous) ? previous : null
@@ -3834,99 +3858,103 @@ export default function App() {
               {!playlistHasResults ? (
                 <p className="empty-state">{playlistEmptyMessage}</p>
               ) : (
-                <div className="playlist-groups">
-                  {filteredPlaylistGroups.map((group, index) => {
-                    const video = group.video;
-                    const groupKey = video ? `video-${video.id}` : `orphan-${index}`;
-                    const fallbackClip = group.clips[0];
-                    const headerArtist =
-                      video?.artistDisplayName ??
-                      video?.artistName ??
-                      fallbackClip?.artistDisplayName ??
-                      fallbackClip?.artistName ??
-                      null;
-                    return (
-                      <div className="playlist-group" key={groupKey}>
-                        {video ? (
-                          <div className="playlist-group__header">
-                            <h3 className="playlist-group__title">
-                              {video.title || video.youtubeVideoId || '제목 없는 영상'}
-                            </h3>
-                            <div className="playlist-group__details">
-                              {headerArtist && (
-                                <span className="playlist-group__artist">{headerArtist}</span>
-                              )}
-                              <span className="playlist-group__meta">
-                                {formatVideoMetaSummary(video)}
-                              </span>
+                <div className="playlist-entries">
+                  {filteredPlaylistEntries.map((entry, index) => {
+                    if (entry.type === 'video') {
+                      const video = entry.video;
+                      const videoThumbnail =
+                        video.thumbnailUrl ||
+                        (video.youtubeVideoId
+                          ? `https://img.youtube.com/vi/${video.youtubeVideoId}/hqdefault.jpg`
+                          : null);
+                      const videoTitle = video.title || video.youtubeVideoId || '제목 없는 영상';
+                      const videoArtist =
+                        video.artistDisplayName ||
+                        video.artistName ||
+                        video.artistYoutubeChannelTitle ||
+                        null;
+                      return (
+                        <div className="playlist-entry playlist-entry--video" key={`playlist-video-${video.id}`}>
+                          <div className="playlist-video-card">
+                            {videoThumbnail ? (
+                              <img
+                                className="playlist-video-card__thumbnail"
+                                src={videoThumbnail}
+                                alt={`${videoTitle} 썸네일`}
+                                loading="lazy"
+                                decoding="async"
+                              />
+                            ) : (
+                              <div
+                                className="playlist-video-card__thumbnail playlist-video-card__thumbnail--placeholder"
+                                aria-hidden="true"
+                              >
+                                <span>썸네일 없음</span>
+                              </div>
+                            )}
+                            <div className="playlist-video-card__meta">
+                              <h3 className="playlist-video-card__title">{videoTitle}</h3>
+                              <div className="playlist-video-card__details">
+                                {videoArtist && (
+                                  <span className="playlist-video-card__artist">{videoArtist}</span>
+                                )}
+                                <span className="playlist-video-card__info">
+                                  {formatVideoMetaSummary(video)}
+                                </span>
+                              </div>
                             </div>
                           </div>
-                        ) : (
-                          <div className="playlist-group__header playlist-group__header--orphan">
-                            <h3 className="playlist-group__title">원본 영상 정보를 찾을 수 없어요</h3>
-                            <p className="playlist-group__meta">
-                              등록된 영상과 연결되지 않은 클립입니다.
-                            </p>
+                        </div>
+                      );
+                    }
+
+                    const clip = entry.clip;
+                    const parentVideo = entry.parentVideo ?? playlistVideoMap.get(clip.videoId) ?? null;
+                    const youtubeVideoId = clip.youtubeVideoId ?? parentVideo?.youtubeVideoId;
+                    const resolvedVideoTitle =
+                      clip.videoTitle ?? parentVideo?.title ?? parentVideo?.youtubeVideoId ?? '';
+                    const clipArtist =
+                      clip.artistDisplayName ??
+                      clip.artistName ??
+                      parentVideo?.artistDisplayName ??
+                      parentVideo?.artistName ??
+                      null;
+
+                    return (
+                      <div className="playlist-entry playlist-entry--clip" key={`playlist-clip-${clip.id}-${index}`}>
+                        <div className="playlist-clip">
+                          <div className="playlist-clip__card">
+                            <div className="playlist-clip__meta">
+                              <h4>{clip.title}</h4>
+                              <p className="playlist-clip__time">
+                                {formatSeconds(clip.startSec)} → {formatSeconds(clip.endSec)}
+                              </p>
+                              {clipArtist && <p className="playlist-clip__artist">{clipArtist}</p>}
+                              {resolvedVideoTitle && (
+                                <p className="playlist-clip__video-title">{resolvedVideoTitle}</p>
+                              )}
+                              {clip.tags.length > 0 && (
+                                <div className="tag-row">
+                                  {clip.tags.map((tag) => (
+                                    <span key={tag} className="tag">
+                                      #{tag}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                            {youtubeVideoId && (
+                              <div className="playlist-clip__player">
+                                <ClipPlayer
+                                  youtubeVideoId={youtubeVideoId}
+                                  startSec={clip.startSec}
+                                  endSec={clip.endSec}
+                                  autoplay={false}
+                                />
+                              </div>
+                            )}
                           </div>
-                        )}
-                        {group.clips.length === 0 ? (
-                          <p className="playlist-group__empty">아직 등록된 클립이 없습니다.</p>
-                        ) : (
-                          <ul className="playlist-group__clips">
-                            {group.clips.map((clip) => {
-                              const parentVideo = video ?? playlistVideoMap.get(clip.videoId) ?? null;
-                              const youtubeVideoId = clip.youtubeVideoId ?? parentVideo?.youtubeVideoId;
-                              const resolvedVideoTitle =
-                                clip.videoTitle ??
-                                parentVideo?.title ??
-                                parentVideo?.youtubeVideoId ??
-                                '';
-                              const clipArtist =
-                                clip.artistDisplayName ??
-                                clip.artistName ??
-                                parentVideo?.artistDisplayName ??
-                                parentVideo?.artistName ??
-                                null;
-                              return (
-                                <li key={clip.id} className="playlist-clip">
-                                  <div className="playlist-clip__card">
-                                    <div className="playlist-clip__meta">
-                                      <h4>{clip.title}</h4>
-                                      <p className="playlist-clip__time">
-                                        {formatSeconds(clip.startSec)} → {formatSeconds(clip.endSec)}
-                                      </p>
-                                      {clipArtist && (
-                                        <p className="playlist-clip__artist">{clipArtist}</p>
-                                      )}
-                                      {resolvedVideoTitle && (
-                                        <p className="playlist-clip__video-title">{resolvedVideoTitle}</p>
-                                      )}
-                                      {clip.tags.length > 0 && (
-                                        <div className="tag-row">
-                                          {clip.tags.map((tag) => (
-                                            <span key={tag} className="tag">
-                                              #{tag}
-                                            </span>
-                                          ))}
-                                        </div>
-                                      )}
-                                    </div>
-                                    {youtubeVideoId && (
-                                      <div className="playlist-clip__player">
-                                        <ClipPlayer
-                                          youtubeVideoId={youtubeVideoId}
-                                          startSec={clip.startSec}
-                                          endSec={clip.endSec}
-                                          autoplay={false}
-                                        />
-                                      </div>
-                                    )}
-                                  </div>
-                                </li>
-                              );
-                            })}
-                          </ul>
-                        )}
+                        </div>
                       </div>
                     );
                   })}
