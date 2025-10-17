@@ -72,6 +72,7 @@ interface VideoResponse {
   thumbnailUrl?: string | null;
   channelId?: string | null;
   contentType: VideoContentType;
+  hidden?: boolean;
 }
 
 interface ClipResponse {
@@ -250,6 +251,7 @@ let hasEnsuredArtistUpdatedAtColumn = false;
 let hasEnsuredArtistChannelTitleColumn = false;
 let hasEnsuredUserPasswordColumns = false;
 let hasEnsuredVideoContentTypeColumn = false;
+let hasEnsuredVideoHiddenColumn = false;
 let hasWarnedMissingYouTubeApiKey = false;
 
 const warnMissingYouTubeApiKey = (): void => {
@@ -459,6 +461,7 @@ async function ensureDatabaseSchema(db: D1Database): Promise<void> {
         description TEXT,
         captions_json TEXT,
         content_type TEXT NOT NULL DEFAULT ('OFFICIAL'),
+        hidden INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
         updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
         FOREIGN KEY (artist_id) REFERENCES artists(id) ON DELETE CASCADE
@@ -671,6 +674,31 @@ async function ensureVideoContentTypeColumn(db: D1Database): Promise<void> {
   hasEnsuredVideoContentTypeColumn = true;
 }
 
+async function ensureVideoHiddenColumn(db: D1Database): Promise<void> {
+  if (hasEnsuredVideoHiddenColumn) {
+    return;
+  }
+
+  const { results } = await db.prepare("PRAGMA table_info(videos)").all<TableInfoRow>();
+  const hasColumn = (results ?? []).some((column) => column.name?.toLowerCase() === "hidden");
+
+  if (!hasColumn) {
+    const alterResult = await db
+      .prepare("ALTER TABLE videos ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0")
+      .run();
+    if (!alterResult.success && !isDuplicateColumnError(alterResult.error)) {
+      throw new Error(alterResult.error ?? "Failed to add hidden column to videos table");
+    }
+  }
+
+  const backfillResult = await db.prepare("UPDATE videos SET hidden = COALESCE(hidden, 0)").run();
+  if (!backfillResult.success) {
+    throw new Error(backfillResult.error ?? "Failed to backfill video hidden values");
+  }
+
+  hasEnsuredVideoHiddenColumn = true;
+}
+
 async function ensureUserPasswordColumns(db: D1Database): Promise<void> {
   if (hasEnsuredUserPasswordColumns) {
     return;
@@ -816,6 +844,7 @@ interface VideoRow {
   description: string | null;
   captions_json: string | null;
   content_type: string | null;
+  hidden: number | null;
 }
 
 interface ClipRow {
@@ -1347,6 +1376,7 @@ async function createVideo(
   }
   await ensureArtist(env, artistId, user.id);
   await ensureVideoContentTypeColumn(env.DB);
+  await ensureVideoHiddenColumn(env.DB);
 
   const videoUrl = typeof body.videoUrl === "string" ? body.videoUrl : "";
   let description = sanitizeMultilineText(body.description);
@@ -1376,7 +1406,8 @@ async function createVideo(
               channel_id = ?,
               description = ?,
               captions_json = ?,
-              content_type = ?
+              content_type = ?,
+              hidden = 0
         WHERE id = ?`
     ).bind(
       artistId,
@@ -1399,8 +1430,8 @@ async function createVideo(
   }
 
   const insertResult = await env.DB.prepare(
-    `INSERT INTO videos (artist_id, youtube_video_id, title, duration_sec, thumbnail_url, channel_id, description, captions_json, content_type)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO videos (artist_id, youtube_video_id, title, duration_sec, thumbnail_url, channel_id, description, captions_json, content_type, hidden)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`
   )
     .bind(
       artistId,
@@ -1435,17 +1466,18 @@ async function listVideos(url: URL, env: Env, user: UserContext, cors: CorsConfi
   }
   await ensureArtist(env, artistId, user.id);
   await ensureVideoContentTypeColumn(env.DB);
+  await ensureVideoHiddenColumn(env.DB);
 
   const requestedContentType = normalizeVideoContentType(url.searchParams.get("contentType"));
 
   let statement: D1PreparedStatement;
   if (requestedContentType) {
     statement = env.DB.prepare(
-      `SELECT * FROM videos WHERE artist_id = ? AND content_type = ? ORDER BY id DESC`
+      `SELECT * FROM videos WHERE artist_id = ? AND content_type = ? AND hidden = 0 ORDER BY id DESC`
     ).bind(artistId, requestedContentType);
   } else {
     statement = env.DB.prepare(
-      `SELECT * FROM videos WHERE artist_id = ? ORDER BY id DESC`
+      `SELECT * FROM videos WHERE artist_id = ? AND hidden = 0 ORDER BY id DESC`
     ).bind(artistId);
   }
 
@@ -1498,6 +1530,7 @@ async function createClip(
   const startSec = Number(body.startSec);
   const endSec = Number(body.endSec);
   const tags = Array.isArray(body.tags) ? body.tags : [];
+  const videoHiddenFlag = typeof body.videoHidden === "boolean" ? body.videoHidden : false;
 
   if (!title) {
     throw new HttpError(400, "title is required");
@@ -1509,6 +1542,7 @@ async function createClip(
     throw new HttpError(400, "endSec must be greater than startSec");
   }
   await ensureVideoContentTypeColumn(env.DB);
+  await ensureVideoHiddenColumn(env.DB);
 
   let resolvedVideoId: number | null = Number.isFinite(rawVideoId) ? rawVideoId : null;
 
@@ -1546,8 +1580,8 @@ async function createClip(
       const metadata = await fetchVideoMetadata(env, extractedVideoId);
       const insertClipSource = await env.DB
         .prepare(
-          `INSERT INTO videos (artist_id, youtube_video_id, title, duration_sec, thumbnail_url, channel_id, description, captions_json, content_type)
-           VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?)`
+          `INSERT INTO videos (artist_id, youtube_video_id, title, duration_sec, thumbnail_url, channel_id, description, captions_json, content_type, hidden)
+           VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)`
         )
         .bind(
           artistIdParam,
@@ -1557,7 +1591,8 @@ async function createClip(
           metadata.thumbnailUrl,
           metadata.channelId,
           metadata.description,
-          "CLIP_SOURCE"
+          "CLIP_SOURCE",
+          videoHiddenFlag ? 1 : 0
         )
         .run();
       if (!insertClipSource.success) {
@@ -2154,7 +2189,8 @@ function toVideoResponse(row: VideoRow): VideoResponse {
     durationSec: row.duration_sec ?? null,
     thumbnailUrl: row.thumbnail_url ?? null,
     channelId: row.channel_id ?? null,
-    contentType: normalizeVideoContentType(row.content_type) ?? "OFFICIAL"
+    contentType: normalizeVideoContentType(row.content_type) ?? "OFFICIAL",
+    hidden: Number(row.hidden ?? 0) === 1
   };
 }
 
