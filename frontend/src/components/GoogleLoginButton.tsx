@@ -8,8 +8,7 @@ interface GoogleLoginButtonProps {
 const BUTTON_OPTIONS = {
   theme: 'outline' as const,
   size: 'large' as const,
-  text: 'signin_with' as const,
-  width: 260
+  text: 'signin_with' as const
 };
 
 export default function GoogleLoginButton({ clientId, onCredential }: GoogleLoginButtonProps) {
@@ -32,6 +31,35 @@ export default function GoogleLoginButton({ clientId, onCredential }: GoogleLogi
     });
 
     googleId.renderButton(buttonRef.current, BUTTON_OPTIONS);
+
+    const ensureFullWidth = () => {
+      const root = buttonRef.current;
+      if (!root) {
+        return;
+      }
+
+      root.style.width = '100%';
+
+      const innerWrapper = root.firstElementChild as HTMLElement | null;
+      if (innerWrapper) {
+        innerWrapper.style.width = '100%';
+        innerWrapper.style.maxWidth = '100%';
+      }
+
+      const buttonElement = root.querySelector('[role="button"]') as HTMLElement | null;
+      if (buttonElement) {
+        buttonElement.style.width = '100%';
+        buttonElement.style.maxWidth = '100%';
+        buttonElement.style.minHeight = '52px';
+      }
+
+      const iframeElement = root.querySelector('iframe') as HTMLElement | null;
+      if (iframeElement) {
+        iframeElement.style.width = '100%';
+      }
+    };
+
+    ensureFullWidth();
     if (googleId.prompt) {
       try {
         googleId.prompt();
@@ -41,5 +69,5 @@ export default function GoogleLoginButton({ clientId, onCredential }: GoogleLogi
     }
   }, [clientId, onCredential]);
 
-  return <div ref={buttonRef} />;
+  return <div ref={buttonRef} className="google-login-button" />;
 }

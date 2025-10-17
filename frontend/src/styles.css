@@ -150,6 +150,22 @@ body {
   align-self: center;
 }
 
+.google-login-button {
+  width: 100%;
+}
+
+.google-login-button > div,
+.google-login-button iframe,
+.google-login-button [role='button'] {
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+.google-login-button [role='button'] {
+  min-height: 52px;
+  border-radius: 16px !important;
+}
+
 .sidebar__auth-content--guest .stacked-form button[type='submit'] {
   width: 100%;
 }
