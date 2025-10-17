@@ -421,7 +421,7 @@ export default function App() {
     return artistPreview.data.videos.slice(0, 12);
   }, [artistPreview]);
 
-  const filteredArtists = useMemo(() => {
+  const filteredArtists = useMemo((): ArtistResponse[] => {
     const query = artistSearchQuery.trim().toLowerCase();
     if (!query) {
       return artists;
@@ -1382,6 +1382,125 @@ export default function App() {
     setVideoForm((prev) => ({ ...prev, artistId: String(artistId) }));
   };
 
+  const handleArtistClear = () => {
+    setVideoForm((prev) => ({ ...prev, artistId: '' }));
+    setSelectedVideo(null);
+    setVideos([]);
+    setClipCandidates([]);
+    setClips([]);
+  };
+
+  const handleLibraryVideoSelect = (videoId: number) => {
+    setSelectedVideo(videoId);
+  };
+
+  const ArtistLibraryCard = ({
+    artist,
+    isActive = false,
+    interactive = true,
+    focusMode = false,
+    onSelect
+  }: {
+    artist: ArtistResponse;
+    isActive?: boolean;
+    interactive?: boolean;
+    focusMode?: boolean;
+    onSelect?: () => void;
+  }) => {
+    const fallbackAvatarUrl = `https://ui-avatars.com/api/?background=111827&color=e2e8f0&name=${encodeURIComponent(
+      artist.displayName || artist.name
+    )}`;
+    const countryBadges = resolveArtistCountryBadges(artist);
+    const classNames = ['artist-library__card'];
+    if (isActive) {
+      classNames.push('selected');
+    }
+    if (focusMode) {
+      classNames.push('artist-library__card--focused');
+    }
+
+    return (
+      <div
+        className={classNames.join(' ')}
+        role={interactive ? 'button' : undefined}
+        tabIndex={interactive ? 0 : undefined}
+        aria-pressed={interactive ? isActive : undefined}
+        onClick={
+          interactive
+            ? () => {
+                onSelect?.();
+              }
+            : undefined
+        }
+        onKeyDown={
+          interactive
+            ? (event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  onSelect?.();
+                }
+              }
+            : undefined
+        }
+      >
+        <div className="artist-library__avatar">
+          {artist.profileImageUrl ? (
+            <img
+              src={artist.profileImageUrl}
+              alt={`${artist.displayName || artist.name} 채널 프로필 이미지`}
+              loading="lazy"
+              decoding="async"
+              referrerPolicy="no-referrer"
+              onError={(event) => {
+                if (event.currentTarget.src !== fallbackAvatarUrl) {
+                  event.currentTarget.src = fallbackAvatarUrl;
+                }
+              }}
+            />
+          ) : (
+            <img
+              src={fallbackAvatarUrl}
+              alt={`${artist.displayName || artist.name} 기본 프로필 이미지`}
+              loading="lazy"
+              decoding="async"
+            />
+          )}
+        </div>
+        <div className="artist-library__info">
+          <span className="artist-library__name">{artist.displayName || artist.name}</span>
+          <span className="artist-library__channel">{artist.youtubeChannelId}</span>
+        </div>
+        {countryBadges.length > 0 && (
+          <div className="artist-library__countries">
+            {countryBadges.map((badge) => (
+              <span key={badge.code} className="artist-country-badge">
+                <span className="artist-country-badge__code">{badge.code}</span>
+                {badge.label}
+              </span>
+            ))}
+          </div>
+        )}
+        {artist.youtubeChannelId && (
+          <a
+            className="artist-library__link"
+            href={artist.youtubeChannelId.startsWith('@')
+              ? `https://www.youtube.com/${artist.youtubeChannelId}`
+              : `https://www.youtube.com/channel/${artist.youtubeChannelId}`}
+            target="_blank"
+            rel="noreferrer"
+            onClick={(event) => {
+              if (interactive) {
+                event.stopPropagation();
+              }
+            }}
+          >
+            유튜브 채널 보기
+          </a>
+        )}
+      </div>
+    );
+  };
+
   const openArtistRegistration = useCallback(() => {
     setActiveSection('management');
     setActiveManagementTab('artists');
@@ -1402,11 +1521,17 @@ export default function App() {
 
   const selectedArtist = artists.find((artist) => artist.id === Number(videoForm.artistId));
   const noArtistsRegistered = artists.length === 0;
-  const noFilteredArtists = !noArtistsRegistered && filteredArtists.length === 0;
+  const noFilteredArtists = !noArtistsRegistered && filteredArtists.length === 0 && !selectedArtist;
+  const artistList: ArtistResponse[] = filteredArtists as ArtistResponse[];
+  const selectedArtistId = selectedArtist?.id ?? null;
   const selectedVideoData = selectedVideo ? videos.find((video) => video.id === selectedVideo) : null;
   const clipSourceVideos = useMemo(() => videos.filter((video) => isClipSourceVideo(video)), [videos]);
   const officialVideos = useMemo(() => videos.filter((video) => !isClipSourceVideo(video)), [videos]);
   const displayedClips = isAuthenticated ? clips : publicClips;
+  const selectedVideoClips = useMemo(
+    () => (selectedVideo ? displayedClips.filter((clip) => clip.videoId === selectedVideo) : []),
+    [displayedClips, selectedVideo]
+  );
   const playlistHeading = isAuthenticated ? '유저가 저장한 플레이리스트' : '공개된 클립 모음';
   const playlistSubtitle = isAuthenticated
     ? '(백그라운드 재생)'
@@ -2333,82 +2458,133 @@ export default function App() {
                 </div>
                 {noArtistsRegistered ? (
                   <div className="artist-empty">등록된 아티스트가 없습니다.</div>
+                ) : selectedArtist ? (
+                  <div className="artist-library__split-view">
+                    <div className="artist-library__focused-panel">
+                      <button type="button" className="artist-library__back-button" onClick={handleArtistClear}>
+                        아티스트 목록으로 돌아가기
+                      </button>
+                      <ArtistLibraryCard artist={selectedArtist} isActive focusMode interactive={false} />
+                    </div>
+                    <div className="artist-library__detail-panel">
+                      <section className="artist-library__detail-section">
+                        <div className="artist-library__section-header">
+                          <h4>등록된 영상</h4>
+                          {isArtistVideosLoading ? (
+                            <span className="artist-library__status">불러오는 중...</span>
+                          ) : videos.length > 0 ? (
+                            <span className="artist-library__status">{videos.length}개 영상</span>
+                          ) : null}
+                        </div>
+                        {videos.length === 0 ? (
+                          <p className="artist-library__empty">등록된 영상이 없습니다.</p>
+                        ) : (
+                          <ul className="artist-library__video-list">
+                            {videos.map((video) => {
+                              const isVideoSelected = selectedVideo === video.id;
+                              const videoThumbnail =
+                                video.thumbnailUrl ||
+                                (video.youtubeVideoId
+                                  ? `https://img.youtube.com/vi/${video.youtubeVideoId}/hqdefault.jpg`
+                                  : null);
+                              const videoTitle = video.title || video.youtubeVideoId || '제목 없는 영상';
+                              return (
+                                <li key={video.id} className="artist-library__video-item">
+                                  <button
+                                    type="button"
+                                    className={`artist-library__video-button${isVideoSelected ? ' selected' : ''}`}
+                                    onClick={() => handleLibraryVideoSelect(video.id)}
+                                  >
+                                    {videoThumbnail ? (
+                                      <img
+                                        className="artist-library__video-thumbnail"
+                                        src={videoThumbnail}
+                                        alt={`${videoTitle} 썸네일`}
+                                        loading="lazy"
+                                        decoding="async"
+                                      />
+                                    ) : (
+                                      <div
+                                        className="artist-library__video-thumbnail artist-library__video-thumbnail--placeholder"
+                                        aria-hidden="true"
+                                      >
+                                        <span>썸네일 없음</span>
+                                      </div>
+                                    )}
+                                    <div className="artist-library__video-meta">
+                                      <span className="artist-library__video-title">{videoTitle}</span>
+                                      <span className="artist-library__video-subtitle">
+                                        {describeVideoContentType(video.contentType)} · {formatSeconds(video.durationSec ?? 0)}
+                                      </span>
+                                    </div>
+                                  </button>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        )}
+                      </section>
+                      <section className="artist-library__detail-section">
+                        <div className="artist-library__section-header">
+                          <h4>클립</h4>
+                          {selectedVideoData && (
+                            <span className="artist-library__status">
+                              {selectedVideoData.title || selectedVideoData.youtubeVideoId || '제목 없는 영상'}
+                            </span>
+                          )}
+                        </div>
+                        {!selectedVideoData ? (
+                          <p className="artist-library__empty">영상을 선택하면 클립을 확인할 수 있습니다.</p>
+                        ) : selectedVideoClips.length === 0 ? (
+                          <p className="artist-library__empty">등록된 클립이 없습니다.</p>
+                        ) : (
+                          <ul className="artist-library__clip-list">
+                            {selectedVideoClips.map((clip) => (
+                              <li key={clip.id} className="artist-library__clip-card">
+                                <span className="artist-library__clip-title">{clip.title}</span>
+                                <span className="artist-library__clip-time">
+                                  {formatSeconds(clip.startSec)} → {formatSeconds(clip.endSec)}
+                                </span>
+                                {clip.tags.length > 0 && (
+                                  <div className="artist-library__clip-tags">
+                                    {clip.tags.map((tag) => (
+                                      <span key={tag} className="tag">
+                                        #{tag}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                                {clip.youtubeVideoId && (
+                                  <a
+                                    className="artist-library__clip-link"
+                                    href={`https://www.youtube.com/watch?v=${clip.youtubeVideoId}&t=${Math.floor(clip.startSec)}s`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                  >
+                                    유튜브에서 보기
+                                  </a>
+                                )}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </section>
+                    </div>
+                  </div>
                 ) : noFilteredArtists ? (
                   <div className="artist-empty">검색 결과가 없습니다.</div>
                 ) : (
                   <div className="artist-library__grid" role="list">
-                    {filteredArtists.map((artist) => {
-                      const isActive = selectedArtist?.id === artist.id;
-                      const fallbackAvatarUrl = `https://ui-avatars.com/api/?background=111827&color=e2e8f0&name=${encodeURIComponent(
-                        artist.displayName || artist.name
-                      )}`;
-                      const countryBadges = resolveArtistCountryBadges(artist);
+                    {artistList.map((artist) => {
+                      const rawArtist = artist as any;
+                      const artistId = Number(rawArtist.id ?? 0);
                       return (
-                        <div
-                          key={artist.id}
-                          className={`artist-library__card${isActive ? ' selected' : ''}`}
-                          role="button"
-                          tabIndex={0}
-                          aria-pressed={isActive}
-                          onClick={() => handleArtistClick(artist.id)}
-                          onKeyDown={(event) => {
-                            if (event.key === 'Enter' || event.key === ' ') {
-                              event.preventDefault();
-                              handleArtistClick(artist.id);
-                            }
-                          }}
-                        >
-                          <div className="artist-library__avatar">
-                            {artist.profileImageUrl ? (
-                              <img
-                                src={artist.profileImageUrl}
-                                alt={`${artist.displayName || artist.name} 채널 프로필 이미지`}
-                                loading="lazy"
-                                decoding="async"
-                                referrerPolicy="no-referrer"
-                                onError={(event) => {
-                                  if (event.currentTarget.src !== fallbackAvatarUrl) {
-                                    event.currentTarget.src = fallbackAvatarUrl;
-                                  }
-                                }}
-                              />
-                            ) : (
-                              <img
-                                src={fallbackAvatarUrl}
-                                alt={`${artist.displayName || artist.name} 기본 프로필 이미지`}
-                                loading="lazy"
-                                decoding="async"
-                              />
-                            )}
-                          </div>
-                          <div className="artist-library__info">
-                            <span className="artist-library__name">{artist.displayName || artist.name}</span>
-                            <span className="artist-library__channel">{artist.youtubeChannelId}</span>
-                          </div>
-                          {countryBadges.length > 0 && (
-                            <div className="artist-library__countries">
-                              {countryBadges.map((badge) => (
-                                <span key={badge.code} className="artist-country-badge">
-                                  <span className="artist-country-badge__code">{badge.code}</span>
-                                  {badge.label}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                          {artist.youtubeChannelId && (
-                            <a
-                              className="artist-library__link"
-                              href={artist.youtubeChannelId.startsWith('@')
-                                ? `https://www.youtube.com/${artist.youtubeChannelId}`
-                                : `https://www.youtube.com/channel/${artist.youtubeChannelId}`}
-                              target="_blank"
-                              rel="noreferrer"
-                              onClick={(event) => event.stopPropagation()}
-                            >
-                              유튜브 채널 보기
-                            </a>
-                          )}
-                        </div>
+                        <ArtistLibraryCard
+                          key={artistId}
+                          artist={artist}
+                          isActive={selectedArtistId === artistId}
+                          onSelect={() => handleArtistClick(artistId)}
+                        />
                       );
                     })}
                   </div>
