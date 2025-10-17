@@ -606,13 +606,13 @@ button:disabled:hover {
 
 .clip-time-inputs {
   display: grid;
-  grid-template-columns: repeat(3, minmax(70px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(3, minmax(56px, 1fr));
+  gap: 8px;
 }
 
 @media (max-width: 480px) {
   .clip-time-inputs {
-    grid-template-columns: repeat(3, minmax(60px, 1fr));
+    grid-template-columns: repeat(3, minmax(48px, 1fr));
   }
 }
 
