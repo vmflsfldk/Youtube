@@ -31,14 +31,34 @@ public class ClipService {
 
     @Transactional
     public ClipResponse create(ClipCreateRequest request) {
-        Video video = videoRepository.findById(request.videoId())
-                .orElseThrow(() -> new EntityNotFoundException("Video not found: " + request.videoId()));
+        Video video = null;
+        if (request.videoId() != null) {
+            video = videoRepository.findById(request.videoId())
+                    .orElseThrow(() -> new EntityNotFoundException("Video not found: " + request.videoId()));
+        }
+
+        Artist artist = null;
+        if (video != null) {
+            artist = video.getArtist();
+        } else if (request.artistId() != null) {
+            artist = artistRepository.findById(request.artistId())
+                    .orElseThrow(() -> new EntityNotFoundException("Artist not found: " + request.artistId()));
+        }
+
+        if (artist == null) {
+            throw new IllegalArgumentException("artistId must be provided when videoId is not supplied");
+        }
+
+        String youtubeVideoId = video != null ? video.getYoutubeVideoId() : request.youtubeVideoId();
+        if (youtubeVideoId == null || youtubeVideoId.isBlank()) {
+            throw new IllegalArgumentException("youtubeVideoId must be provided when videoId is not supplied");
+        }
 
         if (request.endSec() <= request.startSec()) {
             throw new IllegalArgumentException("endSec must be greater than startSec");
         }
 
-        Clip clip = new Clip(video, request.title(), request.startSec(), request.endSec());
+        Clip clip = new Clip(video, artist, youtubeVideoId, request.title(), request.startSec(), request.endSec());
         if (request.tags() != null) {
             clip.setTags(request.tags());
         }
@@ -66,7 +86,8 @@ public class ClipService {
 
     private ClipResponse map(Clip clip) {
         return new ClipResponse(clip.getId(),
-                clip.getVideo().getId(),
+                clip.getVideo() != null ? clip.getVideo().getId() : null,
+                clip.getYoutubeVideoId(),
                 clip.getTitle(),
                 clip.getStartSec(),
                 clip.getEndSec(),

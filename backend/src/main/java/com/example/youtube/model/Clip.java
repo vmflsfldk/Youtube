@@ -12,9 +12,16 @@ public class Clip {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(optional = false)
+    @ManyToOne(optional = true)
     @JoinColumn(name = "video_id")
     private Video video;
+
+    @ManyToOne(optional = true)
+    @JoinColumn(name = "artist_id")
+    private Artist artist;
+
+    @Column(name = "youtube_video_id", nullable = false)
+    private String youtubeVideoId;
 
     @Column(nullable = false)
     private String title;
@@ -33,8 +40,10 @@ public class Clip {
     public Clip() {
     }
 
-    public Clip(Video video, String title, int startSec, int endSec) {
+    public Clip(Video video, Artist artist, String youtubeVideoId, String title, int startSec, int endSec) {
         this.video = video;
+        this.artist = artist;
+        this.youtubeVideoId = youtubeVideoId;
         this.title = title;
         this.startSec = startSec;
         this.endSec = endSec;
@@ -50,6 +59,22 @@ public class Clip {
 
     public void setVideo(Video video) {
         this.video = video;
+    }
+
+    public Artist getArtist() {
+        return artist;
+    }
+
+    public void setArtist(Artist artist) {
+        this.artist = artist;
+    }
+
+    public String getYoutubeVideoId() {
+        return youtubeVideoId;
+    }
+
+    public void setYoutubeVideoId(String youtubeVideoId) {
+        this.youtubeVideoId = youtubeVideoId;
     }
 
     public String getTitle() {

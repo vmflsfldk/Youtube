@@ -144,7 +144,7 @@ interface VideoResponse {
 
 interface ClipResponse {
   id: number;
-  videoId: number;
+  videoId: number | null;
   title: string;
   startSec: number;
   endSec: number;
@@ -1275,14 +1275,19 @@ export default function App() {
       setClipForm({ title: '', startSec: 0, endSec: 0, tags: '', videoUrl: '' });
       setVideoForm((prev) => ({ ...prev, url: '' }));
       setClipCandidates([]);
-      if (options?.hiddenSource) {
+      const responseVideoId = response.data.videoId ?? null;
+      if (options?.hiddenSource && responseVideoId !== null) {
         setHiddenVideoIds((prev) =>
-          prev.includes(response.data.videoId) ? prev : [...prev, response.data.videoId]
+          prev.includes(responseVideoId) ? prev : [...prev, responseVideoId]
         );
       }
-      if (response.data.videoId !== selectedVideo) {
-        setSelectedVideo(response.data.videoId);
-        setClips([normalizedClip]);
+      if (responseVideoId !== null) {
+        if (responseVideoId !== selectedVideo) {
+          setSelectedVideo(responseVideoId);
+          setClips([normalizedClip]);
+        } else {
+          setClips((prev) => [...prev, normalizedClip]);
+        }
       } else {
         setClips((prev) => [...prev, normalizedClip]);
       }
