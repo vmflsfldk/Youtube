@@ -3026,7 +3026,7 @@ export default function App() {
                       {isLibraryMediaFormOpen && selectedArtist && (
                         <section className="artist-library__detail-section artist-library__form-section">
                           <div className="artist-library__section-header">
-                            <h4>영상·클립 등록</h4>
+                            <h4>영상 등록</h4>
                             <span className="artist-library__status">
                               {isClipRegistration
                                 ? selectedVideoData
@@ -3348,7 +3348,7 @@ export default function App() {
                       )}
                       <section className="artist-library__detail-section">
                         <div className="artist-library__section-header">
-                          <h4>등록된 영상</h4>
+                          <h4>영상 목록</h4>
                           {isArtistVideosLoading ? (
                             <span className="artist-library__status">불러오는 중...</span>
                           ) : displayableVideos.length > 0 ? (
@@ -3356,7 +3356,7 @@ export default function App() {
                           ) : null}
                         </div>
                         {displayableVideos.length === 0 ? (
-                          <p className="artist-library__empty">등록된 영상이 없습니다.</p>
+                          <p className="artist-library__empty">영상 목록이 비어 있습니다.</p>
                         ) : (
                           <ul className="artist-library__video-list">
                             {shouldShowSelectedVideoPreview && selectedVideoData && (
@@ -3427,7 +3427,7 @@ export default function App() {
                       </section>
                       <section className="artist-library__detail-section">
                         <div className="artist-library__section-header">
-                          <h4>클립</h4>
+                          <h4>클립 목록</h4>
                           {selectedVideoData && (
                             <span className="artist-library__status">
                               {selectedVideoData.title || selectedVideoData.youtubeVideoId || '제목 없는 영상'}
@@ -3436,9 +3436,9 @@ export default function App() {
                         </div>
                         {selectedVideoClips.length === 0 ? (
                           selectedVideoData ? (
-                            <p className="artist-library__empty">등록된 클립이 없습니다.</p>
+                            <p className="artist-library__empty">클립 목록이 비어 있습니다.</p>
                           ) : (
-                            <p className="artist-library__empty">영상을 선택하면 클립을 확인할 수 있습니다.</p>
+                            <p className="artist-library__empty">영상을 선택하면 클립 목록을 확인할 수 있습니다.</p>
                           )
                         ) : (
                           <>
