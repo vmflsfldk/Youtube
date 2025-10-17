@@ -54,6 +54,15 @@ const normalizeVideoContentType = (value: string | null | undefined): VideoConte
   return isVideoContentType(normalized) ? (normalized as VideoContentType) : null;
 };
 
+type VideoSectionSource = "YOUTUBE_CHAPTER" | "COMMENT" | "VIDEO_DESCRIPTION";
+
+interface VideoSectionResponse {
+  title: string;
+  startSec: number;
+  endSec: number;
+  source: VideoSectionSource;
+}
+
 interface VideoResponse {
   id: number;
   artistId: number;
@@ -818,6 +827,7 @@ interface ClipRow {
 }
 
 const DEFAULT_CLIP_LENGTH = 30;
+const DEFAULT_SECTION_LENGTH = 45;
 const KEYWORDS = ["chorus", "hook", "verse", "intro", "outro"];
 const TIMESTAMP_PATTERN = /^(?:(\d{1,2}):)?(\d{1,2}):(\d{2})\s*-?\s*(.*)$/i;
 
@@ -1116,6 +1126,9 @@ async function handleApi(
     }
     if (request.method === "POST" && path === "/api/users/me/favorites") {
       return await toggleFavorite(request, env, requireUser(user), cors);
+    }
+    if (request.method === "GET" && path === "/api/videos/sections/preview") {
+      return await previewVideoSections(url, env, requireUser(user), cors);
     }
     if (path === "/api/videos") {
       if (request.method === "POST") {
@@ -1439,6 +1452,36 @@ async function listVideos(url: URL, env: Env, user: UserContext, cors: CorsConfi
   const { results } = await statement.all<VideoRow>();
   const videos = (results ?? []).map(toVideoResponse);
   return jsonResponse(videos, 200, cors);
+}
+
+async function previewVideoSections(
+  url: URL,
+  env: Env,
+  _user: UserContext,
+  cors: CorsConfig
+): Promise<Response> {
+  const videoUrl = url.searchParams.get("videoUrl");
+  if (!videoUrl || !videoUrl.trim()) {
+    throw new HttpError(400, "videoUrl is required");
+  }
+
+  const videoId = extractVideoId(videoUrl.trim());
+  if (!videoId) {
+    throw new HttpError(400, "Unable to parse videoId from URL");
+  }
+
+  const metadata = await fetchVideoMetadata(env, videoId);
+  const durationSec = metadata.durationSec ?? null;
+
+  let sections = await fetchVideoSectionsFromApi(env, videoId, durationSec);
+  if (sections.length === 0) {
+    sections = await fetchVideoSectionsFromComments(env, videoId, durationSec);
+  }
+  if (sections.length === 0 && metadata.description) {
+    sections = extractSectionsFromText(metadata.description, durationSec, "VIDEO_DESCRIPTION");
+  }
+
+  return jsonResponse(sections, 200, cors);
 }
 
 async function createClip(
@@ -2234,6 +2277,18 @@ interface YouTubeVideosResponse {
   items?: YouTubeVideoItem[];
 }
 
+interface YouTubeChapterNode {
+  title?: string;
+  startTime?: unknown;
+  endTime?: unknown;
+}
+
+interface YouTubeVideoItemWithChapters extends YouTubeVideoItem {
+  chapters?: {
+    chapters?: YouTubeChapterNode[];
+  };
+}
+
 interface YouTubeChannelItem {
   id?: string;
   snippet?: YouTubeSnippet;
@@ -2255,6 +2310,27 @@ interface YouTubeSearchItem {
 
 interface YouTubeSearchResponse {
   items?: YouTubeSearchItem[];
+}
+
+interface YouTubeCommentSnippet {
+  textOriginal?: string;
+  textDisplay?: string;
+}
+
+interface YouTubeComment {
+  snippet?: YouTubeCommentSnippet;
+}
+
+interface YouTubeCommentThreadSnippet {
+  topLevelComment?: YouTubeComment;
+}
+
+interface YouTubeCommentThreadItem {
+  snippet?: YouTubeCommentThreadSnippet;
+}
+
+interface YouTubeCommentThreadsResponse {
+  items?: YouTubeCommentThreadItem[];
 }
 
 const ISO_8601_DURATION_PATTERN = /^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$/i;
@@ -2377,6 +2453,316 @@ async function fetchVideoMetadata(env: Env, videoId: string): Promise<{
     channelId,
     description
   };
+}
+
+async function fetchVideoSectionsFromApi(
+  env: Env,
+  videoId: string,
+  durationSec: number | null
+): Promise<VideoSectionResponse[]> {
+  const apiKey = env.YOUTUBE_API_KEY?.trim();
+  if (!apiKey) {
+    warnMissingYouTubeApiKey();
+    return [];
+  }
+
+  const url = new URL("https://www.googleapis.com/youtube/v3/videos");
+  url.searchParams.set("part", "chapters");
+  url.searchParams.set("id", videoId);
+  url.searchParams.set("key", apiKey);
+
+  let response: Response;
+  try {
+    response = await fetch(url.toString(), { method: "GET" });
+  } catch (error) {
+    console.warn(`[yt-clip] Failed to fetch YouTube chapters for ${videoId}`, error);
+    return [];
+  }
+
+  if (!response.ok) {
+    console.warn(`[yt-clip] YouTube chapters API responded with status ${response.status} for video ${videoId}`);
+    return [];
+  }
+
+  let payload: YouTubeVideosResponse;
+  try {
+    payload = (await response.json()) as YouTubeVideosResponse;
+  } catch (error) {
+    console.warn(`[yt-clip] Failed to parse YouTube chapters response for ${videoId}`, error);
+    return [];
+  }
+
+  const item = Array.isArray(payload.items) ? (payload.items[0] as YouTubeVideoItemWithChapters | undefined) : undefined;
+  const chapters = item?.chapters?.chapters;
+  if (!Array.isArray(chapters) || chapters.length === 0) {
+    return [];
+  }
+
+  const sections: VideoSectionResponse[] = [];
+  for (const chapter of chapters) {
+    if (!chapter) {
+      continue;
+    }
+    const start = parseChapterBoundary(chapter.startTime);
+    if (start < 0) {
+      continue;
+    }
+    let end = parseChapterBoundary(chapter.endTime);
+    if (end <= start) {
+      end = start + DEFAULT_SECTION_LENGTH;
+    }
+    if (durationSec != null) {
+      end = Math.min(end, durationSec);
+    }
+    end = Math.max(end, start + 5);
+
+    const title = normalizeSectionLabel(typeof chapter.title === "string" ? chapter.title : "");
+    sections.push({ title, startSec: start, endSec: end, source: "YOUTUBE_CHAPTER" });
+  }
+
+  return sections;
+}
+
+async function fetchVideoSectionsFromComments(
+  env: Env,
+  videoId: string,
+  durationSec: number | null
+): Promise<VideoSectionResponse[]> {
+  const apiKey = env.YOUTUBE_API_KEY?.trim();
+  if (!apiKey) {
+    warnMissingYouTubeApiKey();
+    return [];
+  }
+
+  const url = new URL("https://www.googleapis.com/youtube/v3/commentThreads");
+  url.searchParams.set("part", "snippet");
+  url.searchParams.set("videoId", videoId);
+  url.searchParams.set("maxResults", "20");
+  url.searchParams.set("order", "relevance");
+  url.searchParams.set("textFormat", "plainText");
+  url.searchParams.set("key", apiKey);
+
+  let response: Response;
+  try {
+    response = await fetch(url.toString(), { method: "GET" });
+  } catch (error) {
+    console.warn(`[yt-clip] Failed to fetch YouTube comments for ${videoId}`, error);
+    return [];
+  }
+
+  if (!response.ok) {
+    console.warn(`[yt-clip] YouTube comments API responded with status ${response.status} for video ${videoId}`);
+    return [];
+  }
+
+  let payload: YouTubeCommentThreadsResponse;
+  try {
+    payload = (await response.json()) as YouTubeCommentThreadsResponse;
+  } catch (error) {
+    console.warn(`[yt-clip] Failed to parse YouTube comments response for ${videoId}`, error);
+    return [];
+  }
+
+  const items = Array.isArray(payload.items) ? payload.items : [];
+  for (const item of items) {
+    const snippet = item?.snippet?.topLevelComment?.snippet;
+    const text = normalizeCommentText(snippet);
+    if (!text) {
+      continue;
+    }
+    const sections = extractSectionsFromText(text, durationSec, "COMMENT");
+    if (sections.length >= 2) {
+      return sections;
+    }
+  }
+
+  return [];
+}
+
+function extractSectionsFromText(
+  text: string,
+  durationSec: number | null,
+  source: VideoSectionSource
+): VideoSectionResponse[] {
+  if (!text || !text.trim()) {
+    return [];
+  }
+
+  const lines = text.replace(/\r\n?/g, "\n").split("\n");
+  const candidates: { start: number; label: string }[] = [];
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) {
+      continue;
+    }
+    const match = line.match(TIMESTAMP_PATTERN);
+    if (!match) {
+      continue;
+    }
+    const hours = match[1] ? Number(match[1]) : 0;
+    const minutes = Number(match[2]);
+    const seconds = Number(match[3]);
+    if (!Number.isFinite(minutes) || !Number.isFinite(seconds)) {
+      continue;
+    }
+    const start = hours * 3600 + minutes * 60 + seconds;
+    if (start < 0) {
+      continue;
+    }
+    const label = normalizeSectionLabel(match[4] ?? "");
+    candidates.push({ start, label });
+  }
+
+  if (candidates.length < 2) {
+    return [];
+  }
+
+  candidates.sort((a, b) => a.start - b.start);
+  const sections: VideoSectionResponse[] = [];
+
+  for (let i = 0; i < candidates.length; i += 1) {
+    const current = candidates[i];
+    const next = candidates[i + 1];
+    let end = next ? next.start : current.start + DEFAULT_SECTION_LENGTH;
+    if (durationSec != null) {
+      end = Math.min(end, durationSec);
+    }
+    end = Math.max(end, current.start + 5);
+    sections.push({ title: current.label, startSec: current.start, endSec: end, source });
+  }
+
+  return sections;
+}
+
+function normalizeSectionLabel(label: string): string {
+  const trimmed = label.trim();
+  if (!trimmed) {
+    return "Track";
+  }
+  if (trimmed.length > 120) {
+    return trimmed.slice(0, 120);
+  }
+  return trimmed;
+}
+
+function normalizeCommentText(snippet: YouTubeCommentSnippet | undefined): string {
+  if (!snippet) {
+    return "";
+  }
+  if (typeof snippet.textOriginal === "string" && snippet.textOriginal.trim()) {
+    return snippet.textOriginal.trim();
+  }
+  if (typeof snippet.textDisplay === "string" && snippet.textDisplay.trim()) {
+    return snippet.textDisplay.trim();
+  }
+  return "";
+}
+
+function parseChapterBoundary(node: unknown): number {
+  const parseSecondsValue = (value: unknown): number => {
+    if (value == null) {
+      return -1;
+    }
+    if (typeof value === "number") {
+      if (!Number.isFinite(value) || value < 0) {
+        return -1;
+      }
+      return Math.floor(value);
+    }
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (!trimmed) {
+        return -1;
+      }
+      const colonMatch = trimmed.match(/^(?:(\d{1,2}):)?(\d{1,2}):(\d{2})$/);
+      if (colonMatch) {
+        const hours = colonMatch[1] ? Number(colonMatch[1]) : 0;
+        const minutes = Number(colonMatch[2]);
+        const seconds = Number(colonMatch[3]);
+        if ([hours, minutes, seconds].every((part) => Number.isFinite(part) && part >= 0)) {
+          return hours * 3600 + minutes * 60 + seconds;
+        }
+      }
+      if (/^-?\d+(?:\.\d+)?$/.test(trimmed)) {
+        const numeric = Number.parseFloat(trimmed);
+        if (Number.isFinite(numeric) && numeric >= 0) {
+          return Math.floor(numeric);
+        }
+      }
+      const iso = parseIso8601Duration(trimmed);
+      if (iso != null && iso >= 0) {
+        return iso;
+      }
+      return -1;
+    }
+    return -1;
+  };
+
+  const parseMillisecondsValue = (value: unknown): number => {
+    if (value == null) {
+      return -1;
+    }
+    if (typeof value === "number") {
+      if (!Number.isFinite(value) || value < 0) {
+        return -1;
+      }
+      return Math.floor(value / 1000);
+    }
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (!trimmed) {
+        return -1;
+      }
+      if (/^-?\d+(?:\.\d+)?$/.test(trimmed)) {
+        const numeric = Number.parseFloat(trimmed);
+        if (Number.isFinite(numeric) && numeric >= 0) {
+          return Math.floor(numeric / 1000);
+        }
+      }
+    }
+    return -1;
+  };
+
+  let candidate = parseSecondsValue(node);
+  if (candidate >= 0) {
+    return candidate;
+  }
+
+  candidate = parseMillisecondsValue(node);
+  if (candidate >= 0) {
+    return candidate;
+  }
+
+  if (node && typeof node === "object") {
+    const value = node as Record<string, unknown>;
+    const secondKeys = ["seconds", "sec", "value", "start", "startSeconds", "startTime"] as const;
+    for (const key of secondKeys) {
+      candidate = parseSecondsValue(value[key]);
+      if (candidate >= 0) {
+        return candidate;
+      }
+    }
+    const millisecondKeys = ["milliseconds", "ms", "startMs", "startMilliseconds"] as const;
+    for (const key of millisecondKeys) {
+      candidate = parseMillisecondsValue(value[key]);
+      if (candidate >= 0) {
+        return candidate;
+      }
+    }
+    const isoKeys = ["text", "displayText", "startTimeText"] as const;
+    for (const key of isoKeys) {
+      const raw = value[key];
+      if (typeof raw === "string") {
+        const iso = parseIso8601Duration(raw.trim());
+        if (iso != null && iso >= 0) {
+          return iso;
+        }
+      }
+    }
+  }
+
+  return -1;
 }
 
 const YOUTUBE_CHANNEL_ID_PATTERN = /^UC[0-9A-Za-z_-]{22}$/;
