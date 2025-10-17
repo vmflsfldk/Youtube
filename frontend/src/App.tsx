@@ -111,7 +111,7 @@ const VIDEO_CATEGORY_METADATA: ReadonlyArray<{ key: VideoCategoryKey; label: str
 
 const VIDEO_CATEGORY_KEYWORDS: Record<VideoCategoryKey, string[]> = {
   cover: ['cover', '커버', 'カバー'],
-  live: ['live', '라이브', 'ライブ', '生放送'],
+  live: ['live', '라이브', 'ライブ', '生放送', '歌枠'],
   original: ['original', '오리지널', 'オリジナル']
 };
 
