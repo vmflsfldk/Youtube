@@ -63,6 +63,11 @@ interface VideoSectionResponse {
   source: VideoSectionSource;
 }
 
+interface VideoSectionPreviewResponse {
+  sections: VideoSectionResponse[];
+  durationSec: number | null;
+}
+
 interface VideoResponse {
   id: number;
   artistId: number;
@@ -1523,7 +1528,12 @@ async function previewVideoSections(
     sections = extractSectionsFromText(metadata.description, durationSec, "VIDEO_DESCRIPTION");
   }
 
-  return jsonResponse(sections, 200, cors);
+  const payload: VideoSectionPreviewResponse = {
+    sections,
+    durationSec,
+  };
+
+  return jsonResponse(payload, 200, cors);
 }
 
 async function createClip(

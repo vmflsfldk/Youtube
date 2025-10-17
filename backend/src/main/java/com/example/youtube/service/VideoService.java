@@ -2,6 +2,7 @@ package com.example.youtube.service;
 
 import com.example.youtube.dto.VideoCreateRequest;
 import com.example.youtube.dto.VideoResponse;
+import com.example.youtube.dto.VideoSectionPreviewResponse;
 import com.example.youtube.dto.VideoSectionResponse;
 import com.example.youtube.model.Artist;
 import com.example.youtube.model.Video;
@@ -113,7 +114,7 @@ public class VideoService {
     }
 
     @Transactional(readOnly = true)
-    public List<VideoSectionResponse> previewSections(String videoUrl) {
+    public VideoSectionPreviewResponse previewSections(String videoUrl) {
         if (videoUrl == null || videoUrl.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "videoUrl is required");
         }
@@ -125,7 +126,8 @@ public class VideoService {
         List<YouTubeVideoSectionProvider.VideoSectionData> sectionData = sectionProvider.fetch(videoId,
                 metadata.description(),
                 metadata.durationSec());
-        return mapSectionData(sectionData);
+        List<VideoSectionResponse> sections = mapSectionData(sectionData);
+        return new VideoSectionPreviewResponse(sections, metadata.durationSec());
     }
 
     private VideoResponse map(Video video) {
