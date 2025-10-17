@@ -56,9 +56,12 @@ public class VideoService {
         Artist artist = artistRepository.findById(request.artistId())
                 .orElseThrow(() -> new EntityNotFoundException("Artist not found: " + request.artistId()));
 
-        Video video = videoRepository.findByYoutubeVideoId(videoId)
-                .orElseGet(() -> new Video(artist, videoId, ""));
-        video.setArtist(artist);
+        videoRepository.findByYoutubeVideoId(videoId)
+                .ifPresent(existing -> {
+                    throw new ResponseStatusException(HttpStatus.CONFLICT, "Video already registered: " + videoId);
+                });
+
+        Video video = new Video(artist, videoId, "");
 
         VideoMetadata metadata = metadataProvider.fetch(videoId);
         video.setTitle(Optional.ofNullable(metadata.title()).orElse("Untitled"));
