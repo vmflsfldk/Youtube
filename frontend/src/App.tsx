@@ -1281,7 +1281,7 @@ export default function App() {
 
   const applyVideoSectionToClip = useCallback(
     (section: VideoSectionResponse, fallbackTitle: string) => {
-      const resolvedTitle = clipForm.title || section.title || fallbackTitle;
+      const resolvedTitle = section.title || fallbackTitle;
 
       setClipForm((prev) => ({
         ...prev,
@@ -1342,15 +1342,7 @@ export default function App() {
           }
         });
     },
-    [
-      clipForm.tags,
-      clipForm.title,
-      clipForm.videoUrl,
-      createClip,
-      creationDisabled,
-      selectedVideo,
-      videoForm.artistId
-    ]
+    [clipForm.tags, clipForm.videoUrl, createClip, creationDisabled, selectedVideo, videoForm.artistId]
   );
 
   const handlePreviewSectionApply = useCallback(
