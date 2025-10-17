@@ -70,4 +70,30 @@ class YouTubeApiVideoSectionProviderTest {
 
         assertThat(sections.get(2).endSec()).isEqualTo(120);
     }
+
+    @Test
+    void extractSectionsHandlesWhitespaceBeforePunctuationInComments() {
+        YouTubeApiVideoSectionProvider provider =
+                new YouTubeApiVideoSectionProvider(RestClient.builder(), "");
+
+        String comment = """
+                1  . 1:39 Song One
+                2  . 3:20 Song Two
+                """;
+
+        List<YouTubeVideoSectionProvider.VideoSectionData> sections =
+                provider.fetch("video789", comment, null);
+
+        assertThat(sections)
+                .hasSize(2)
+                .extracting(YouTubeVideoSectionProvider.VideoSectionData::title)
+                .containsExactly("Song One", "Song Two");
+
+        assertThat(sections)
+                .extracting(YouTubeVideoSectionProvider.VideoSectionData::startSec)
+                .containsExactly(99, 200);
+
+        assertThat(sections.get(0).endSec()).isEqualTo(200);
+        assertThat(sections.get(1).endSec()).isEqualTo(245);
+    }
 }
