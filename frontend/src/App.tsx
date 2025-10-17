@@ -231,6 +231,8 @@ const isClipSourceVideo = (video: VideoResponse): boolean =>
 
 type MediaRegistrationType = 'video' | 'clip';
 
+type ArtistLibraryView = 'videoForm' | 'clipForm' | 'videoList' | 'clipList';
+
 const resolveMediaRegistrationType = (
   url: string,
   selectedVideoId: number | null
@@ -672,8 +674,9 @@ export default function App() {
       };
     });
   }, [clipCandidates]);
-  const [isLibraryVideoFormOpen, setLibraryVideoFormOpen] = useState(false);
-  const [isLibraryClipFormOpen, setLibraryClipFormOpen] = useState(false);
+  const [activeLibraryView, setActiveLibraryView] = useState<ArtistLibraryView>('videoList');
+  const isLibraryVideoFormOpen = activeLibraryView === 'videoForm';
+  const isLibraryClipFormOpen = activeLibraryView === 'clipForm';
   const isLibraryMediaFormOpen = isLibraryVideoFormOpen || isLibraryClipFormOpen;
   const [artistForm, setArtistForm] = useState<ArtistFormState>(() => createInitialArtistFormState());
   const [artistSearchQuery, setArtistSearchQuery] = useState('');
@@ -687,6 +690,16 @@ export default function App() {
   const scrollToSection = useCallback((sectionRef: RefObject<HTMLElement | null>) => {
     sectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, []);
+  const scrollToSectionWithFrame = useCallback(
+    (sectionRef: RefObject<HTMLElement | null>) => {
+      if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+        window.requestAnimationFrame(() => scrollToSection(sectionRef));
+        return;
+      }
+      scrollToSection(sectionRef);
+    },
+    [scrollToSection]
+  );
   const handleClipTimePartChange = useCallback(
     (key: ClipTimeField) => (event: ChangeEvent<HTMLInputElement>) => {
       const options = key.endsWith('Hours')
@@ -1491,15 +1504,13 @@ export default function App() {
       setSelectedVideo(null);
       setActiveSection('library');
       setArtistRegistrationOpen(false);
-      setLibraryClipFormOpen(false);
-      setLibraryVideoFormOpen(true);
+      setActiveLibraryView('videoForm');
     },
     [
       setActiveSection,
       setArtistRegistrationOpen,
       setClipForm,
-      setLibraryClipFormOpen,
-      setLibraryVideoFormOpen,
+      setActiveLibraryView,
       setSelectedVideo,
       setVideoForm
     ]
@@ -2057,8 +2068,7 @@ export default function App() {
     setVideos([]);
     setClipCandidates([]);
     setClips([]);
-    setLibraryVideoFormOpen(false);
-    setLibraryClipFormOpen(false);
+    setActiveLibraryView('videoList');
     setVideoSubmissionStatus(null);
   };
 
@@ -2222,8 +2232,7 @@ export default function App() {
   const selectedArtistId = selectedArtist?.id ?? null;
 
   useEffect(() => {
-    setLibraryVideoFormOpen(false);
-    setLibraryClipFormOpen(false);
+    setActiveLibraryView('videoList');
     setArtistRegistrationOpen(false);
   }, [selectedArtistId]);
 
@@ -2232,8 +2241,7 @@ export default function App() {
       return;
     }
     setVideoForm((prev) => ({ ...prev, artistId: String(selectedArtistId) }));
-    setLibraryClipFormOpen(false);
-    setLibraryVideoFormOpen((prev) => !prev);
+    setActiveLibraryView('videoForm');
     setVideoSubmissionStatus(null);
   }, [selectedArtistId]);
 
@@ -2242,10 +2250,17 @@ export default function App() {
       return;
     }
     setVideoForm((prev) => ({ ...prev, artistId: String(selectedArtistId) }));
-    setLibraryVideoFormOpen(false);
-    setLibraryClipFormOpen((prev) => !prev);
+    setActiveLibraryView('clipForm');
     setVideoSubmissionStatus(null);
   }, [selectedArtistId]);
+  const handleShowVideoList = useCallback(() => {
+    setActiveLibraryView('videoList');
+    scrollToSectionWithFrame(videoListSectionRef);
+  }, [setActiveLibraryView, scrollToSectionWithFrame]);
+  const handleShowClipList = useCallback(() => {
+    setActiveLibraryView('clipList');
+    scrollToSectionWithFrame(clipListSectionRef);
+  }, [setActiveLibraryView, scrollToSectionWithFrame]);
   const handleClipCardToggle = useCallback((clip: ClipResponse) => {
     if (!clip.youtubeVideoId) {
       return;
@@ -3069,14 +3084,14 @@ export default function App() {
                         <button
                           type="button"
                           className="artist-library__action-button artist-library__action-button--ghost"
-                          onClick={() => scrollToSection(videoListSectionRef)}
+                          onClick={handleShowVideoList}
                         >
                           영상 목록
                         </button>
                         <button
                           type="button"
                           className="artist-library__action-button artist-library__action-button--ghost"
-                          onClick={() => scrollToSection(clipListSectionRef)}
+                          onClick={handleShowClipList}
                         >
                           클립 목록
                         </button>
@@ -3410,7 +3425,8 @@ export default function App() {
                           )}
                         </section>
                       )}
-                      <section ref={videoListSectionRef} className="artist-library__detail-section">
+                      {activeLibraryView === 'videoList' && (
+                        <section ref={videoListSectionRef} className="artist-library__detail-section">
                         <div className="artist-library__section-header">
                           <h4>영상 목록</h4>
                           {isArtistVideosLoading ? (
@@ -3487,8 +3503,10 @@ export default function App() {
                             })}
                           </ul>
                         )}
-                      </section>
-                      <section ref={clipListSectionRef} className="artist-library__detail-section">
+                        </section>
+                      )}
+                      {activeLibraryView === 'clipList' && (
+                        <section ref={clipListSectionRef} className="artist-library__detail-section">
                         <div className="artist-library__section-header">
                           <h4>클립 목록</h4>
                           {selectedVideoData && (
@@ -3571,7 +3589,8 @@ export default function App() {
                             </ul>
                           </>
                         )}
-                      </section>
+                        </section>
+                      )}
                     </div>
                   </div>
                 ) : noFilteredArtists ? (
