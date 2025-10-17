@@ -396,13 +396,18 @@ interface VideoResponse {
   artistId: number;
   youtubeVideoId: string;
   title: string;
-  durationSec?: number;
-  thumbnailUrl?: string;
-  channelId?: string;
+  durationSec?: number | null;
+  thumbnailUrl?: string | null;
+  channelId?: string | null;
   contentType?: 'OFFICIAL' | 'CLIP_SOURCE' | string;
   category?: 'live' | 'cover' | 'original' | null;
   sections?: VideoSectionResponse[];
   hidden?: boolean;
+  artistName?: string | null;
+  artistDisplayName?: string | null;
+  artistYoutubeChannelId?: string | null;
+  artistYoutubeChannelTitle?: string | null;
+  artistProfileImageUrl?: string | null;
 }
 
 interface ClipResponse {
@@ -414,6 +419,12 @@ interface ClipResponse {
   tags: string[];
   youtubeVideoId?: string;
   videoTitle?: string | null;
+  artistId?: number;
+  artistName?: string | null;
+  artistDisplayName?: string | null;
+  artistYoutubeChannelId?: string | null;
+  artistYoutubeChannelTitle?: string | null;
+  artistProfileImageUrl?: string | null;
 }
 
 interface ClipCandidateResponse {
@@ -652,7 +663,9 @@ export default function App() {
     original: false
   });
   const [clips, setClips] = useState<ClipResponse[]>([]);
-  const [publicClips, setPublicClips] = useState<ClipResponse[]>([]);
+  const [playlistVideos, setPlaylistVideos] = useState<VideoResponse[]>([]);
+  const [playlistClips, setPlaylistClips] = useState<ClipResponse[]>([]);
+  const [playlistSearchQuery, setPlaylistSearchQuery] = useState('');
   const [selectedVideo, setSelectedVideo] = useState<number | null>(null);
   const [clipCandidates, setClipCandidates] = useState<ClipCandidateResponse[]>([]);
   const [videoSubmissionStatus, setVideoSubmissionStatus] = useState<
@@ -958,7 +971,9 @@ export default function App() {
     setArtists([]);
     setVideos([]);
     setClips([]);
-    setPublicClips([]);
+    setPlaylistVideos([]);
+    setPlaylistClips([]);
+    setPlaylistSearchQuery('');
     setClipCandidates([]);
     setSelectedVideo(null);
     setVideoForm({ url: '', artistId: '', description: '', captionsJson: '' });
@@ -1572,12 +1587,16 @@ export default function App() {
         const others = prev.filter((item) => item.id !== video.id);
         return [...others, video];
       });
+      setPlaylistVideos((prev) => {
+        const others = prev.filter((item) => item.id !== video.id);
+        return [...others, video];
+      });
       setSelectedVideo(video.id);
       setClipCandidates(normalizedCandidates);
       autoDetectedVideoIdRef.current = video.id;
       return { existed, candidates: normalizedCandidates };
     },
-    [setVideos, setSelectedVideo, setClipCandidates]
+    [setVideos, setPlaylistVideos, setSelectedVideo, setClipCandidates]
   );
 
   const requestVideoRegistration = useCallback(
@@ -1631,14 +1650,26 @@ export default function App() {
       }
       if (response.data.videoId !== selectedVideo) {
         setSelectedVideo(response.data.videoId);
-        setClips([normalizedClip]);
-      } else {
-        setClips((prev) => [...prev, normalizedClip]);
       }
+      setClips((prev) => {
+        const others = prev.filter((clip) => clip.id !== normalizedClip.id);
+        return [...others, normalizedClip];
+      });
+      setPlaylistClips((prev) => {
+        const others = prev.filter((clip) => clip.id !== normalizedClip.id);
+        return [...others, normalizedClip];
+      });
+      setPlaylistVideos((prev) => {
+        if (prev.some((video) => video.id === response.data.videoId)) {
+          return prev;
+        }
+        const matchingVideo = videos.find((video) => video.id === response.data.videoId);
+        return matchingVideo ? [...prev, matchingVideo] : prev;
+      });
       reloadArtistVideos().catch((error) => console.error('Failed to refresh videos after clip creation', error));
       return normalizedClip;
     },
-    [authHeaders, http, reloadArtistVideos, selectedVideo]
+    [authHeaders, http, reloadArtistVideos, selectedVideo, videos]
   );
 
   const applyVideoSectionToClip = useCallback(
@@ -1832,48 +1863,81 @@ export default function App() {
   );
 
   useEffect(() => {
-    if (!isAuthenticated) {
-      setHiddenVideoIds([]);
-      setClips([]);
-      return;
-    }
-    if (!selectedVideo) {
-      setClips([]);
-      return;
-    }
+    const controller = new AbortController();
+    let cancelled = false;
 
-    setClipCandidates([]);
-
-    (async () => {
-      try {
-        const response = await http.get<ClipResponse[]>('/clips', {
-          headers: authHeaders,
-          params: { videoId: selectedVideo }
-        });
-        setClips(ensureArray(response.data).map(normalizeClip));
-      } catch (error) {
-        console.error('Failed to load clips', error);
-        setClips([]);
+    const loadPlaylistMedia = async () => {
+      if (!isAuthenticated) {
+        try {
+          const response = await http.get<ClipResponse[]>('/public/clips', {
+            signal: controller.signal
+          });
+          if (cancelled) {
+            return;
+          }
+          const normalizedClips = ensureArray(response.data).map(normalizeClip);
+          setPlaylistVideos([]);
+          setPlaylistClips(normalizedClips);
+          setClips([]);
+          setHiddenVideoIds([]);
+          setPlaylistSearchQuery('');
+        } catch (error) {
+          if (controller.signal.aborted) {
+            return;
+          }
+          console.error('Failed to load public clips', error);
+          if (!cancelled) {
+            setPlaylistVideos([]);
+            setPlaylistClips([]);
+            setClips([]);
+            setHiddenVideoIds([]);
+            setPlaylistSearchQuery('');
+          }
+        }
+        return;
       }
-    })();
-  }, [selectedVideo, authHeaders, isAuthenticated]);
 
-  useEffect(() => {
-    if (isAuthenticated) {
-      setPublicClips([]);
-      return;
-    }
-
-    (async () => {
       try {
-        const response = await http.get<ClipResponse[]>('/public/clips');
-        setPublicClips(ensureArray(response.data).map(normalizeClip));
+        const response = await http.get<{ videos?: MaybeArray<VideoResponse>; clips?: MaybeArray<ClipResponse> }>(
+          '/library/media',
+          {
+            headers: authHeaders,
+            signal: controller.signal
+          }
+        );
+        if (cancelled) {
+          return;
+        }
+        const fetchedVideos = ensureArray(response.data?.videos).map((video) => ({
+          ...video,
+          durationSec: typeof video.durationSec === 'number' ? video.durationSec : video.durationSec ?? null,
+          thumbnailUrl: video.thumbnailUrl ?? null
+        }));
+        const normalizedClips = ensureArray(response.data?.clips).map(normalizeClip);
+        setPlaylistVideos(fetchedVideos);
+        setPlaylistClips(normalizedClips);
+        setClips(normalizedClips);
+        setPlaylistSearchQuery('');
       } catch (error) {
-        console.error('Failed to load public clips', error);
-        setPublicClips([]);
+        if (controller.signal.aborted) {
+          return;
+        }
+        console.error('Failed to load media library', error);
+        if (!cancelled) {
+          setPlaylistVideos([]);
+          setPlaylistClips([]);
+          setClips([]);
+        }
       }
-    })();
-  }, [isAuthenticated]);
+    };
+
+    void loadPlaylistMedia();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [authHeaders, http, isAuthenticated]);
 
   const submitClip = useCallback(async (options?: { videoId?: number }) => {
     if (creationDisabled) {
@@ -2058,7 +2122,6 @@ export default function App() {
     setSelectedVideo(null);
     setActiveClipId(null);
     setClipCandidates([]);
-    setClips([]);
     setVideoSubmissionStatus(null);
   };
 
@@ -2067,7 +2130,6 @@ export default function App() {
     setSelectedVideo(null);
     setVideos([]);
     setClipCandidates([]);
-    setClips([]);
     setActiveLibraryView('videoList');
     setVideoSubmissionStatus(null);
   };
@@ -2336,23 +2398,135 @@ export default function App() {
     () => displayableVideos.filter((video) => !isClipSourceVideo(video)),
     [displayableVideos]
   );
-  const displayedClips = isAuthenticated ? clips : publicClips;
   const selectedVideoClips = useMemo(
-    () => (selectedVideo ? displayedClips.filter((clip) => clip.videoId === selectedVideo) : []),
-    [displayedClips, selectedVideo]
+    () => (selectedVideo ? clips.filter((clip) => clip.videoId === selectedVideo) : []),
+    [clips, selectedVideo]
+  );
+
+  const playlistVideoMap = useMemo(() => {
+    const map = new Map<number, VideoResponse>();
+    playlistVideos.forEach((video) => {
+      map.set(video.id, video);
+    });
+    return map;
+  }, [playlistVideos]);
+
+  type PlaylistGroup = { video: VideoResponse | null; clips: ClipResponse[] };
+
+  const playlistGroups = useMemo<PlaylistGroup[]>(() => {
+    const groups = new Map<number, { video: VideoResponse; clips: ClipResponse[] }>();
+    const orphanClips: ClipResponse[] = [];
+
+    playlistClips.forEach((clip) => {
+      const video = playlistVideoMap.get(clip.videoId);
+      if (video) {
+        const group = groups.get(video.id);
+        if (group) {
+          group.clips.push(clip);
+        } else {
+          groups.set(video.id, { video, clips: [clip] });
+        }
+      } else {
+        orphanClips.push(clip);
+      }
+    });
+
+    playlistVideos.forEach((video) => {
+      if (!groups.has(video.id)) {
+        groups.set(video.id, { video, clips: [] });
+      }
+    });
+
+    const ordered: PlaylistGroup[] = [];
+    playlistVideos.forEach((video) => {
+      const group = groups.get(video.id);
+      if (group) {
+        ordered.push(group);
+        groups.delete(video.id);
+      }
+    });
+
+    groups.forEach((group) => {
+      ordered.push(group);
+    });
+
+    if (orphanClips.length > 0) {
+      ordered.push({ video: null, clips: orphanClips });
+    }
+
+    return ordered;
+  }, [playlistClips, playlistVideoMap, playlistVideos]);
+
+  const normalizedPlaylistQuery = playlistSearchQuery.trim().toLowerCase();
+
+  const filteredPlaylistGroups = useMemo<PlaylistGroup[]>(() => {
+    if (normalizedPlaylistQuery.length === 0) {
+      return playlistGroups;
+    }
+
+    const matchesVideo = (video: VideoResponse): boolean => {
+      const fields = [
+        video.title,
+        video.youtubeVideoId,
+        video.artistName,
+        video.artistDisplayName,
+        video.artistYoutubeChannelTitle
+      ];
+      return fields.some((field) => field && field.toLowerCase().includes(normalizedPlaylistQuery));
+    };
+
+    const matchesClip = (clip: ClipResponse, video: VideoResponse | null): boolean => {
+      const tagText = Array.isArray(clip.tags) ? clip.tags.join(' ') : '';
+      const fields = [
+        clip.title,
+        clip.videoTitle ?? undefined,
+        clip.youtubeVideoId,
+        tagText,
+        clip.artistName ?? undefined,
+        clip.artistDisplayName ?? undefined,
+        clip.artistYoutubeChannelTitle ?? undefined,
+        video?.title,
+        video?.youtubeVideoId,
+        video?.artistName,
+        video?.artistDisplayName,
+        video?.artistYoutubeChannelTitle
+      ];
+      return fields.some((field) => field && field.toLowerCase().includes(normalizedPlaylistQuery));
+    };
+
+    return playlistGroups.reduce<PlaylistGroup[]>((accumulator, group) => {
+      const { video, clips: groupClips } = group;
+      const videoMatches = video ? matchesVideo(video) : false;
+      if (videoMatches) {
+        accumulator.push(group);
+        return accumulator;
+      }
+
+      const matchingClips = groupClips.filter((clip) => matchesClip(clip, video ?? null));
+      if (matchingClips.length > 0) {
+        accumulator.push({ video: video ?? null, clips: matchingClips });
+      }
+      return accumulator;
+    }, []);
+  }, [normalizedPlaylistQuery, playlistGroups]);
+
+  const playlistHasResults = filteredPlaylistGroups.some(
+    (group) => group.video !== null || group.clips.length > 0
   );
   useEffect(() => {
     setActiveClipId((previous) =>
       previous && selectedVideoClips.some((clip) => clip.id === previous) ? previous : null
     );
   }, [selectedVideoClips]);
-  const playlistHeading = isAuthenticated ? '유저가 저장한 플레이리스트' : '공개된 클립 모음';
+  const playlistHeading = isAuthenticated ? '내 영상·클립 모음' : '공개 영상·클립 모음';
   const playlistSubtitle = isAuthenticated
-    ? '(백그라운드 재생)'
-    : '로그인 없이 감상 가능한 클립 모음';
-  const playlistEmptyMessage = isAuthenticated
-    ? '선택된 영상의 저장된 클립이 없습니다.'
-    : '공개된 클립이 아직 없습니다.';
+    ? '저장한 영상과 클립을 검색하고 바로 재생해 보세요.'
+    : '회원가입 없이 감상할 수 있는 최신 공개 클립입니다.';
+  const playlistEmptyMessage = normalizedPlaylistQuery.length > 0
+    ? '검색 조건에 맞는 영상이나 클립이 없습니다.'
+    : isAuthenticated
+      ? '저장된 영상이나 클립이 없습니다. 라이브러리에서 새로운 클립을 추가해 보세요.'
+      : '아직 공개된 클립이 없습니다. 잠시 후 다시 확인해 주세요.';
   const parsedPreviewStartSec = useMemo(
     () => parseClipTimeParts(clipForm.startHours, clipForm.startMinutes, clipForm.startSeconds),
     [clipForm.startHours, clipForm.startMinutes, clipForm.startSeconds]
@@ -2464,8 +2638,8 @@ export default function App() {
       },
       {
         id: 'playlist',
-        label: '플레이리스트',
-        description: '저장된 클립과 태그 모아보기',
+        label: '영상·클립 모음',
+        description: '저장된 영상과 클립을 한눈에 확인하세요.',
         icon: (
           <svg viewBox="0 0 24 24" role="presentation" aria-hidden="true">
             <path
@@ -3623,46 +3797,113 @@ export default function App() {
             hidden={activeSection !== 'playlist'}
           >
             <div className="panel playlist-panel">
-              <div>
+              <div className="playlist-panel__header">
                 <h2>{playlistHeading}</h2>
                 <p className="playlist-subtitle">{playlistSubtitle}</p>
+                <div className="playlist-search">
+                  <input
+                    id="playlistSearchInput"
+                    type="search"
+                    value={playlistSearchQuery}
+                    onChange={(event) => setPlaylistSearchQuery(event.target.value)}
+                    placeholder="영상 또는 클립 검색"
+                    aria-label="영상 또는 클립 검색"
+                  />
+                </div>
               </div>
-              {displayedClips.length === 0 ? (
+              {!playlistHasResults ? (
                 <p className="empty-state">{playlistEmptyMessage}</p>
               ) : (
-                <div className="playlist-list">
-                  {displayedClips.map((clip) => {
-                    const clipVideo = videos.find((video) => video.id === clip.videoId);
-                    const youtubeVideoId = clip.youtubeVideoId ?? clipVideo?.youtubeVideoId;
-                    const resolvedVideoTitle =
-                      clip.videoTitle ?? clipVideo?.title ?? clipVideo?.youtubeVideoId ?? '';
+                <div className="playlist-groups">
+                  {filteredPlaylistGroups.map((group, index) => {
+                    const video = group.video;
+                    const groupKey = video ? `video-${video.id}` : `orphan-${index}`;
+                    const fallbackClip = group.clips[0];
+                    const headerArtist =
+                      video?.artistDisplayName ??
+                      video?.artistName ??
+                      fallbackClip?.artistDisplayName ??
+                      fallbackClip?.artistName ??
+                      null;
                     return (
-                      <div className="playlist-card" key={clip.id}>
-                        <div className="playlist-meta">
-                          <h3>{clip.title}</h3>
-                          <p>
-                            {clip.startSec}s → {clip.endSec}s
-                          </p>
-                          {resolvedVideoTitle && (
-                            <p className="playlist-video-title">{resolvedVideoTitle}</p>
-                          )}
-                          {clip.tags.length > 0 && (
-                            <div className="tag-row">
-                              {clip.tags.map((tag) => (
-                                <span key={tag} className="tag">
-                                  #{tag}
-                                </span>
-                              ))}
+                      <div className="playlist-group" key={groupKey}>
+                        {video ? (
+                          <div className="playlist-group__header">
+                            <h3 className="playlist-group__title">
+                              {video.title || video.youtubeVideoId || '제목 없는 영상'}
+                            </h3>
+                            <div className="playlist-group__details">
+                              {headerArtist && (
+                                <span className="playlist-group__artist">{headerArtist}</span>
+                              )}
+                              <span className="playlist-group__meta">
+                                {formatVideoMetaSummary(video)}
+                              </span>
                             </div>
-                          )}
-                        </div>
-                        {youtubeVideoId && (
-                          <ClipPlayer
-                            youtubeVideoId={youtubeVideoId}
-                            startSec={clip.startSec}
-                            endSec={clip.endSec}
-                            autoplay={false}
-                          />
+                          </div>
+                        ) : (
+                          <div className="playlist-group__header playlist-group__header--orphan">
+                            <h3 className="playlist-group__title">원본 영상 정보를 찾을 수 없어요</h3>
+                            <p className="playlist-group__meta">
+                              등록된 영상과 연결되지 않은 클립입니다.
+                            </p>
+                          </div>
+                        )}
+                        {group.clips.length === 0 ? (
+                          <p className="playlist-group__empty">아직 등록된 클립이 없습니다.</p>
+                        ) : (
+                          <ul className="playlist-group__clips">
+                            {group.clips.map((clip) => {
+                              const parentVideo = video ?? playlistVideoMap.get(clip.videoId) ?? null;
+                              const youtubeVideoId = clip.youtubeVideoId ?? parentVideo?.youtubeVideoId;
+                              const resolvedVideoTitle =
+                                clip.videoTitle ??
+                                parentVideo?.title ??
+                                parentVideo?.youtubeVideoId ??
+                                '';
+                              const clipArtist =
+                                clip.artistDisplayName ??
+                                clip.artistName ??
+                                parentVideo?.artistDisplayName ??
+                                parentVideo?.artistName ??
+                                null;
+                              return (
+                                <li key={clip.id} className="playlist-clip">
+                                  <div className="playlist-clip__card">
+                                    <div className="playlist-clip__meta">
+                                      <h4>{clip.title}</h4>
+                                      <p className="playlist-clip__time">
+                                        {formatSeconds(clip.startSec)} → {formatSeconds(clip.endSec)}
+                                      </p>
+                                      {clipArtist && (
+                                        <p className="playlist-clip__artist">{clipArtist}</p>
+                                      )}
+                                      {resolvedVideoTitle && (
+                                        <p className="playlist-clip__video-title">{resolvedVideoTitle}</p>
+                                      )}
+                                      {clip.tags.length > 0 && (
+                                        <div className="tag-row">
+                                          {clip.tags.map((tag) => (
+                                            <span key={tag} className="tag">
+                                              #{tag}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                    {youtubeVideoId && (
+                                      <ClipPlayer
+                                        youtubeVideoId={youtubeVideoId}
+                                        startSec={clip.startSec}
+                                        endSec={clip.endSec}
+                                        autoplay={false}
+                                      />
+                                    )}
+                                  </div>
+                                </li>
+                              );
+                            })}
+                          </ul>
                         )}
                       </div>
                     );
