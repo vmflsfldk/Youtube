@@ -8,7 +8,6 @@
 - Node.js 18 이상
 - Wrangler CLI (`npm install -g wrangler`)
 - 레포지토리 체크아웃 및 `wrangler.toml` 확인
-- Google OAuth 클라이언트 ID (Google Cloud 콘솔에서 발급)
 - YouTube Data API v3 키 (Google Cloud 콘솔에서 발급)
 
 > `wrangler.toml`에는 Worker 이름과 D1 바인딩이 정의되어 있습니다. 필요하다면 `account_id`나 `workers_dev` 옵션을 추가해 자신의 계정과 환경에 맞게 수정하세요.
@@ -43,31 +42,7 @@ wrangler login
 
 2. 기존 데이터베이스를 사용할 경우 `wrangler d1 list`로 확인 후 `database_name`과 `database_id`가 일치하는지 확인합니다.
 
-## 4. Google OAuth 클라이언트 설정
-
-Google 로그인 버튼이 동작하려면 프론트엔드와 Worker가 **동일한** Google OAuth 클라이언트 ID를 사용해야 합니다. 기본값은 데모 페이지용으로 제한돼 있으므로 실서비스 도메인에서는 반드시 자신만의 클라이언트 ID를 입력하세요.
-
-1. **Cloudflare Worker 환경 변수 설정**
-
-   Worker는 `GOOGLE_CLIENT_ID` 또는 `GOOGLE_OAUTH_CLIENT_IDS` 환경 변수에서 허용된 클라이언트 ID 목록을 읽어 ID 토큰을 검증합니다. 아래 명령으로 환경 변수를 등록한 뒤 재배포하세요.
-
-   ```bash
-   wrangler secret put GOOGLE_CLIENT_ID
-   ```
-
-   여러 개의 클라이언트를 허용하려면 `GOOGLE_OAUTH_CLIENT_IDS`에 쉼표로 구분된 값을 입력할 수 있습니다.
-
-2. **프론트엔드 환경 변수 설정**
-
-   Vite 빌드에는 동일한 값을 `VITE_GOOGLE_CLIENT_ID`로 주입해야 합니다.
-   `VITE_GOOGLE_CLIENT_ID`를 따로 설정하지 않은 경우, `GOOGLE_CLIENT_ID` 값이 자동으로 사용됩니다.
-
-   - Cloudflare Pages: 프로젝트 Settings → Environment variables에서 `VITE_GOOGLE_CLIENT_ID`를 추가하고 프리뷰/프로덕션 환경 모두에 값을 입력하세요.
-   - 로컬 개발: `frontend/.env.local` 파일을 생성해 `VITE_GOOGLE_CLIENT_ID=<your-client-id>` 형태로 저장합니다.
-
-   값이 지정되지 않은 경우 프론트엔드는 콘솔 경고와 함께 데모용 기본 클라이언트 ID로 폴백하지만, 해당 ID는 대부분의 도메인에서 동작하지 않습니다.
-
-## 5. YouTube Data API 키 설정
+## 4. YouTube Data API 키 설정
 
 Cloudflare Worker가 실제 YouTube 메타데이터를 가져오려면 `YOUTUBE_API_KEY` 시크릿을 설정해야 합니다. Wrangler에서 아래 명령을 실행하고
 프롬프트에 API 키를 붙여 넣으면 Workers 환경에 암호화된 값이 저장됩니다. **시크릿을 추가한 뒤에는 `wrangler deploy`로 워커를 다시 배포해**
@@ -87,7 +62,7 @@ CI/CD 파이프라인을 사용하는 경우에도 동일한 이름의 시크릿
 로컬 `wrangler dev` 환경에서 YouTube API를 사용하려면 `.dev.vars` 파일에 `YOUTUBE_API_KEY=...`를 추가하거나, `wrangler secret put --local
 YOUTUBE_API_KEY` 명령으로 로컬 시크릿을 등록한 뒤 개발 서버를 다시 실행하세요.
 
-## 6. 마이그레이션 적용
+## 5. 마이그레이션 적용
 
 모든 마이그레이션 SQL 파일은 `migrations/` 디렉터리에 있습니다.
 
@@ -97,7 +72,7 @@ wrangler d1 migrations apply ytclipdb
 
 명령이 성공하면 `users`, `artists`, `videos`, `clips` 등 서비스 테이블이 생성됩니다. (마이그레이션 내용은 `migrations/0001_init.sql` 참고)
 
-## 7. 로컬에서 최종 점검
+## 6. 로컬에서 최종 점검
 
 배포 전 로컬 프리뷰로 API를 확인합니다.
 
@@ -114,7 +89,7 @@ wrangler dev
   - CLI에서 `wrangler d1 execute ytclipdb --command "SELECT * FROM artists"`와 같이 쿼리를 실행해 실제 DB의 상태를 확인합니다.
   - API 요청 후 `wrangler tail yt-clip-api --persist`로 워커 로그를 확인하면 요청이 원격 워커까지 도달했는지 빠르게 검증할 수 있습니다.
 
-## 8. 프로덕션 배포
+## 7. 프로덕션 배포
 
 ```bash
 wrangler deploy
@@ -124,13 +99,13 @@ wrangler deploy
 
 > **주의:** Cloudflare Bot 관리 기능이 Workers.dev 호스트의 `OPTIONS` 사전 요청을 차단하는 경우, 브라우저에서 동일 오리진 `/api` 경로를 사용하면 프리플라이트 자체가 발생하지 않아 문제를 우회할 수 있습니다. 반드시 교차 오리진 호출이 필요한 상황이 아니라면 기본 `/api` 프록시 구성을 유지하세요. 부득이하게 외부 호스트를 직접 호출해야 한다면 프론트엔드 빌드에 `VITE_ALLOW_CROSS_ORIGIN_API=true`를 추가해 경고 없이 원격 엔드포인트를 사용하도록 강제할 수 있습니다.
 
-## 9. 배포 후 확인 사항
+## 8. 배포 후 확인 사항
 
 - `wrangler d1 execute ytclipdb --command "SELECT COUNT(*) FROM users;"`와 같은 쿼리로 데이터베이스 상태를 점검합니다.
 - Cloudflare 대시보드 → Workers → Deployments에서 최신 배포가 활성화되어 있는지 확인합니다.
 - 필요 시 `wrangler tail`로 실시간 로그를 수집해 에러를 파악합니다.
 
-## 10. Super Bot Fight Mode 예외 설정
+## 9. Super Bot Fight Mode 예외 설정
 
 워커 엔드포인트가 Cloudflare Bot 관리 기능(Managed Challenge, Super Bot Fight Mode 등)에 의해 차단되면 프론트엔드에서 `OPTIONS`, `GET`, `POST` 요청이 실패하고, `wrangler tail`에도 호출이 기록되지 않습니다. Pages Functions를 통해 동일 오리진 `/api` 경로를 사용하면 브라우저가 사전 요청을 보내지 않아 이러한 차단을 피할 수 있습니다. 동일 오리진 프록시를 사용할 수 없는 경우에는 아래 절차대로 예외 규칙을 추가해 워커 도메인에 대한 정당한 트래픽을 허용하세요.
 
