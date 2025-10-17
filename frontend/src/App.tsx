@@ -109,6 +109,28 @@ const ARTIST_COUNTRY_METADATA: ReadonlyArray<{
 const AUTH_TOKEN_STORAGE_KEY = 'yt-clip.auth-token';
 const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000;
 
+const DEFAULT_GOOGLE_CLIENT_ID = '245943329145-os94mkp21415hadulir67v1i0lqjrcnq.apps.googleusercontent.com';
+
+const resolveGoogleClientId = (): string => {
+  const envValue = (import.meta.env?.VITE_GOOGLE_CLIENT_ID ?? '').toString().trim();
+  if (envValue.length > 0) {
+    return envValue;
+  }
+
+  if (typeof window !== 'undefined') {
+    const globalValue = (window as typeof window & { __YT_CLIP_GOOGLE_CLIENT_ID__?: unknown }).__YT_CLIP_GOOGLE_CLIENT_ID__;
+    if (typeof globalValue === 'string' && globalValue.trim().length > 0) {
+      return globalValue.trim();
+    }
+  }
+
+  console.warn(
+    '[yt-clip] VITE_GOOGLE_CLIENT_ID가 설정되지 않았습니다. 기본 클라이언트 ID를 사용합니다. 배포 환경에서는 고유한 Google OAuth 클라이언트 ID를 설정하세요.'
+  );
+
+  return DEFAULT_GOOGLE_CLIENT_ID;
+};
+
 interface ArtistResponse {
   id: number;
   name: string;
@@ -366,6 +388,7 @@ const decodeGoogleToken = (token: string): GoogleIdTokenPayload | null => {
 };
 
 export default function App() {
+  const googleClientId = useMemo(() => resolveGoogleClientId(), []);
   const [authToken, setAuthToken] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<UserResponse | null>(null);
   const [isLoadingUser, setIsLoadingUser] = useState(false);
@@ -1948,10 +1971,7 @@ export default function App() {
             <div className="sidebar__auth-content">
               <div className="sidebar__auth-social">
                 {isGoogleReady ? (
-                  <GoogleLoginButton
-                    clientId="245943329145-os94mkp21415hadulir67v1i0lqjrcnq.apps.googleusercontent.com"
-                    onCredential={handleGoogleCredential}
-                  />
+                  <GoogleLoginButton clientId={googleClientId} onCredential={handleGoogleCredential} />
                 ) : (
                   <span className="sidebar__auth-muted">구글 로그인 준비 중...</span>
                 )}
