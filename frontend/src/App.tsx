@@ -111,16 +111,60 @@ const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000;
 
 const DEFAULT_GOOGLE_CLIENT_ID = '245943329145-os94mkp21415hadulir67v1i0lqjrcnq.apps.googleusercontent.com';
 
+const extractGoogleClientId = (value: unknown): string | null => {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    if (trimmed.startsWith('[')) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) {
+          const firstValid = parsed.find((item): item is string => typeof item === 'string' && item.trim().length > 0);
+          if (firstValid) {
+            return firstValid.trim();
+          }
+        }
+      } catch (error) {
+        console.warn('[yt-clip] Failed to parse JSON formatted Google client ID value', error);
+      }
+    }
+
+    const [firstCandidate] = trimmed
+      .split(/[\n,]/)
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0);
+    if (firstCandidate) {
+      return firstCandidate;
+    }
+
+    return trimmed;
+  }
+
+  if (Array.isArray(value)) {
+    const firstValid = value.find((item): item is string => typeof item === 'string' && item.trim().length > 0);
+    if (firstValid) {
+      return firstValid.trim();
+    }
+  }
+
+  return null;
+};
+
 const resolveGoogleClientId = (): string => {
-  const envValue = (import.meta.env?.VITE_GOOGLE_CLIENT_ID ?? '').toString().trim();
-  if (envValue.length > 0) {
+  const envValue = extractGoogleClientId(import.meta.env?.VITE_GOOGLE_CLIENT_ID);
+  if (envValue) {
     return envValue;
   }
 
   if (typeof window !== 'undefined') {
-    const globalValue = (window as typeof window & { __YT_CLIP_GOOGLE_CLIENT_ID__?: unknown }).__YT_CLIP_GOOGLE_CLIENT_ID__;
-    if (typeof globalValue === 'string' && globalValue.trim().length > 0) {
-      return globalValue.trim();
+    const globalValue = extractGoogleClientId(
+      (window as typeof window & { __YT_CLIP_GOOGLE_CLIENT_ID__?: unknown }).__YT_CLIP_GOOGLE_CLIENT_ID__
+    );
+    if (globalValue) {
+      return globalValue;
     }
   }
 
