@@ -173,6 +173,13 @@ const describeSectionSource = (source?: string): string => {
   }
 };
 
+const describeDebugSelectedSource = (source?: string | null): string => {
+  if (!source || source.toUpperCase() === 'NONE') {
+    return '선택된 데이터 없음';
+  }
+  return describeSectionSource(source);
+};
+
 const describeVideoContentType = (contentType?: string): string => {
   switch ((contentType ?? '').toUpperCase()) {
     case 'CLIP_SOURCE':
@@ -334,9 +341,34 @@ interface VideoSectionResponse {
   source: string;
 }
 
+interface VideoSectionPreviewCommentDebug {
+  text: string;
+  authorDisplayName?: string | null;
+  likeCount?: number | null;
+  commentId?: string | null;
+  url?: string | null;
+  publishedAt?: string | null;
+  updatedAt?: string | null;
+}
+
+interface VideoSectionPreviewDebugSource {
+  source: string;
+  sectionCount: number;
+  comment?: VideoSectionPreviewCommentDebug | null;
+  descriptionAvailable?: boolean;
+  descriptionSample?: string | null;
+}
+
+interface VideoSectionPreviewDebugInfo {
+  durationSec: number | null;
+  selectedSource: string;
+  sources: VideoSectionPreviewDebugSource[];
+}
+
 interface VideoSectionPreviewResponse {
   sections: VideoSectionResponse[];
   durationSec: number | null;
+  debug?: VideoSectionPreviewDebugInfo;
 }
 
 interface VideoResponse {
@@ -597,6 +629,7 @@ export default function App() {
   const [videoSectionPreview, setVideoSectionPreview] = useState<VideoSectionResponse[]>([]);
   const [videoSectionPreviewDurationSec, setVideoSectionPreviewDurationSec] = useState<number | null>(null);
   const [videoSectionPreviewError, setVideoSectionPreviewError] = useState<string | null>(null);
+  const [videoSectionPreviewDebug, setVideoSectionPreviewDebug] = useState<VideoSectionPreviewDebugInfo | null>(null);
   const [hasAttemptedVideoSectionPreview, setHasAttemptedVideoSectionPreview] = useState(false);
   const [isLibraryVideoFormOpen, setLibraryVideoFormOpen] = useState(false);
   const [isLibraryClipFormOpen, setLibraryClipFormOpen] = useState(false);
@@ -680,6 +713,7 @@ export default function App() {
       setVideoSectionPreview([]);
       setVideoSectionPreviewDurationSec(null);
       setVideoSectionPreviewError(null);
+      setVideoSectionPreviewDebug(null);
       setHasAttemptedVideoSectionPreview(false);
     }
   }, [videoForm.url]);
@@ -1461,12 +1495,14 @@ export default function App() {
       setVideoSectionPreviewError('영상 링크를 입력해 주세요.');
       setVideoSectionPreview([]);
       setVideoSectionPreviewDurationSec(null);
+      setVideoSectionPreviewDebug(null);
       setHasAttemptedVideoSectionPreview(true);
       return;
     }
 
     setIsFetchingVideoSections(true);
     setVideoSectionPreviewError(null);
+    setVideoSectionPreviewDebug(null);
     setHasAttemptedVideoSectionPreview(true);
 
     try {
@@ -1480,6 +1516,7 @@ export default function App() {
       setVideoSectionPreviewDurationSec(
         typeof duration === 'number' && Number.isFinite(duration) ? duration : null
       );
+      setVideoSectionPreviewDebug(response.data.debug ?? null);
     } catch (error) {
       console.error('Failed to fetch video sections', error);
       let message = '구간 정보를 불러오지 못했습니다.';
@@ -1501,6 +1538,7 @@ export default function App() {
       setVideoSectionPreviewError(message);
       setVideoSectionPreview([]);
       setVideoSectionPreviewDurationSec(null);
+      setVideoSectionPreviewDebug(null);
     } finally {
       setIsFetchingVideoSections(false);
     }
@@ -1685,7 +1723,9 @@ export default function App() {
       });
       setSelectedVideo(response.data.id);
       setVideoSectionPreview([]);
+      setVideoSectionPreviewDurationSec(null);
       setVideoSectionPreviewError(null);
+      setVideoSectionPreviewDebug(null);
       setHasAttemptedVideoSectionPreview(false);
       setVideoForm((prev) => ({ ...prev, url: '', description: '', captionsJson: '' }));
       setClipForm((prev) => ({ ...prev, videoUrl: '' }));
@@ -1877,6 +1917,7 @@ export default function App() {
       setVideoSectionPreview([]);
       setVideoSectionPreviewDurationSec(null);
       setVideoSectionPreviewError(null);
+      setVideoSectionPreviewDebug(null);
       setHasAttemptedVideoSectionPreview(false);
       autoFetchedCommentSectionsUrlRef.current = null;
       if (trimmedValue.length > 0) {
@@ -1890,7 +1931,8 @@ export default function App() {
       setVideoForm,
       setVideoSectionPreview,
       setVideoSectionPreviewDurationSec,
-      setVideoSectionPreviewError
+      setVideoSectionPreviewError,
+      setVideoSectionPreviewDebug
     ]
   );
 
@@ -2602,6 +2644,75 @@ export default function App() {
                                   ))}
                                 </ul>
                               </div>
+                            )}
+                            {videoSectionPreviewDebug && (
+                              <details className="section-preview-debug">
+                                <summary>구간 탐색 디버그 보기</summary>
+                                <div className="section-preview-debug__content">
+                                  <p className="section-preview-debug__selected">
+                                    사용된 데이터: <strong>{describeDebugSelectedSource(videoSectionPreviewDebug.selectedSource)}</strong>
+                                  </p>
+                                  <ul className="section-preview-debug__sources">
+                                    {videoSectionPreviewDebug.sources.map((entry) => {
+                                      const normalizedSource = (entry.source ?? '').toUpperCase();
+                                      return (
+                                        <li key={entry.source} className="section-preview-debug__source">
+                                          <div className="section-preview-debug__source-header">
+                                            <span className="section-preview-debug__source-name">
+                                              {describeSectionSource(entry.source)}
+                                            </span>
+                                            <span className="section-preview-debug__source-count">
+                                              {entry.sectionCount}개 구간 후보
+                                            </span>
+                                          </div>
+                                          {normalizedSource === 'COMMENT' && entry.comment && (
+                                            <div className="section-preview-debug__comment">
+                                              <p className="section-preview-debug__comment-meta">
+                                                {entry.comment.authorDisplayName && (
+                                                  <span>작성자: {entry.comment.authorDisplayName}</span>
+                                                )}
+                                                {typeof entry.comment.likeCount === 'number' && (
+                                                  <span>좋아요: {entry.comment.likeCount.toLocaleString()}</span>
+                                                )}
+                                                {entry.comment.publishedAt && (
+                                                  <span>게시: {entry.comment.publishedAt}</span>
+                                                )}
+                                                {entry.comment.updatedAt && entry.comment.updatedAt !== entry.comment.publishedAt && (
+                                                  <span>수정: {entry.comment.updatedAt}</span>
+                                                )}
+                                              </p>
+                                              {entry.comment.url && (
+                                                <p className="section-preview-debug__comment-link">
+                                                  <a href={entry.comment.url} target="_blank" rel="noreferrer">
+                                                    원본 댓글 열기
+                                                  </a>
+                                                </p>
+                                              )}
+                                              <pre className="section-preview-debug__comment-text">{entry.comment.text}</pre>
+                                            </div>
+                                          )}
+                                          {normalizedSource === 'VIDEO_DESCRIPTION' && (
+                                            <div className="section-preview-debug__description">
+                                              {entry.descriptionAvailable === false ? (
+                                                <p>영상 설명이 제공되지 않았습니다.</p>
+                                              ) : entry.sectionCount > 0 ? (
+                                                <p>영상 설명에서 타임스탬프를 찾았습니다.</p>
+                                              ) : entry.descriptionSample ? (
+                                                <>
+                                                  <p>설명 예시:</p>
+                                                  <pre className="section-preview-debug__description-text">{entry.descriptionSample}</pre>
+                                                </>
+                                              ) : (
+                                                <p>영상 설명에서 타임스탬프를 찾지 못했습니다.</p>
+                                              )}
+                                            </div>
+                                          )}
+                                        </li>
+                                      );
+                                    })}
+                                  </ul>
+                                </div>
+                              </details>
                             )}
                             {shouldShowEmbeddedClipForm && (
                               <p className="artist-preview__hint">
@@ -3418,6 +3529,75 @@ export default function App() {
                                       ))}
                                     </ul>
                                   </div>
+                                )}
+                                {videoSectionPreviewDebug && (
+                                  <details className="section-preview-debug">
+                                    <summary>구간 탐색 디버그 보기</summary>
+                                    <div className="section-preview-debug__content">
+                                      <p className="section-preview-debug__selected">
+                                        사용된 데이터: <strong>{describeDebugSelectedSource(videoSectionPreviewDebug.selectedSource)}</strong>
+                                      </p>
+                                      <ul className="section-preview-debug__sources">
+                                        {videoSectionPreviewDebug.sources.map((entry) => {
+                                          const normalizedSource = (entry.source ?? '').toUpperCase();
+                                          return (
+                                            <li key={entry.source} className="section-preview-debug__source">
+                                              <div className="section-preview-debug__source-header">
+                                                <span className="section-preview-debug__source-name">
+                                                  {describeSectionSource(entry.source)}
+                                                </span>
+                                                <span className="section-preview-debug__source-count">
+                                                  {entry.sectionCount}개 구간 후보
+                                                </span>
+                                              </div>
+                                              {normalizedSource === 'COMMENT' && entry.comment && (
+                                                <div className="section-preview-debug__comment">
+                                                  <p className="section-preview-debug__comment-meta">
+                                                    {entry.comment.authorDisplayName && (
+                                                      <span>작성자: {entry.comment.authorDisplayName}</span>
+                                                    )}
+                                                    {typeof entry.comment.likeCount === 'number' && (
+                                                      <span>좋아요: {entry.comment.likeCount.toLocaleString()}</span>
+                                                    )}
+                                                    {entry.comment.publishedAt && (
+                                                      <span>게시: {entry.comment.publishedAt}</span>
+                                                    )}
+                                                    {entry.comment.updatedAt && entry.comment.updatedAt !== entry.comment.publishedAt && (
+                                                      <span>수정: {entry.comment.updatedAt}</span>
+                                                    )}
+                                                  </p>
+                                                  {entry.comment.url && (
+                                                    <p className="section-preview-debug__comment-link">
+                                                      <a href={entry.comment.url} target="_blank" rel="noreferrer">
+                                                        원본 댓글 열기
+                                                      </a>
+                                                    </p>
+                                                  )}
+                                                  <pre className="section-preview-debug__comment-text">{entry.comment.text}</pre>
+                                                </div>
+                                              )}
+                                              {normalizedSource === 'VIDEO_DESCRIPTION' && (
+                                                <div className="section-preview-debug__description">
+                                                  {entry.descriptionAvailable === false ? (
+                                                    <p>영상 설명이 제공되지 않았습니다.</p>
+                                                  ) : entry.sectionCount > 0 ? (
+                                                    <p>영상 설명에서 타임스탬프를 찾았습니다.</p>
+                                                  ) : entry.descriptionSample ? (
+                                                    <>
+                                                      <p>설명 예시:</p>
+                                                      <pre className="section-preview-debug__description-text">{entry.descriptionSample}</pre>
+                                                    </>
+                                                  ) : (
+                                                    <p>영상 설명에서 타임스탬프를 찾지 못했습니다.</p>
+                                                  )}
+                                                </div>
+                                              )}
+                                            </li>
+                                          );
+                                        })}
+                                      </ul>
+                                    </div>
+                                  </details>
                                 )}
                                 {shouldShowEmbeddedClipForm && (
                                   <p className="artist-preview__hint">
