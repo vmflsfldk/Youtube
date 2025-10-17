@@ -56,9 +56,8 @@ public class ArtistController {
     }
 
     @GetMapping("/artists/search")
-    public List<ArtistResponse> searchArtists(@RequestParam(value = "name", required = false) String name,
-                                              @RequestParam(value = "tag", required = false) String tag) {
-        return artistService.search(name, tag);
+    public List<ArtistResponse> searchArtists(@RequestParam(value = "query", required = false) String query) {
+        return artistService.search(query);
     }
 
     @PostMapping("/users/me/favorites")

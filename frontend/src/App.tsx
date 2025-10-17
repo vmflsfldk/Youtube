@@ -679,8 +679,8 @@ export default function App() {
   const isLibraryClipFormOpen = activeLibraryView === 'clipForm';
   const isLibraryMediaFormOpen = isLibraryVideoFormOpen || isLibraryClipFormOpen;
   const [artistForm, setArtistForm] = useState<ArtistFormState>(() => createInitialArtistFormState());
-  const [artistSearchQuery, setArtistSearchQuery] = useState('');
-  const [artistTagQuery, setArtistTagQuery] = useState('');
+  const [artistDirectoryQuery, setArtistDirectoryQuery] = useState('');
+  const [debouncedArtistDirectoryQuery, setDebouncedArtistDirectoryQuery] = useState('');
   const [videoForm, setVideoForm] = useState({ url: '', artistId: '', description: '', captionsJson: '' });
   const [clipForm, setClipForm] = useState<ClipFormState>(() => createInitialClipFormState());
   const autoDetectInFlightRef = useRef(false);
@@ -742,6 +742,16 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    const handle = window.setTimeout(() => {
+      setDebouncedArtistDirectoryQuery(artistDirectoryQuery.trim());
+    }, 300);
+
+    return () => {
+      window.clearTimeout(handle);
+    };
+  }, [artistDirectoryQuery]);
+
+  useEffect(() => {
     const trimmedChannel = artistForm.channelId.trim();
     if (!artistPreview) {
       setArtistPreviewReady(false);
@@ -782,32 +792,7 @@ export default function App() {
     return artistPreview.data.videos.slice(0, 12);
   }, [artistPreview]);
 
-  const filteredArtists = useMemo((): ArtistResponse[] => {
-    const nameQuery = artistSearchQuery.trim().toLowerCase();
-    const tagQuery = artistTagQuery.trim().toLowerCase();
-    if (!nameQuery && !tagQuery) {
-      return artists;
-    }
-
-    return artists.filter((artist) => {
-      const searchableFields = [
-        artist.name,
-        artist.displayName,
-        artist.youtubeChannelId,
-        artist.youtubeChannelTitle ?? undefined
-      ]
-        .filter((value): value is string => Boolean(value && value.trim()))
-        .map((value) => value.toLowerCase());
-      const tags = Array.isArray(artist.tags)
-        ? artist.tags.map((tag) => tag.toLowerCase())
-        : [];
-
-      const matchesName = !nameQuery || searchableFields.some((value) => value.includes(nameQuery));
-      const matchesTag = !tagQuery || tags.some((tag) => tag.includes(tagQuery));
-
-      return matchesName && matchesTag;
-    });
-  }, [artistSearchQuery, artistTagQuery, artists]);
+  const filteredArtists = useMemo((): ArtistResponse[] => artists, [artists]);
 
   const previewVideoKeywords = useMemo(() => {
     const rawKeywords = artistPreview?.data?.debug?.videoFilterKeywords ?? [];
@@ -1333,25 +1318,33 @@ export default function App() {
     }
   };
 
-  const fetchArtists = useCallback(async () => {
-    try {
-      const response = await http.get<ArtistResponse[]>('/artists', {
-        headers: authHeaders
-      });
-      setArtists(ensureArray(response.data));
-    } catch (error) {
-      console.error('Failed to load artists', error);
-      setArtists([]);
-    }
-  }, [authHeaders]);
+  const searchArtists = useCallback(
+    async (query: string) => {
+      const trimmedQuery = query.trim();
+      try {
+        const response = await http.get<ArtistResponse[]>('/artists/search', {
+          headers: authHeaders,
+          params: trimmedQuery ? { query: trimmedQuery } : undefined
+        });
+        setArtists(ensureArray(response.data));
+      } catch (error) {
+        console.error('Failed to search artists', error);
+        setArtists([]);
+      }
+    },
+    [authHeaders]
+  );
 
   useEffect(() => {
     if (!isAuthenticated) {
       setClips([]);
       setClipCandidates([]);
     }
-    void fetchArtists();
-  }, [isAuthenticated, fetchArtists]);
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    void searchArtists(debouncedArtistDirectoryQuery);
+  }, [debouncedArtistDirectoryQuery, searchArtists]);
 
   const handleArtistSubmit = async (event: FormEvent) => {
     event.preventDefault();
@@ -1475,7 +1468,7 @@ export default function App() {
         request: requestContext,
         response: response.data
       });
-      await fetchArtists();
+      await searchArtists(artistDirectoryQuery);
     } catch (error) {
       console.error('Failed to create artist', error);
       let responseData: unknown = null;
@@ -3006,45 +2999,22 @@ export default function App() {
                 <div className="artist-library__controls">
                   <div className="artist-directory__search-group">
                     <div className="artist-directory__search">
-                      <label htmlFor="artistSearch">아티스트 검색</label>
+                      <label htmlFor="artistDirectorySearch">아티스트 및 콘텐츠 검색</label>
                       <div className="artist-directory__search-input-wrapper">
                         <input
-                          id="artistSearch"
+                          id="artistDirectorySearch"
                           type="search"
-                          value={artistSearchQuery}
-                          onChange={(event) => setArtistSearchQuery(event.target.value)}
-                          placeholder="이름 또는 채널 ID 검색"
+                          value={artistDirectoryQuery}
+                          onChange={(event) => setArtistDirectoryQuery(event.target.value)}
+                          placeholder="이름, 태그, 커버 곡 또는 클립 제목으로 검색"
                           autoComplete="off"
                         />
-                        {artistSearchQuery && (
+                        {artistDirectoryQuery && (
                           <button
                             type="button"
                             className="artist-directory__search-clear"
-                            onClick={() => setArtistSearchQuery('')}
+                            onClick={() => setArtistDirectoryQuery('')}
                             aria-label="검색어 지우기"
-                          >
-                            지우기
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                    <div className="artist-directory__search">
-                      <label htmlFor="artistTagSearch">태그 검색</label>
-                      <div className="artist-directory__search-input-wrapper">
-                        <input
-                          id="artistTagSearch"
-                          type="search"
-                          value={artistTagQuery}
-                          onChange={(event) => setArtistTagQuery(event.target.value)}
-                          placeholder="태그 검색 (예: 라이브, 커버)"
-                          autoComplete="off"
-                        />
-                        {artistTagQuery && (
-                          <button
-                            type="button"
-                            className="artist-directory__search-clear"
-                            onClick={() => setArtistTagQuery('')}
-                            aria-label="태그 검색어 지우기"
                           >
                             지우기
                           </button>
