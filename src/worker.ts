@@ -1874,11 +1874,12 @@ async function requestEmailRegistration(request: Request, env: Env, cors: CorsCo
     throw new HttpError(400, "email format is invalid");
   }
 
-  await createEmailVerification(env, emailRaw);
+  const { code } = await createEmailVerification(env, emailRaw);
 
   return jsonResponse(
     {
-      success: true
+      message: "인증 코드가 이메일로 전송되었습니다.",
+      debugCode: code
     },
     200,
     cors
