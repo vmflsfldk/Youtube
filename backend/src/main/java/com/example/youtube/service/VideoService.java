@@ -2,7 +2,6 @@ package com.example.youtube.service;
 
 import com.example.youtube.dto.VideoCreateRequest;
 import com.example.youtube.dto.VideoResponse;
-import com.example.youtube.dto.VideoSectionPreviewResponse;
 import com.example.youtube.dto.VideoSectionResponse;
 import com.example.youtube.model.Artist;
 import com.example.youtube.model.Video;
@@ -113,23 +112,6 @@ public class VideoService {
                 .collect(Collectors.toList());
     }
 
-    @Transactional(readOnly = true)
-    public VideoSectionPreviewResponse previewSections(String videoUrl) {
-        if (videoUrl == null || videoUrl.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "videoUrl is required");
-        }
-        String trimmed = videoUrl.trim();
-        String videoId = extractVideoId(trimmed)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unable to parse videoId from URL"));
-
-        VideoMetadata metadata = metadataProvider.fetch(videoId);
-        List<YouTubeVideoSectionProvider.VideoSectionData> sectionData = sectionProvider.fetch(videoId,
-                metadata.description(),
-                metadata.durationSec());
-        List<VideoSectionResponse> sections = mapSectionData(sectionData);
-        return new VideoSectionPreviewResponse(sections, metadata.durationSec());
-    }
-
     private VideoResponse map(Video video) {
         List<VideoSection> sections = videoSectionRepository.findByVideo(video);
         return map(video, sections);
@@ -152,16 +134,6 @@ public class VideoService {
                 video.getThumbnailUrl(),
                 video.getChannelId(),
                 sectionResponses);
-    }
-
-    private List<VideoSectionResponse> mapSectionData(List<YouTubeVideoSectionProvider.VideoSectionData> sectionData) {
-        if (sectionData == null || sectionData.isEmpty()) {
-            return List.of();
-        }
-        return sectionData.stream()
-                .sorted(Comparator.comparingInt(YouTubeVideoSectionProvider.VideoSectionData::startSec))
-                .map(data -> new VideoSectionResponse(data.title(), data.startSec(), data.endSec(), data.source().name()))
-                .collect(Collectors.toList());
     }
 
     private Optional<String> extractVideoId(String url) {

@@ -287,6 +287,7 @@ test("clip suggestions returns existing video without creating duplicates", asyn
   const payload = (await response.json()) as any;
   assert.equal(payload.video.id, 10);
   assert.equal(payload.video.title, "Updated Title");
+  assert.equal(payload.candidates.length, 1);
   assert.equal(db.videos.length, 1);
   assert.equal(db.videos[0].title, "Updated Title");
 });
