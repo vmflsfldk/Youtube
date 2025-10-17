@@ -114,6 +114,11 @@ interface VideoResponse {
   contentType: VideoContentType;
   category: VideoCategory | null;
   hidden?: boolean;
+  artistName?: string;
+  artistDisplayName?: string;
+  artistYoutubeChannelId?: string;
+  artistYoutubeChannelTitle?: string | null;
+  artistProfileImageUrl?: string | null;
 }
 
 interface ClipResponse {
@@ -125,6 +130,12 @@ interface ClipResponse {
   tags: string[];
   youtubeVideoId?: string;
   videoTitle?: string | null;
+  artistId?: number;
+  artistName?: string;
+  artistDisplayName?: string;
+  artistYoutubeChannelId?: string;
+  artistYoutubeChannelTitle?: string | null;
+  artistProfileImageUrl?: string | null;
 }
 
 interface ClipCandidateResponse {
@@ -932,6 +943,14 @@ interface VideoRow {
   hidden: number | null;
 }
 
+interface VideoLibraryRow extends VideoRow {
+  artist_name: string;
+  artist_display_name: string | null;
+  artist_youtube_channel_id: string;
+  artist_youtube_channel_title: string | null;
+  artist_profile_image_url: string | null;
+}
+
 interface ClipRow {
   id: number;
   video_id: number;
@@ -1241,6 +1260,9 @@ async function handleApi(
     }
     if (request.method === "POST" && path === "/api/users/me/favorites") {
       return await toggleFavorite(request, env, requireUser(user), cors);
+    }
+    if (request.method === "GET" && path === "/api/library/media") {
+      return await listMediaLibrary(env, user, cors);
     }
     if (path === "/api/videos") {
       if (request.method === "POST") {
@@ -1669,6 +1691,77 @@ async function listVideos(url: URL, env: Env, user: UserContext, cors: CorsConfi
   const { results } = await statement.all<VideoRow>();
   const videos = (results ?? []).map(toVideoResponse);
   return jsonResponse(videos, 200, cors);
+}
+
+async function listMediaLibrary(env: Env, user: UserContext | null, cors: CorsConfig): Promise<Response> {
+  const requestingUser = requireUser(user);
+
+  await ensureArtistDisplayNameColumn(env.DB);
+  await ensureArtistProfileImageColumn(env.DB);
+  await ensureArtistChannelTitleColumn(env.DB);
+  await ensureVideoContentTypeColumn(env.DB);
+  await ensureVideoHiddenColumn(env.DB);
+  await ensureVideoCategoryColumn(env.DB);
+
+  const { results } = await env.DB.prepare(
+    `SELECT
+        v.id,
+        v.artist_id,
+        v.youtube_video_id,
+        v.title,
+        v.duration_sec,
+        v.thumbnail_url,
+        v.channel_id,
+        v.description,
+        v.captions_json,
+        v.category,
+        v.content_type,
+        v.hidden,
+        a.name AS artist_name,
+        a.display_name AS artist_display_name,
+        a.youtube_channel_id AS artist_youtube_channel_id,
+        a.youtube_channel_title AS artist_youtube_channel_title,
+        a.profile_image_url AS artist_profile_image_url
+      FROM videos v
+      JOIN artists a ON a.id = v.artist_id
+     WHERE a.created_by = ?
+     ORDER BY v.id DESC`
+  )
+    .bind(requestingUser.id)
+    .all<VideoLibraryRow>();
+
+  const videos = (results ?? []).map(toVideoLibraryResponse);
+
+  let clips: ClipResponse[] = [];
+  if (videos.length > 0) {
+    const videoIds = videos.map((video) => video.id);
+    const placeholders = videoIds.map(() => "?").join(", ");
+    const { results: clipRows } = await env.DB.prepare(
+      `SELECT id, video_id, title, start_sec, end_sec
+         FROM clips
+        WHERE video_id IN (${placeholders})
+        ORDER BY video_id, start_sec`
+    )
+      .bind(...videoIds)
+      .all<ClipRow>();
+
+    const clipResponses = await attachTags(env, clipRows ?? [], { includeVideoMeta: true });
+    const videoMap = new Map(videos.map((video) => [video.id, video]));
+    clips = clipResponses.map((clip) => {
+      const video = videoMap.get(clip.videoId);
+      return {
+        ...clip,
+        artistId: video?.artistId,
+        artistName: video?.artistName,
+        artistDisplayName: video?.artistDisplayName,
+        artistYoutubeChannelId: video?.artistYoutubeChannelId,
+        artistYoutubeChannelTitle: video?.artistYoutubeChannelTitle ?? null,
+        artistProfileImageUrl: video?.artistProfileImageUrl ?? null
+      } satisfies ClipResponse;
+    });
+  }
+
+  return jsonResponse({ videos, clips }, 200, cors);
 }
 
 async function createClip(
@@ -2392,6 +2485,18 @@ function toVideoResponse(row: VideoRow): VideoResponse {
     contentType: normalizeVideoContentType(row.content_type) ?? "OFFICIAL",
     category: normalizeVideoCategory(row.category),
     hidden: Number(row.hidden ?? 0) === 1
+  };
+}
+
+function toVideoLibraryResponse(row: VideoLibraryRow): VideoResponse {
+  const base = toVideoResponse(row);
+  return {
+    ...base,
+    artistName: row.artist_name,
+    artistDisplayName: row.artist_display_name?.trim() || row.artist_name,
+    artistYoutubeChannelId: row.artist_youtube_channel_id,
+    artistYoutubeChannelTitle: row.artist_youtube_channel_title ?? null,
+    artistProfileImageUrl: row.artist_profile_image_url ?? null
   };
 }
 
@@ -3945,15 +4050,25 @@ export function __resetWorkerTestState(): void {
   testOverrides.detectFromChapterSources = detectFromChapterSources;
   testOverrides.detectFromDescription = detectFromDescription;
   testOverrides.detectFromCaptions = detectFromCaptions;
+  hasEnsuredArtistDisplayNameColumn = false;
+  hasEnsuredArtistProfileImageColumn = false;
+  hasEnsuredArtistChannelTitleColumn = false;
   hasEnsuredVideoContentTypeColumn = false;
   hasEnsuredVideoHiddenColumn = false;
   hasEnsuredVideoCategoryColumn = false;
 }
 
 export function __setHasEnsuredVideoColumnsForTests(value: boolean): void {
+  hasEnsuredArtistDisplayNameColumn = value;
+  hasEnsuredArtistProfileImageColumn = value;
+  hasEnsuredArtistChannelTitleColumn = value;
   hasEnsuredVideoContentTypeColumn = value;
   hasEnsuredVideoHiddenColumn = value;
   hasEnsuredVideoCategoryColumn = value;
 }
 
-export { suggestClipCandidates as __suggestClipCandidatesForTests, getOrCreateVideoByUrl as __getOrCreateVideoByUrlForTests };
+export {
+  suggestClipCandidates as __suggestClipCandidatesForTests,
+  getOrCreateVideoByUrl as __getOrCreateVideoByUrlForTests,
+  listMediaLibrary as __listMediaLibraryForTests
+};
