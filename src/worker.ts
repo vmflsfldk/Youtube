@@ -112,11 +112,36 @@ const DEFAULT_ALLOWED_GOOGLE_CLIENT_IDS = Object.freeze([
   "245943329145-os94mkp21415hadulir67v1i0lqjrcnq.apps.googleusercontent.com"
 ]);
 
+const parseGoogleClientIdList = (value: string): string[] => {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return [];
+  }
+
+  if (trimmed.startsWith("[")) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        return parsed
+          .filter((item): item is string => typeof item === "string")
+          .map((item) => item.trim())
+          .filter((item) => item.length > 0);
+      }
+    } catch (error) {
+      console.warn("[yt-clip] Failed to parse GOOGLE_OAUTH_CLIENT_IDS JSON value", error);
+    }
+  }
+
+  return trimmed
+    .split(/[\n,]/)
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+};
+
 const resolveAllowedGoogleAudiences = (env: Env): string[] => {
   const configured = [env.GOOGLE_OAUTH_CLIENT_IDS, env.GOOGLE_CLIENT_ID]
     .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
-    .flatMap((value) => value.split(","))
-    .map((value) => value.trim())
+    .flatMap((value) => parseGoogleClientIdList(value))
     .filter((value) => value.length > 0);
   if (configured.length > 0) {
     return Array.from(new Set(configured));
