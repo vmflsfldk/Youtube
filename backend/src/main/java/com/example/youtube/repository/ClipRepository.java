@@ -9,7 +9,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface ClipRepository extends JpaRepository<Clip, Long> {
-    @Query("SELECT c FROM Clip c WHERE c.video.artist = :artist")
+    @Query("SELECT DISTINCT c FROM Clip c LEFT JOIN c.video v WHERE c.artist = :artist OR v.artist = :artist")
     List<Clip> findByArtist(@Param("artist") Artist artist);
 
     List<Clip> findByVideo(Video video);

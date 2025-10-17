@@ -77,7 +77,7 @@ interface VideoResponse {
 
 interface ClipResponse {
   id: number;
-  videoId: number;
+  videoId: number | null;
   title: string;
   startSec: number;
   endSec: number;
@@ -489,12 +489,15 @@ async function ensureDatabaseSchema(db: D1Database): Promise<void> {
     {
       sql: `CREATE TABLE IF NOT EXISTS clips (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        video_id INTEGER NOT NULL,
+        video_id INTEGER,
+        artist_id INTEGER,
+        youtube_video_id TEXT NOT NULL,
         title TEXT NOT NULL,
         start_sec INTEGER NOT NULL,
         end_sec INTEGER NOT NULL,
         created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-        FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE CASCADE
+        FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE SET NULL,
+        FOREIGN KEY (artist_id) REFERENCES artists(id) ON DELETE SET NULL
       )`,
       context: "clips"
     },
@@ -517,6 +520,10 @@ async function ensureDatabaseSchema(db: D1Database): Promise<void> {
     {
       sql: "CREATE INDEX IF NOT EXISTS idx_clips_video ON clips(video_id)",
       context: "idx_clips_video"
+    },
+    {
+      sql: "CREATE INDEX IF NOT EXISTS idx_clips_artist ON clips(artist_id)",
+      context: "idx_clips_artist"
     },
     {
       sql: "CREATE INDEX IF NOT EXISTS idx_clip_tags_clip ON clip_tags(clip_id)",
@@ -849,7 +856,9 @@ interface VideoRow {
 
 interface ClipRow {
   id: number;
-  video_id: number;
+  video_id: number | null;
+  artist_id: number | null;
+  youtube_video_id: string | null;
   title: string;
   start_sec: number;
   end_sec: number;
@@ -1545,21 +1554,20 @@ async function createClip(
   await ensureVideoHiddenColumn(env.DB);
 
   let resolvedVideoId: number | null = Number.isFinite(rawVideoId) ? rawVideoId : null;
+  let resolvedArtistId: number | null = Number.isFinite(artistIdParam) ? artistIdParam : null;
+  let youtubeVideoId: string | null = null;
 
   if (!resolvedVideoId && !videoUrl) {
     throw new HttpError(400, "videoId or videoUrl is required to create a clip");
   }
 
   if (videoUrl) {
-    if (!Number.isFinite(artistIdParam)) {
-      throw new HttpError(400, "artistId must be provided when registering a clip source");
-    }
-    await ensureArtist(env, artistIdParam, user.id);
-
     const extractedVideoId = extractVideoId(videoUrl);
     if (!extractedVideoId) {
       throw new HttpError(400, "Unable to parse videoId from URL");
     }
+
+    youtubeVideoId = extractedVideoId;
 
     const existingVideo = await env.DB
       .prepare("SELECT * FROM videos WHERE youtube_video_id = ?")
@@ -1567,16 +1575,22 @@ async function createClip(
       .first<VideoRow>();
 
     if (existingVideo) {
-      if (existingVideo.artist_id !== artistIdParam) {
+      if (Number.isFinite(artistIdParam) && existingVideo.artist_id !== artistIdParam) {
         throw new HttpError(400, "Video is already registered for a different artist");
       }
       resolvedVideoId = existingVideo.id;
+      resolvedArtistId = existingVideo.artist_id;
       if (normalizeVideoContentType(existingVideo.content_type) !== "CLIP_SOURCE") {
         await env.DB.prepare("UPDATE videos SET content_type = ? WHERE id = ?")
           .bind("CLIP_SOURCE", existingVideo.id)
           .run();
       }
     } else {
+      if (!Number.isFinite(artistIdParam)) {
+        throw new HttpError(400, "artistId must be provided when registering a clip source");
+      }
+      await ensureArtist(env, artistIdParam, user.id);
+
       const metadata = await fetchVideoMetadata(env, extractedVideoId);
       const insertClipSource = await env.DB
         .prepare(
@@ -1599,29 +1613,45 @@ async function createClip(
         throw new HttpError(500, insertClipSource.error ?? "Failed to register clip source video");
       }
       resolvedVideoId = numberFromRowId(insertClipSource.meta.last_row_id);
+      resolvedArtistId = artistIdParam;
     }
   }
 
-  if (resolvedVideoId === null) {
+  if (resolvedVideoId !== null) {
+    await ensureVideo(env, resolvedVideoId, user.id);
+
+    const videoRow = await env.DB
+      .prepare("SELECT id, artist_id, youtube_video_id, content_type FROM videos WHERE id = ?")
+      .bind(resolvedVideoId)
+      .first<{ id: number; artist_id: number; youtube_video_id: string | null; content_type: string | null }>();
+
+    if (!videoRow) {
+      throw new HttpError(404, `Video not found: ${resolvedVideoId}`);
+    }
+
+    if (!youtubeVideoId && videoRow.youtube_video_id) {
+      youtubeVideoId = videoRow.youtube_video_id;
+    }
+
+    if (!resolvedArtistId && Number.isFinite(videoRow.artist_id)) {
+      resolvedArtistId = videoRow.artist_id;
+    }
+
+    if (normalizeVideoContentType(videoRow.content_type ?? null) !== "CLIP_SOURCE") {
+      await env.DB.prepare("UPDATE videos SET content_type = ? WHERE id = ?")
+        .bind("CLIP_SOURCE", resolvedVideoId)
+        .run();
+    }
+  }
+
+  if (!youtubeVideoId) {
     throw new HttpError(400, "Unable to determine video for clip creation");
   }
 
-  await ensureVideo(env, resolvedVideoId, user.id);
-
-  const existingContentType = await env.DB
-    .prepare("SELECT content_type FROM videos WHERE id = ?")
-    .bind(resolvedVideoId)
-    .first<{ content_type: string | null }>();
-  if (normalizeVideoContentType(existingContentType?.content_type ?? null) !== "CLIP_SOURCE") {
-    await env.DB.prepare("UPDATE videos SET content_type = ? WHERE id = ?")
-      .bind("CLIP_SOURCE", resolvedVideoId)
-      .run();
-  }
-
   const insertResult = await env.DB.prepare(
-    `INSERT INTO clips (video_id, title, start_sec, end_sec) VALUES (?, ?, ?, ?)`
+    `INSERT INTO clips (video_id, artist_id, youtube_video_id, title, start_sec, end_sec) VALUES (?, ?, ?, ?, ?, ?)`
   )
-    .bind(resolvedVideoId, title, startSec, endSec)
+    .bind(resolvedVideoId, resolvedArtistId, youtubeVideoId, title, startSec, endSec)
     .run();
   if (!insertResult.success) {
     throw new HttpError(500, insertResult.error ?? "Failed to insert clip");
@@ -1635,7 +1665,10 @@ async function createClip(
     await env.DB.prepare("INSERT INTO clip_tags (clip_id, tag) VALUES (?, ?)").bind(clipId, tag).run();
   }
 
-  const clipRow = await env.DB.prepare("SELECT id, video_id, title, start_sec, end_sec FROM clips WHERE id = ?")
+  const clipRow = await env.DB
+    .prepare(
+      "SELECT id, video_id, artist_id, youtube_video_id, title, start_sec, end_sec FROM clips WHERE id = ?"
+    )
     .bind(clipId)
     .first<ClipRow>();
   if (!clipRow) {
@@ -1655,12 +1688,14 @@ async function listClips(url: URL, env: Env, user: UserContext, cors: CorsConfig
     }
     await ensureArtist(env, artistId, user.id);
     const { results } = await env.DB.prepare(
-      `SELECT c.id, c.video_id, c.title, c.start_sec, c.end_sec
+      `SELECT c.id, c.video_id, c.artist_id, c.youtube_video_id, c.title, c.start_sec, c.end_sec
          FROM clips c
-         JOIN videos v ON v.id = c.video_id
-        WHERE v.artist_id = ?
+         LEFT JOIN videos v ON v.id = c.video_id
+        WHERE c.artist_id = ? OR v.artist_id = ?
         ORDER BY c.start_sec`
-    ).bind(artistId).all<ClipRow>();
+    )
+      .bind(artistId, artistId)
+      .all<ClipRow>();
     const clips = await attachTags(env, results ?? [], { includeVideoMeta: true });
     return jsonResponse(clips, 200, cors);
   }
@@ -1671,7 +1706,7 @@ async function listClips(url: URL, env: Env, user: UserContext, cors: CorsConfig
     }
     await ensureVideo(env, videoId, user.id);
     const { results } = await env.DB.prepare(
-      `SELECT id, video_id, title, start_sec, end_sec
+      `SELECT id, video_id, artist_id, youtube_video_id, title, start_sec, end_sec
          FROM clips
         WHERE video_id = ?
         ORDER BY start_sec`
@@ -1684,9 +1719,8 @@ async function listClips(url: URL, env: Env, user: UserContext, cors: CorsConfig
 
 async function listPublicClips(env: Env, cors: CorsConfig): Promise<Response> {
   const { results } = await env.DB.prepare(
-    `SELECT c.id, c.video_id, c.title, c.start_sec, c.end_sec
+    `SELECT c.id, c.video_id, c.artist_id, c.youtube_video_id, c.title, c.start_sec, c.end_sec
        FROM clips c
-       JOIN videos v ON v.id = c.video_id
       ORDER BY c.id DESC`
   ).all<ClipRow>();
   const clips = await attachTags(env, results ?? [], { includeVideoMeta: true });
@@ -2222,7 +2256,9 @@ async function attachTags(
 
   let videoMeta: Map<number, { youtubeVideoId: string | null; title: string | null }> | null = null;
   if (options.includeVideoMeta) {
-    const videoIds = Array.from(new Set(clips.map((clip) => clip.video_id)));
+    const videoIds = Array.from(
+      new Set(clips.map((clip) => clip.video_id).filter((id): id is number => typeof id === "number"))
+    );
     if (videoIds.length > 0) {
       const videoPlaceholders = videoIds.map(() => "?").join(", ");
       const { results: videoRows } = await env.DB.prepare(
@@ -2241,15 +2277,17 @@ async function attachTags(
   }
 
   return clips.map((clip) => {
-    const meta = videoMeta?.get(clip.video_id) ?? null;
+    const videoId = typeof clip.video_id === "number" ? clip.video_id : null;
+    const meta = videoId !== null ? videoMeta?.get(videoId) ?? null : null;
+    const youtubeVideoId = clip.youtube_video_id ?? meta?.youtubeVideoId ?? null;
     return {
       id: clip.id,
-      videoId: clip.video_id,
+      videoId,
       title: clip.title,
       startSec: Number(clip.start_sec),
       endSec: Number(clip.end_sec),
       tags: tagsMap.get(clip.id) ?? [],
-      youtubeVideoId: meta?.youtubeVideoId ?? undefined,
+      youtubeVideoId: youtubeVideoId ?? undefined,
       videoTitle: meta?.title ?? null
     } satisfies ClipResponse;
   });
