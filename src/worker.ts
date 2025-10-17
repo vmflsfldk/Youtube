@@ -1618,6 +1618,20 @@ async function createClip(
       .run();
   }
 
+  const duplicateClip = await env.DB
+    .prepare(
+      `SELECT id
+         FROM clips
+        WHERE video_id = ?
+          AND start_sec = ?
+          AND end_sec = ?`
+    )
+    .bind(resolvedVideoId, startSec, endSec)
+    .first<Pick<ClipRow, "id">>();
+  if (duplicateClip) {
+    throw new HttpError(409, "A clip with the same time range already exists for this video");
+  }
+
   const insertResult = await env.DB.prepare(
     `INSERT INTO clips (video_id, title, start_sec, end_sec) VALUES (?, ?, ?, ?)`
   )

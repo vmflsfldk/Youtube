@@ -38,6 +38,10 @@ public class ClipService {
             throw new IllegalArgumentException("endSec must be greater than startSec");
         }
 
+        if (clipRepository.existsByVideoAndStartSecAndEndSec(video, request.startSec(), request.endSec())) {
+            throw new IllegalArgumentException("A clip with the same time range already exists for this video");
+        }
+
         Clip clip = new Clip(video, request.title(), request.startSec(), request.endSec());
         if (request.tags() != null) {
             clip.setTags(request.tags());
