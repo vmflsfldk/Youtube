@@ -98,6 +98,7 @@ interface ArtistResponse {
   availableKo: boolean;
   availableEn: boolean;
   availableJp: boolean;
+  tags: string[];
 }
 
 interface VideoSectionResponse {
@@ -347,6 +348,7 @@ export default function App() {
   const [hasAttemptedVideoSectionPreview, setHasAttemptedVideoSectionPreview] = useState(false);
   const [artistForm, setArtistForm] = useState<ArtistFormState>(() => createInitialArtistFormState());
   const [artistSearchQuery, setArtistSearchQuery] = useState('');
+  const [artistTagQuery, setArtistTagQuery] = useState('');
   const [videoForm, setVideoForm] = useState({ url: '', artistId: '', description: '', captionsJson: '' });
   const [clipForm, setClipForm] = useState({ title: '', startSec: 0, endSec: 0, tags: '', videoUrl: '' });
   const [autoDetectMode, setAutoDetectMode] = useState('chapters');
@@ -422,19 +424,26 @@ export default function App() {
   }, [artistPreview]);
 
   const filteredArtists = useMemo((): ArtistResponse[] => {
-    const query = artistSearchQuery.trim().toLowerCase();
-    if (!query) {
+    const nameQuery = artistSearchQuery.trim().toLowerCase();
+    const tagQuery = artistTagQuery.trim().toLowerCase();
+    if (!nameQuery && !tagQuery) {
       return artists;
     }
 
     return artists.filter((artist) => {
-      const searchable = [artist.name, artist.displayName, artist.youtubeChannelId]
+      const searchableFields = [artist.name, artist.displayName, artist.youtubeChannelId]
         .filter((value): value is string => Boolean(value))
-        .join(' ')
-        .toLowerCase();
-      return searchable.includes(query);
+        .map((value) => value.toLowerCase());
+      const tags = Array.isArray(artist.tags)
+        ? artist.tags.map((tag) => tag.toLowerCase())
+        : [];
+
+      const matchesName = !nameQuery || searchableFields.some((value) => value.includes(nameQuery));
+      const matchesTag = !tagQuery || tags.some((tag) => tag.includes(tagQuery));
+
+      return matchesName && matchesTag;
     });
-  }, [artistSearchQuery, artists]);
+  }, [artistSearchQuery, artistTagQuery, artists]);
 
   const previewVideoKeywords = useMemo(() => {
     const rawKeywords = artistPreview?.data?.debug?.videoFilterKeywords ?? [];
@@ -2432,27 +2441,52 @@ export default function App() {
                   </div>
                 )}
                 <div className="artist-library__controls">
-                  <div className="artist-directory__search">
-                    <label htmlFor="artistSearch">아티스트 검색</label>
-                    <div className="artist-directory__search-input-wrapper">
-                      <input
-                        id="artistSearch"
-                        type="search"
-                        value={artistSearchQuery}
-                        onChange={(event) => setArtistSearchQuery(event.target.value)}
-                        placeholder="이름 또는 채널 ID 검색"
-                        autoComplete="off"
-                      />
-                      {artistSearchQuery && (
-                        <button
-                          type="button"
-                          className="artist-directory__search-clear"
-                          onClick={() => setArtistSearchQuery('')}
-                          aria-label="검색어 지우기"
-                        >
-                          지우기
-                        </button>
-                      )}
+                  <div className="artist-directory__search-group">
+                    <div className="artist-directory__search">
+                      <label htmlFor="artistSearch">아티스트 검색</label>
+                      <div className="artist-directory__search-input-wrapper">
+                        <input
+                          id="artistSearch"
+                          type="search"
+                          value={artistSearchQuery}
+                          onChange={(event) => setArtistSearchQuery(event.target.value)}
+                          placeholder="이름 또는 채널 ID 검색"
+                          autoComplete="off"
+                        />
+                        {artistSearchQuery && (
+                          <button
+                            type="button"
+                            className="artist-directory__search-clear"
+                            onClick={() => setArtistSearchQuery('')}
+                            aria-label="검색어 지우기"
+                          >
+                            지우기
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <div className="artist-directory__search">
+                      <label htmlFor="artistTagSearch">태그 검색</label>
+                      <div className="artist-directory__search-input-wrapper">
+                        <input
+                          id="artistTagSearch"
+                          type="search"
+                          value={artistTagQuery}
+                          onChange={(event) => setArtistTagQuery(event.target.value)}
+                          placeholder="태그 검색 (예: 라이브, 커버)"
+                          autoComplete="off"
+                        />
+                        {artistTagQuery && (
+                          <button
+                            type="button"
+                            className="artist-directory__search-clear"
+                            onClick={() => setArtistTagQuery('')}
+                            aria-label="태그 검색어 지우기"
+                          >
+                            지우기
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
