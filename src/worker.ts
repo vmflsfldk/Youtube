@@ -1256,6 +1256,16 @@ async function createArtist(
   const normalizedChannelTitle = metadata.title ? metadata.title.trim() : "";
   const channelTitle = normalizedChannelTitle.length > 0 ? normalizedChannelTitle : null;
 
+  const existingArtist = await env.DB.prepare(
+    "SELECT id FROM artists WHERE youtube_channel_id = ?"
+  )
+    .bind(resolvedChannelId)
+    .first<{ id: number }>();
+
+  if (existingArtist) {
+    throw new HttpError(409, "이미 등록된 유튜브 채널입니다.");
+  }
+
   const insertResult = await env.DB.prepare(
     "INSERT INTO artists (name, display_name, youtube_channel_id, youtube_channel_title, created_by) VALUES (?, ?, ?, ?, ?)"
   )
