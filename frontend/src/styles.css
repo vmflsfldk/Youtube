@@ -627,6 +627,8 @@ button:disabled:hover {
 .clip-time-input input {
   text-align: center;
   padding: 6px 4px;
+  width: 25%;
+  margin: 0 auto;
 }
 
 .management-panel {
