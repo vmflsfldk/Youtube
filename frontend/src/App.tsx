@@ -2153,7 +2153,7 @@ export default function App() {
               </div>
             </div>
           ) : (
-            <div className="sidebar__auth-content">
+            <div className="sidebar__auth-content sidebar__auth-content--guest">
               <div className="sidebar__auth-social">
                 {isGoogleReady ? (
                   <GoogleLoginButton

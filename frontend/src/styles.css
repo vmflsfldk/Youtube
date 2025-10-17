@@ -126,9 +126,36 @@ body {
   gap: 14px;
 }
 
+.sidebar__auth-content--guest {
+  align-items: center;
+}
+
 .sidebar__auth-social {
   display: flex;
   justify-content: center;
+}
+
+.sidebar__auth-content--guest .sidebar__auth-social,
+.sidebar__auth-content--guest .stacked-form,
+.sidebar__auth-content--guest .sidebar__auth-footer {
+  width: 100%;
+  max-width: 260px;
+}
+
+.sidebar__auth-content--guest .stacked-form input {
+  width: 100%;
+}
+
+.sidebar__auth-content--guest .sidebar__auth-social {
+  align-self: center;
+}
+
+.sidebar__auth-content--guest .stacked-form button[type='submit'] {
+  width: 100%;
+}
+
+.sidebar__auth-content--guest .sidebar__auth-button {
+  width: 100%;
 }
 
 .sidebar__auth-actions {
