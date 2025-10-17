@@ -18,7 +18,7 @@ import org.springframework.stereotype.Service;
 public class ClipAutoDetectionService {
 
     private static final Pattern TIMESTAMP_PATTERN = Pattern.compile(
-            "(?:(\\d{1,2}):)?(\\d{1,2}):(\\d{2})\\s*-?\\s*(.*)");
+            "^(?:(?:\\d+\\s*[\\.)-]\\s*)|(?:\\d+\\s+)|(?:[-•*]\\s*))?(?:(\\d{1,2}):)?(\\d{1,2}):(\\d{2})\\s*-?\\s*(.*)$");
     private static final int DEFAULT_CLIP_LENGTH = 30;
     private static final List<String> KEYWORDS = List.of("chorus", "hook", "verse", "intro", "outro");
 
