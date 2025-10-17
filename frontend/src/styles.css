@@ -1569,6 +1569,12 @@ button:disabled:hover {
   padding-right: 6px;
 }
 
+.artist-directory__search-group {
+  display: grid;
+  gap: 16px;
+  width: 100%;
+}
+
 .artist-directory__search {
   display: flex;
   flex-direction: column;
@@ -1624,6 +1630,12 @@ button:disabled:hover {
 .artist-directory__search-clear:hover {
   color: var(--color-text-primary);
   background: rgba(99, 102, 241, 0.2);
+}
+
+@media (min-width: 768px) {
+  .artist-directory__search-group {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .artist-directory__item {
