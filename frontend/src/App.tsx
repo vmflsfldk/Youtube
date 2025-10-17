@@ -430,6 +430,15 @@ interface ClipCandidateResponse {
   label: string;
 }
 
+interface VideoClipSuggestionsResponse {
+  video: VideoResponse;
+  candidates?: MaybeArray<ClipCandidateResponse>;
+  created?: boolean;
+  reused?: boolean;
+  status?: 'created' | 'existing' | 'updated' | 'reused' | string;
+  message?: string | null;
+}
+
 type ClipLike = Omit<ClipResponse, 'tags'> & { tags?: unknown };
 
 type ClipCreationPayload = {
@@ -653,6 +662,10 @@ export default function App() {
   const [publicClips, setPublicClips] = useState<ClipResponse[]>([]);
   const [selectedVideo, setSelectedVideo] = useState<number | null>(null);
   const [clipCandidates, setClipCandidates] = useState<ClipCandidateResponse[]>([]);
+  const [videoSubmissionStatus, setVideoSubmissionStatus] = useState<
+    { type: 'success' | 'info' | 'error'; message: string }
+  | null
+  >(null);
   const [isFetchingVideoSections, setIsFetchingVideoSections] = useState(false);
   const [videoSectionPreview, setVideoSectionPreview] = useState<VideoSectionResponse[]>([]);
   const [videoSectionPreviewDurationSec, setVideoSectionPreviewDurationSec] = useState<number | null>(null);
@@ -1650,6 +1663,60 @@ export default function App() {
     [videoForm.artistId, authHeaders]
   );
 
+  const applyVideoRegistrationResult = useCallback(
+    (video: VideoResponse, candidates: MaybeArray<ClipCandidateResponse>) => {
+      const normalizedCandidates = ensureArray(candidates);
+      let existed = false;
+      setVideos((prev) => {
+        existed = prev.some((item) => item.id === video.id);
+        const others = prev.filter((item) => item.id !== video.id);
+        return [...others, video];
+      });
+      setSelectedVideo(video.id);
+      setClipCandidates(normalizedCandidates);
+      autoDetectedVideoIdRef.current = video.id;
+      return { existed, candidates: normalizedCandidates };
+    },
+    [setVideos, setSelectedVideo, setClipCandidates]
+  );
+
+  const requestVideoRegistration = useCallback(
+    async ({ artistId, videoUrl }: { artistId: number; videoUrl: string }) => {
+      const response = await http.post<VideoClipSuggestionsResponse>(
+        '/videos/clip-suggestions',
+        { artistId, videoUrl },
+        { headers: authHeaders }
+      );
+
+      const payload = response.data;
+      if (!payload || !payload.video) {
+        throw new Error('Invalid clip suggestion response');
+      }
+
+      const result = applyVideoRegistrationResult(payload.video, payload.candidates);
+      const normalizedStatus = typeof payload.status === 'string' ? payload.status : undefined;
+      const explicitCreated =
+        typeof payload.created === 'boolean'
+          ? payload.created
+          : typeof payload.reused === 'boolean'
+            ? !payload.reused
+            : normalizedStatus === 'created'
+              ? true
+              : normalizedStatus === 'existing' || normalizedStatus === 'reused'
+                ? false
+                : !result.existed;
+
+      return {
+        video: payload.video,
+        candidates: result.candidates,
+        created: explicitCreated,
+        status: normalizedStatus ?? (explicitCreated ? 'created' : 'existing'),
+        message: typeof payload.message === 'string' && payload.message.trim() ? payload.message.trim() : null
+      };
+    },
+    [authHeaders, http, applyVideoRegistrationResult]
+  );
+
   const createClip = useCallback(
     async (payload: ClipCreationPayload, options?: { hiddenSource?: boolean }) => {
       const response = await http.post<ClipResponse>('/clips', payload, { headers: authHeaders });
@@ -1735,24 +1802,62 @@ export default function App() {
 
       const creationOptions = restoreVideoUrl ? { hiddenSource: true } : undefined;
 
-      void createClip(payload, creationOptions)
-        .catch((error) => {
+      void (async () => {
+        try {
+          if (restoreVideoUrl) {
+            try {
+              const registration = await requestVideoRegistration({
+                artistId: parsedArtistId,
+                videoUrl: restoreVideoUrl
+              });
+              payload.videoId = registration.video.id;
+              const candidateCount = registration.candidates.length;
+              const infoMessage =
+                registration.message ??
+                (registration.created
+                  ? candidateCount > 0
+                    ? `영상이 등록되었습니다. ${candidateCount}개의 추천 구간을 찾았습니다.`
+                    : '영상이 등록되었습니다. 추천 구간을 찾지 못했습니다.'
+                  : candidateCount > 0
+                  ? '이미 등록된 영상을 불러왔습니다. 추천 구간을 새로 불러왔습니다.'
+                  : '이미 등록된 영상을 불러왔습니다. 추천 구간을 찾지 못했습니다.');
+              setVideoSubmissionStatus({
+                type: registration.created ? 'success' : 'info',
+                message: infoMessage
+              });
+            } catch (error) {
+              const message = extractAxiosErrorMessage(error, '영상 정보를 불러오지 못했습니다.');
+              setVideoSubmissionStatus({ type: 'error', message });
+              throw error;
+            }
+          }
+
+          await createClip(payload, creationOptions);
+        } catch (error) {
           if (axios.isAxiosError(error) && error.response?.status === 409) {
             const message = extractAxiosErrorMessage(error, '이미 동일한 구간의 클립이 존재합니다.');
             showAlert(message);
           }
           console.error('Failed to auto-create clip from comment section', error);
-        })
-        .finally(() => {
+        } finally {
           if (restoreVideoUrl) {
             setVideoForm((prev) => ({ ...prev, url: restoreVideoUrl }));
             setClipForm((prev) => ({ ...prev, videoUrl: restoreVideoUrl, tags: previousTags }));
           } else if (previousTags) {
             setClipForm((prev) => ({ ...prev, tags: previousTags }));
           }
-        });
+        }
+      })();
     },
-    [clipForm.tags, clipForm.videoUrl, createClip, creationDisabled, selectedVideo, videoForm.artistId]
+    [
+      clipForm.tags,
+      clipForm.videoUrl,
+      createClip,
+      creationDisabled,
+      requestVideoRegistration,
+      selectedVideo,
+      videoForm.artistId
+    ]
   );
 
   const handlePreviewSectionApply = useCallback(
@@ -1780,22 +1885,33 @@ export default function App() {
       console.warn('Authentication is required to register videos.');
       return null;
     }
+
+    const trimmedUrl = videoForm.url.trim();
+    if (!trimmedUrl) {
+      setVideoSubmissionStatus({ type: 'error', message: '영상 링크를 입력해 주세요.' });
+      return null;
+    }
+
+    const parsedArtistId = Number(videoForm.artistId);
+    if (!videoForm.artistId || Number.isNaN(parsedArtistId)) {
+      setVideoSubmissionStatus({ type: 'error', message: '영상을 등록할 아티스트를 선택해 주세요.' });
+      return null;
+    }
+
     try {
-      const response = await http.post<VideoResponse>(
-        '/videos',
-        {
-          videoUrl: videoForm.url,
-          artistId: Number(videoForm.artistId),
-          description: videoForm.description,
-          captionsJson: videoForm.captionsJson
-        },
-        { headers: authHeaders }
-      );
-      setVideos((prev) => {
-        const otherVideos = prev.filter((video) => video.id !== response.data.id);
-        return [...otherVideos, response.data];
-      });
-      setSelectedVideo(response.data.id);
+      const result = await requestVideoRegistration({ artistId: parsedArtistId, videoUrl: trimmedUrl });
+      const candidateCount = result.candidates.length;
+      const defaultMessage =
+        result.message ??
+        (result.created
+          ? candidateCount > 0
+            ? `영상이 등록되었습니다. ${candidateCount}개의 추천 구간을 찾았습니다.`
+            : '영상이 등록되었습니다. 추천 구간을 찾지 못했습니다.'
+          : candidateCount > 0
+          ? '이미 등록된 영상을 불러왔습니다. 추천 구간을 새로 불러왔습니다.'
+          : '이미 등록된 영상을 불러왔습니다. 추천 구간을 찾지 못했습니다.');
+
+      setVideoSubmissionStatus({ type: result.created ? 'success' : 'info', message: defaultMessage });
       setVideoSectionPreview([]);
       setVideoSectionPreviewDurationSec(null);
       setVideoSectionPreviewError(null);
@@ -1803,20 +1919,21 @@ export default function App() {
       setHasAttemptedVideoSectionPreview(false);
       setVideoForm((prev) => ({ ...prev, url: '', description: '', captionsJson: '' }));
       setClipForm((prev) => ({ ...prev, videoUrl: '' }));
+      previousVideoUrlRef.current = '';
+      autoFetchedCommentSectionsUrlRef.current = null;
       reloadArtistVideos().catch((error) => console.error('Failed to refresh videos after save', error));
-      return response.data;
+      return result.video;
     } catch (error) {
-      console.error('Failed to save video', error);
+      const message = extractAxiosErrorMessage(error, '영상 등록에 실패했습니다.');
+      setVideoSubmissionStatus({ type: 'error', message });
+      console.error('Failed to register video', error);
       return null;
     }
   }, [
     creationDisabled,
-    http,
     videoForm.url,
     videoForm.artistId,
-    videoForm.description,
-    videoForm.captionsJson,
-    authHeaders,
+    requestVideoRegistration,
     reloadArtistVideos
   ]);
 
@@ -1881,9 +1998,9 @@ export default function App() {
     const trimmedTitle = clipForm.title.trim();
     const tags = parseTags(clipForm.tags);
 
-    const effectiveVideoId = options?.videoId ?? selectedVideo;
+    let resolvedVideoId = options?.videoId ?? selectedVideo ?? null;
 
-    if (!trimmedVideoUrl && !effectiveVideoId) {
+    if (!trimmedVideoUrl && !resolvedVideoId) {
       console.warn('클립을 저장하려면 라이브 영상 URL을 입력하거나 기존 영상을 선택해 주세요.');
       return;
     }
@@ -1905,24 +2022,50 @@ export default function App() {
       return;
     }
 
+    if (trimmedVideoUrl) {
+      const parsedArtistId = Number(videoForm.artistId);
+      if (!videoForm.artistId || Number.isNaN(parsedArtistId)) {
+        setVideoSubmissionStatus({ type: 'error', message: '클립 원본을 등록하려면 아티스트를 먼저 선택해 주세요.' });
+        console.warn('라이브 영상 URL을 등록하려면 아티스트를 먼저 선택해야 합니다.');
+        return;
+      }
+      try {
+        const registration = await requestVideoRegistration({
+          artistId: parsedArtistId,
+          videoUrl: trimmedVideoUrl
+        });
+        resolvedVideoId = registration.video.id;
+        const candidateCount = registration.candidates.length;
+        const infoMessage =
+          registration.message ??
+          (registration.created
+            ? candidateCount > 0
+              ? `영상이 등록되었습니다. ${candidateCount}개의 추천 구간을 찾았습니다.`
+              : '영상이 등록되었습니다. 추천 구간을 찾지 못했습니다.'
+            : candidateCount > 0
+            ? '이미 등록된 영상을 불러왔습니다. 추천 구간을 새로 불러왔습니다.'
+            : '이미 등록된 영상을 불러왔습니다. 추천 구간을 찾지 못했습니다.');
+        setVideoSubmissionStatus({ type: registration.created ? 'success' : 'info', message: infoMessage });
+      } catch (error) {
+        const message = extractAxiosErrorMessage(error, '영상 정보를 불러오지 못했습니다.');
+        setVideoSubmissionStatus({ type: 'error', message });
+        console.error('Failed to prepare clip source video', error);
+        return;
+      }
+    }
+
+    if (!resolvedVideoId) {
+      console.warn('클립을 저장하려면 라이브 영상 URL을 입력하거나 기존 영상을 선택해 주세요.');
+      return;
+    }
+
     const payload: ClipCreationPayload = {
       title: trimmedTitle,
       startSec,
       endSec,
-      tags
+      tags,
+      videoId: resolvedVideoId
     };
-
-    if (trimmedVideoUrl) {
-      const parsedArtistId = Number(videoForm.artistId);
-      if (!videoForm.artistId || Number.isNaN(parsedArtistId)) {
-        console.warn('라이브 영상 URL을 등록하려면 아티스트를 먼저 선택해야 합니다.');
-        return;
-      }
-      payload.videoUrl = trimmedVideoUrl;
-      payload.artistId = parsedArtistId;
-    } else if (effectiveVideoId) {
-      payload.videoId = effectiveVideoId;
-    }
 
     try {
       await createClip(payload);
@@ -1946,6 +2089,7 @@ export default function App() {
     clipForm.endSeconds,
     selectedVideo,
     videoForm.artistId,
+    requestVideoRegistration,
     createClip
   ]);
 
@@ -1988,6 +2132,7 @@ export default function App() {
       previousVideoUrlRef.current = trimmedValue;
       setVideoForm((prev) => ({ ...prev, url: value }));
       setClipForm((prev) => ({ ...prev, videoUrl: value }));
+      setVideoSubmissionStatus(null);
       setVideoSectionPreview([]);
       setVideoSectionPreviewDurationSec(null);
       setVideoSectionPreviewError(null);
@@ -2093,6 +2238,7 @@ export default function App() {
     setActiveClipId(null);
     setClipCandidates([]);
     setClips([]);
+    setVideoSubmissionStatus(null);
   };
 
   const handleArtistClear = () => {
@@ -2103,6 +2249,7 @@ export default function App() {
     setClips([]);
     setLibraryVideoFormOpen(false);
     setLibraryClipFormOpen(false);
+    setVideoSubmissionStatus(null);
   };
 
   const handleLibraryVideoSelect = (videoId: number) => {
@@ -2277,6 +2424,7 @@ export default function App() {
     setVideoForm((prev) => ({ ...prev, artistId: String(selectedArtistId) }));
     setLibraryClipFormOpen(false);
     setLibraryVideoFormOpen((prev) => !prev);
+    setVideoSubmissionStatus(null);
   }, [selectedArtistId]);
 
   const handleLibraryClipRegister = useCallback(() => {
@@ -2286,6 +2434,7 @@ export default function App() {
     setVideoForm((prev) => ({ ...prev, artistId: String(selectedArtistId) }));
     setLibraryVideoFormOpen(false);
     setLibraryClipFormOpen((prev) => !prev);
+    setVideoSubmissionStatus(null);
   }, [selectedArtistId]);
   const handleClipCardToggle = useCallback((clip: ClipResponse) => {
     if (!clip.youtubeVideoId) {
@@ -2304,13 +2453,6 @@ export default function App() {
     }
 
     if (!selectedVideo || !selectedVideoData) {
-      return;
-    }
-
-    if (!isClipSourceVideo(selectedVideoData)) {
-      if (clipCandidates.length > 0) {
-        setClipCandidates([]);
-      }
       return;
     }
 
@@ -3152,6 +3294,17 @@ export default function App() {
                                 </button>
                               )}
                             </div>
+                            {videoSubmissionStatus && (
+                              <p
+                                className={`login-status__message${
+                                  videoSubmissionStatus.type === 'error' ? ' error' : ''
+                                }`}
+                                role={videoSubmissionStatus.type === 'error' ? 'alert' : 'status'}
+                                aria-live="polite"
+                              >
+                                {videoSubmissionStatus.message}
+                              </p>
+                            )}
                             {!isClipRegistration && (
                               <>
                                 {videoSectionPreviewError && (
