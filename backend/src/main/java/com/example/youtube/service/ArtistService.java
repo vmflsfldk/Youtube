@@ -63,11 +63,12 @@ public class ArtistService {
     }
 
     @Transactional
-    public ArtistResponse updateTags(Long artistId, List<String> tags, UserAccount user) {
+    public ArtistResponse updateProfile(Long artistId, List<String> tags, String agency, UserAccount user) {
         Artist artist = artistRepository.findById(artistId)
                 .orElseThrow(() -> new EntityNotFoundException("Artist not found: " + artistId));
 
         artist.setTags(normalizeTags(tags));
+        artist.setAgency(trimToNull(agency));
         Artist saved = artistRepository.save(artist);
         return map(saved);
     }
