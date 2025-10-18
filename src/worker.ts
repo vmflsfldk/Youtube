@@ -756,6 +756,19 @@ async function ensureDatabaseSchema(db: D1Database): Promise<void> {
       context: "idx_clips_video"
     },
     {
+      sql: `CREATE TABLE IF NOT EXISTS artist_tags (
+        artist_id INTEGER NOT NULL,
+        tag TEXT NOT NULL,
+        PRIMARY KEY (artist_id, tag),
+        FOREIGN KEY (artist_id) REFERENCES artists(id) ON DELETE CASCADE
+      )`,
+      context: "artist_tags"
+    },
+    {
+      sql: "CREATE INDEX IF NOT EXISTS idx_artist_tags_tag ON artist_tags(tag)",
+      context: "idx_artist_tags_tag"
+    },
+    {
       sql: "CREATE INDEX IF NOT EXISTS idx_clip_tags_clip ON clip_tags(clip_id)",
       context: "idx_clip_tags_clip"
     },
@@ -4300,6 +4313,7 @@ export function __resetWorkerTestState(): void {
   testOverrides.detectFromChapterSources = detectFromChapterSources;
   testOverrides.detectFromDescription = detectFromDescription;
   testOverrides.detectFromCaptions = detectFromCaptions;
+  hasEnsuredSchema = false;
   hasEnsuredArtistDisplayNameColumn = false;
   hasEnsuredArtistProfileImageColumn = false;
   hasEnsuredArtistChannelTitleColumn = false;
