@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import {
+import worker, {
   __createArtistForTests as createArtist,
   __listArtistsForTests as listArtists,
   __resetWorkerTestState,
@@ -217,6 +217,69 @@ class FakeD1Database implements D1Database {
   }
 }
 
+const normalizeQuery = (query: string): string => query.replace(/\s+/g, " ").trim().toLowerCase();
+
+class BootstrappingStatement implements D1PreparedStatement {
+  private values: unknown[] = [];
+
+  constructor(private readonly db: BootstrappingD1Database, private readonly query: string) {}
+
+  bind(...values: unknown[]): D1PreparedStatement {
+    this.values = values;
+    return this;
+  }
+
+  first<T = unknown>(): Promise<T | null> {
+    return this.db.handleFirst<T>(this.query, this.values);
+  }
+
+  all<T = unknown>(): Promise<D1Result<T>> {
+    return this.db.handleAll<T>(this.query, this.values);
+  }
+
+  run<T = unknown>(): Promise<D1Result<T>> {
+    return this.db.handleRun<T>(this.query, this.values);
+  }
+}
+
+class BootstrappingD1Database implements D1Database {
+  artistTagsTableCreated = false;
+  artistTagsIndexCreated = false;
+
+  prepare(query: string): D1PreparedStatement {
+    return new BootstrappingStatement(this, query);
+  }
+
+  async handleRun<T>(query: string, _values: unknown[]): Promise<D1Result<T>> {
+    const normalized = normalizeQuery(query);
+    if (normalized.startsWith("create table if not exists artist_tags")) {
+      this.artistTagsTableCreated = true;
+    }
+    if (normalized.startsWith("create index if not exists idx_artist_tags_tag")) {
+      this.artistTagsIndexCreated = true;
+    }
+    return { success: true, meta: { duration: 0, changes: 0 } };
+  }
+
+  async handleAll<T>(query: string, _values: unknown[]): Promise<D1Result<T>> {
+    const normalized = normalizeQuery(query);
+    if (normalized.startsWith("pragma table_info")) {
+      return { success: true, meta: { duration: 0, changes: 0 }, results: [] };
+    }
+    if (normalized.includes("from artists a left join artist_tags at on at.artist_id = a.id")) {
+      if (!this.artistTagsTableCreated) {
+        throw new Error("artist_tags table was not created");
+      }
+      return { success: true, meta: { duration: 0, changes: 0 }, results: [] };
+    }
+    return { success: true, meta: { duration: 0, changes: 0 }, results: [] };
+  }
+
+  async handleFirst<T>(_query: string, _values: unknown[]): Promise<T | null> {
+    return null;
+  }
+}
+
 const cors = { origin: null, requestHeaders: null, allowPrivateNetwork: false };
 
 const createChannelMetadata = (channelId: string) => ({
@@ -368,4 +431,20 @@ test("listArtists returns aggregated tags and availability flags", async () => {
   assert.equal(artists[1].availableEn, false);
   assert.equal(artists[1].availableJp, true);
   assert.equal(artists[1].agency, "Agency A");
+});
+
+test("listArtists bootstraps artist_tags schema", async () => {
+  __resetWorkerTestState();
+
+  const db = new BootstrappingD1Database();
+  const env: Env = { DB: db };
+  const request = new Request("https://example.com/api/artists", { method: "GET" });
+
+  const response = await worker.fetch(request, env);
+  assert.equal(response.status, 200);
+  const payload = (await response.json()) as unknown[];
+  assert.deepEqual(payload, []);
+
+  assert.equal(db.artistTagsTableCreated, true);
+  assert.equal(db.artistTagsIndexCreated, true);
 });
