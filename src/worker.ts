@@ -34,6 +34,7 @@ interface ArtistResponse {
   youtubeChannelId: string;
   youtubeChannelTitle?: string | null;
   profileImageUrl?: string | null;
+  agency?: string | null;
 }
 
 const VIDEO_CONTENT_TYPES = ["OFFICIAL", "CLIP_SOURCE"] as const;
@@ -296,6 +297,7 @@ interface ArtistRow {
   youtube_channel_id: string;
   youtube_channel_title: string | null;
   profile_image_url: string | null;
+  agency: string | null;
 }
 
 interface TableInfoRow {
@@ -325,6 +327,7 @@ let hasEnsuredArtistDisplayNameColumn = false;
 let hasEnsuredArtistProfileImageColumn = false;
 let hasEnsuredArtistUpdatedAtColumn = false;
 let hasEnsuredArtistChannelTitleColumn = false;
+let hasEnsuredArtistAgencyColumn = false;
 let hasEnsuredUserPasswordColumns = false;
 let hasEnsuredVideoContentTypeColumn = false;
 let hasEnsuredVideoHiddenColumn = false;
@@ -679,6 +682,24 @@ async function ensureArtistChannelTitleColumn(db: D1Database): Promise<void> {
   }
 
   hasEnsuredArtistChannelTitleColumn = true;
+}
+
+async function ensureArtistAgencyColumn(db: D1Database): Promise<void> {
+  if (hasEnsuredArtistAgencyColumn) {
+    return;
+  }
+
+  const { results } = await db.prepare("PRAGMA table_info(artists)").all<TableInfoRow>();
+  const hasColumn = (results ?? []).some((column) => column.name?.toLowerCase() === "agency");
+
+  if (!hasColumn) {
+    const alterResult = await db.prepare("ALTER TABLE artists ADD COLUMN agency TEXT").run();
+    if (!alterResult.success && !isDuplicateColumnError(alterResult.error)) {
+      throw new Error(alterResult.error ?? "Failed to add agency column to artists table");
+    }
+  }
+
+  hasEnsuredArtistAgencyColumn = true;
 }
 
 async function ensureArtistUpdatedAtColumn(db: D1Database): Promise<void> {
@@ -1345,6 +1366,9 @@ async function createArtist(
   const name = typeof body.name === "string" ? body.name.trim() : "";
   const displayNameRaw = typeof body.displayName === "string" ? body.displayName : "";
   const youtubeChannelId = typeof body.youtubeChannelId === "string" ? body.youtubeChannelId.trim() : "";
+  const agencyRaw = typeof body.agency === "string" ? body.agency : null;
+  const normalizedAgencyValue = agencyRaw ? agencyRaw.trim() : "";
+  const agency = normalizedAgencyValue.length > 0 ? normalizedAgencyValue : null;
   if (!name) {
     throw new HttpError(400, "name is required");
   }
@@ -1356,6 +1380,7 @@ async function createArtist(
   await ensureArtistDisplayNameColumn(env.DB);
   await ensureArtistProfileImageColumn(env.DB);
   await ensureArtistChannelTitleColumn(env.DB);
+  await ensureArtistAgencyColumn(env.DB);
 
   const metadata = await fetchChannelMetadata(env, youtubeChannelId);
   const resolvedChannelId = metadata.channelId?.trim() || youtubeChannelId;
@@ -1375,9 +1400,9 @@ async function createArtist(
   }
 
   const insertResult = await env.DB.prepare(
-    "INSERT INTO artists (name, display_name, youtube_channel_id, youtube_channel_title, created_by) VALUES (?, ?, ?, ?, ?)"
+    "INSERT INTO artists (name, display_name, youtube_channel_id, youtube_channel_title, agency, created_by) VALUES (?, ?, ?, ?, ?, ?)"
   )
-    .bind(name, displayName, resolvedChannelId, channelTitle, user.id)
+    .bind(name, displayName, resolvedChannelId, channelTitle, agency, user.id)
     .run();
   if (!insertResult.success) {
     throw new HttpError(500, insertResult.error ?? "Failed to insert artist");
@@ -1406,7 +1431,8 @@ async function createArtist(
       displayName,
       youtubeChannelId: resolvedChannelId,
       youtubeChannelTitle: channelTitle,
-      profileImageUrl: finalProfileImageUrl
+      profileImageUrl: finalProfileImageUrl,
+      agency
     } satisfies ArtistResponse,
     201,
     cors
@@ -1424,11 +1450,12 @@ async function listArtists(
   await ensureArtistDisplayNameColumn(env.DB);
   await ensureArtistProfileImageColumn(env.DB);
   await ensureArtistChannelTitleColumn(env.DB);
+  await ensureArtistAgencyColumn(env.DB);
   let results: ArtistRow[] | null | undefined;
   if (mine) {
     const requestingUser = requireUser(user);
     const response = await env.DB.prepare(
-      `SELECT a.id, a.name, a.display_name, a.youtube_channel_id, a.youtube_channel_title, a.profile_image_url
+      `SELECT a.id, a.name, a.display_name, a.youtube_channel_id, a.youtube_channel_title, a.profile_image_url, a.agency
          FROM artists a
          JOIN user_favorite_artists ufa ON ufa.artist_id = a.id
         WHERE ufa.user_id = ?
@@ -1439,7 +1466,7 @@ async function listArtists(
     results = response.results;
   } else {
     const response = await env.DB.prepare(
-      `SELECT id, name, display_name, youtube_channel_id, youtube_channel_title, profile_image_url
+      `SELECT id, name, display_name, youtube_channel_id, youtube_channel_title, profile_image_url, agency
          FROM artists
         ORDER BY id DESC`
     ).all<ArtistRow>();
@@ -2469,7 +2496,8 @@ function toArtistResponse(row: ArtistRow): ArtistResponse {
     displayName: row.display_name ?? row.name,
     youtubeChannelId: row.youtube_channel_id,
     youtubeChannelTitle: row.youtube_channel_title ?? null,
-    profileImageUrl: row.profile_image_url ?? null
+    profileImageUrl: row.profile_image_url ?? null,
+    agency: row.agency ?? null
   };
 }
 
@@ -4053,6 +4081,7 @@ export function __resetWorkerTestState(): void {
   hasEnsuredArtistDisplayNameColumn = false;
   hasEnsuredArtistProfileImageColumn = false;
   hasEnsuredArtistChannelTitleColumn = false;
+  hasEnsuredArtistAgencyColumn = false;
   hasEnsuredVideoContentTypeColumn = false;
   hasEnsuredVideoHiddenColumn = false;
   hasEnsuredVideoCategoryColumn = false;
@@ -4062,6 +4091,7 @@ export function __setHasEnsuredVideoColumnsForTests(value: boolean): void {
   hasEnsuredArtistDisplayNameColumn = value;
   hasEnsuredArtistProfileImageColumn = value;
   hasEnsuredArtistChannelTitleColumn = value;
+  hasEnsuredArtistAgencyColumn = value;
   hasEnsuredVideoContentTypeColumn = value;
   hasEnsuredVideoHiddenColumn = value;
   hasEnsuredVideoCategoryColumn = value;

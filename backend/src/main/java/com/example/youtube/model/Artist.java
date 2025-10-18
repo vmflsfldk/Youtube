@@ -36,6 +36,9 @@ public class Artist {
     @Column(name = "profile_image_url")
     private String profileImageUrl;
 
+    @Column(name = "agency", length = 255)
+    private String agency;
+
     @ManyToOne(optional = false)
     @JoinColumn(name = "created_by")
     private UserAccount createdBy;
@@ -125,6 +128,14 @@ public class Artist {
         this.profileImageUrl = profileImageUrl;
     }
 
+    public String getAgency() {
+        return agency;
+    }
+
+    public void setAgency(String agency) {
+        this.agency = agency;
+    }
+
     public boolean isAvailableKo() {
         return availableKo;
     }
@@ -150,6 +161,9 @@ public class Artist {
     }
 
     public List<String> getTags() {
+        if (tags == null) {
+            tags = new ArrayList<>();
+        }
         return tags;
     }
 

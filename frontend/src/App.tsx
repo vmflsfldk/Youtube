@@ -381,6 +381,7 @@ interface ArtistResponse {
   availableKo: boolean;
   availableEn: boolean;
   availableJp: boolean;
+  agency?: string | null;
   tags: string[];
 }
 

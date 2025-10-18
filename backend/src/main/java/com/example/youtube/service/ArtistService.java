@@ -49,6 +49,8 @@ public class ArtistService {
                 request.availableKo(),
                 request.availableEn(),
                 request.availableJp());
+        artist.setTags(normalizeTags(request.tags()));
+        artist.setAgency(trimToNull(request.agency()));
         String profileImageUrl = channelMetadata.profileImageUrl();
         if (metadataTitle != null && !metadataTitle.isBlank()) {
             artist.setYoutubeChannelTitle(metadataTitle);
@@ -135,6 +137,7 @@ public class ArtistService {
 
     private ArtistResponse map(Artist artist) {
         Artist resolved = refreshMetadataIfNeeded(artist);
+        List<String> tags = resolved.getTags();
         return new ArtistResponse(
                 resolved.getId(),
                 resolved.getName(),
@@ -145,7 +148,8 @@ public class ArtistService {
                 resolved.isAvailableKo(),
                 resolved.isAvailableEn(),
                 resolved.isAvailableJp(),
-                List.copyOf(resolved.getTags()));
+                resolved.getAgency(),
+                tags == null ? List.of() : List.copyOf(tags));
     }
 
     private Artist refreshMetadataIfNeeded(Artist artist) {
