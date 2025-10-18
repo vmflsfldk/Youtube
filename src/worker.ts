@@ -359,23 +359,6 @@ interface TableInfoRow {
   notnull?: number | null;
 }
 
-interface EmailVerificationRow {
-  id: number;
-  email: string;
-  code_hash: string;
-  expires_at: string;
-  consumed_at: string | null;
-  created_at: string;
-}
-
-interface EmailSessionRow {
-  id: number;
-  email: string;
-  token_hash: string;
-  expires_at: string;
-  created_at: string;
-}
-
 let hasEnsuredSchema = false;
 let hasEnsuredArtistDisplayNameColumn = false;
 let hasEnsuredArtistProfileImageColumn = false;
@@ -383,7 +366,6 @@ let hasEnsuredArtistUpdatedAtColumn = false;
 let hasEnsuredArtistChannelTitleColumn = false;
 let hasEnsuredArtistCountryColumns = false;
 let hasEnsuredArtistAgencyColumn = false;
-let hasEnsuredUserPasswordColumns = false;
 let hasEnsuredVideoContentTypeColumn = false;
 let hasEnsuredVideoHiddenColumn = false;
 let hasEnsuredVideoCategoryColumn = false;
@@ -395,22 +377,6 @@ const warnMissingYouTubeApiKey = (): void => {
   }
   console.warn("[yt-clip] YOUTUBE_API_KEY is not configured; YouTube metadata fetches will be skipped.");
   hasWarnedMissingYouTubeApiKey = true;
-};
-
-const encoder = new TextEncoder();
-
-const hashValue = async (value: string): Promise<string> => {
-  const data = encoder.encode(value);
-  const digest = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(digest))
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
-};
-
-const generateNumericCode = (): string => {
-  const buffer = new Uint32Array(1);
-  crypto.getRandomValues(buffer);
-  return (buffer[0] % 1_000_000).toString().padStart(6, "0");
 };
 
 const sanitizeArtistTags = (value: unknown): string[] => {
@@ -515,97 +481,6 @@ const normalizeArtistRow = (row: ArtistQueryRow): ArtistRow => {
   };
 };
 
-const generateRandomToken = (): string => {
-  const bytes = new Uint8Array(32);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes)
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
-};
-
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-const normalizeEmail = (value: unknown): string => {
-  if (typeof value !== "string") {
-    return "";
-  }
-  return value.trim().toLowerCase();
-};
-
-const PASSWORD_SALT_BYTES = 16;
-const PASSWORD_PBKDF2_ITERATIONS = 100_000;
-
-const bytesToHex = (bytes: ArrayBuffer | Uint8Array): string => {
-  const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
-  return Array.from(view)
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
-};
-
-const hexToBytes = (hex: string): Uint8Array => {
-  const normalized = hex.trim();
-  if (normalized.length % 2 !== 0) {
-    throw new Error("Invalid hex string");
-  }
-  const length = normalized.length / 2;
-  const bytes = new Uint8Array(length);
-  for (let i = 0; i < length; i += 1) {
-    const byte = normalized.slice(i * 2, i * 2 + 2);
-    bytes[i] = Number.parseInt(byte, 16);
-  }
-  return bytes;
-};
-
-const derivePasswordHash = async (password: string, salt: Uint8Array): Promise<string> => {
-  const passwordBuffer = encoder.encode(password.normalize("NFKC"));
-  const keyMaterial = await crypto.subtle.importKey("raw", passwordBuffer, "PBKDF2", false, ["deriveBits"]);
-  const derivedBits = await crypto.subtle.deriveBits(
-    {
-      name: "PBKDF2",
-      hash: "SHA-256",
-      iterations: PASSWORD_PBKDF2_ITERATIONS,
-      salt
-    },
-    keyMaterial,
-    32 * 8
-  );
-  return bytesToHex(derivedBits);
-};
-
-const hashPassword = async (password: string): Promise<{ hash: string; salt: string }> => {
-  const salt = new Uint8Array(PASSWORD_SALT_BYTES);
-  crypto.getRandomValues(salt);
-  const hash = await derivePasswordHash(password, salt);
-  return { hash, salt: bytesToHex(salt) };
-};
-
-const timingSafeEqual = (a: string, b: string): boolean => {
-  if (a.length !== b.length) {
-    return false;
-  }
-  let diff = 0;
-  for (let i = 0; i < a.length; i += 1) {
-    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  }
-  return diff === 0;
-};
-
-const verifyPassword = async (password: string, saltHex: string, expectedHash: string): Promise<boolean> => {
-  try {
-    const salt = hexToBytes(saltHex);
-    const hash = await derivePasswordHash(password, salt);
-    return timingSafeEqual(hash, expectedHash);
-  } catch (error) {
-    console.error("[yt-clip] Failed to verify password", error);
-    return false;
-  }
-};
-
-const isExpired = (isoTimestamp: string): boolean => {
-  const expiresAt = Date.parse(isoTimestamp);
-  return Number.isFinite(expiresAt) && expiresAt <= Date.now();
-};
-
 const isStatementError = (result: D1Result<unknown>, context: string): boolean => {
   if (result.success) {
     return false;
@@ -626,9 +501,6 @@ async function ensureDatabaseSchema(db: D1Database): Promise<void> {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         email TEXT NOT NULL UNIQUE,
         display_name TEXT,
-        password_hash TEXT,
-        password_salt TEXT,
-        password_updated_at TEXT,
         created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
       )`,
       context: "users"
@@ -646,36 +518,6 @@ async function ensureDatabaseSchema(db: D1Database): Promise<void> {
       )`,
       context: "artists"
     },
-    {
-      sql: `CREATE TABLE IF NOT EXISTS email_verification_codes (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        email TEXT NOT NULL,
-        code_hash TEXT NOT NULL,
-        expires_at TEXT NOT NULL,
-        consumed_at TEXT,
-        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
-      )`,
-      context: "email_verification_codes"
-    },
-    {
-      sql: `CREATE TABLE IF NOT EXISTS email_sessions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        email TEXT NOT NULL,
-        token_hash TEXT NOT NULL UNIQUE,
-        expires_at TEXT NOT NULL,
-        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
-      )`,
-      context: "email_sessions"
-    },
-    {
-      sql: "CREATE INDEX IF NOT EXISTS idx_email_verification_email ON email_verification_codes(email)",
-      context: "idx_email_verification_email"
-    },
-    {
-      sql: "CREATE INDEX IF NOT EXISTS idx_email_sessions_email ON email_sessions(email)",
-      context: "idx_email_sessions_email"
-    },
-    {
       sql: `CREATE TABLE IF NOT EXISTS user_favorite_artists (
         user_id INTEGER NOT NULL,
         artist_id INTEGER NOT NULL,
@@ -1012,140 +854,6 @@ async function ensureVideoCategoryColumn(db: D1Database): Promise<void> {
   hasEnsuredVideoCategoryColumn = true;
 }
 
-async function ensureUserPasswordColumns(db: D1Database): Promise<void> {
-  if (hasEnsuredUserPasswordColumns) {
-    return;
-  }
-
-  const refreshColumns = async (): Promise<{ columns: Set<string>; rows: TableInfoRow[] }> => {
-    const { results } = await db.prepare("PRAGMA table_info(users)").all<TableInfoRow>();
-    const rows = results ?? [];
-    const columns = new Set(rows.map((column) => column.name?.toLowerCase()).filter(Boolean));
-    return { columns, rows };
-  };
-
-  let snapshot = await refreshColumns();
-  let existing = snapshot.columns;
-
-  const displayNameColumn = snapshot.rows.find((column) => column.name?.toLowerCase() === "display_name");
-  if (displayNameColumn && Number(displayNameColumn.notnull) === 1) {
-    await rebuildUsersTableWithPasswordColumns(db, existing);
-    snapshot = await refreshColumns();
-    existing = snapshot.columns;
-  }
-
-  const operations: Array<{ column: string; sql: string }> = [
-    { column: "password_hash", sql: "ALTER TABLE users ADD COLUMN password_hash TEXT" },
-    { column: "password_salt", sql: "ALTER TABLE users ADD COLUMN password_salt TEXT" },
-    { column: "password_updated_at", sql: "ALTER TABLE users ADD COLUMN password_updated_at TEXT" }
-  ];
-
-  let attemptedRebuild = false;
-
-  for (const { column, sql } of operations) {
-    if (existing.has(column)) {
-      continue;
-    }
-
-    const alterResult = await db.prepare(sql).run();
-    if (alterResult.success || isDuplicateColumnError(alterResult.error)) {
-      existing.add(column);
-      continue;
-    }
-
-    if (attemptedRebuild) {
-      throw new Error(alterResult.error ?? `Failed to add ${column} column to users table`);
-    }
-
-    await rebuildUsersTableWithPasswordColumns(db, existing);
-    attemptedRebuild = true;
-    snapshot = await refreshColumns();
-    existing = snapshot.columns;
-
-    if (!existing.has(column)) {
-      throw new Error(alterResult.error ?? `Failed to add ${column} column to users table`);
-    }
-  }
-
-  hasEnsuredUserPasswordColumns = true;
-}
-
-async function rebuildUsersTableWithPasswordColumns(db: D1Database, existingColumns: Set<string>): Promise<void> {
-  const runStatement = async (sql: string, context: string): Promise<void> => {
-    const result = await db.prepare(sql).run();
-    if (isStatementError(result, context)) {
-      throw new Error(result.error ?? `Failed to execute statement: ${context}`);
-    }
-  };
-
-  const selectColumns = [
-    "id",
-    "email",
-    existingColumns.has("display_name") ? "display_name" : "NULL AS display_name",
-    existingColumns.has("password_hash") ? "password_hash" : "NULL AS password_hash",
-    existingColumns.has("password_salt") ? "password_salt" : "NULL AS password_salt",
-    existingColumns.has("password_updated_at") ? "password_updated_at" : "NULL AS password_updated_at",
-    existingColumns.has("created_at")
-      ? "created_at"
-      : "strftime('%Y-%m-%dT%H:%M:%fZ', 'now') AS created_at"
-  ].join(", ");
-
-  const enableForeignKeys = async (enabled: boolean) => {
-    const pragmaResult = await db
-      .prepare(`PRAGMA foreign_keys = ${enabled ? "ON" : "OFF"}`)
-      .run();
-    if (isStatementError(pragmaResult, `foreign_keys_${enabled ? "on" : "off"}`)) {
-      throw new Error(pragmaResult.error ?? `Failed to toggle foreign key enforcement (${enabled ? "ON" : "OFF"})`);
-    }
-  };
-
-  let foreignKeysDisabled = false;
-
-  try {
-    await enableForeignKeys(false);
-    foreignKeysDisabled = true;
-
-    const beginResult = await db.prepare("BEGIN TRANSACTION").run();
-    if (isStatementError(beginResult, "begin_transaction")) {
-      throw new Error(beginResult.error ?? "Failed to begin transaction for users table rebuild");
-    }
-
-    await runStatement(
-      `CREATE TABLE users_new (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        email TEXT NOT NULL UNIQUE,
-        display_name TEXT,
-        password_hash TEXT,
-        password_salt TEXT,
-        password_updated_at TEXT,
-        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
-      )`,
-      "create_users_new"
-    );
-
-    await runStatement(
-      `INSERT INTO users_new (id, email, display_name, password_hash, password_salt, password_updated_at, created_at)
-       SELECT ${selectColumns} FROM users`,
-      "migrate_users_into_users_new"
-    );
-
-    await runStatement("DROP TABLE users", "drop_old_users_table");
-    await runStatement("ALTER TABLE users_new RENAME TO users", "rename_users_new_table");
-
-    const commitResult = await db.prepare("COMMIT").run();
-    if (isStatementError(commitResult, "commit_users_table_rebuild")) {
-      throw new Error(commitResult.error ?? "Failed to commit users table rebuild");
-    }
-  } catch (error) {
-    await db.prepare("ROLLBACK").run();
-    throw error;
-  } finally {
-    if (foreignKeysDisabled) {
-      await enableForeignKeys(true);
-    }
-  }
-}
-
 interface VideoRow {
   id: number;
   artist_id: number;
@@ -1189,125 +897,6 @@ class HttpError extends Error {
     super(message);
     this.status = status;
   }
-}
-
-async function createEmailVerification(env: Env, email: string): Promise<{ code: string; expiresAt: string }> {
-  const code = generateNumericCode();
-  const codeHash = await hashValue(code);
-  const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
-
-  try {
-    const deleteResult = await env.DB.prepare("DELETE FROM email_verification_codes WHERE email = ?")
-      .bind(email)
-      .run();
-    if (!deleteResult.success) {
-      console.error("[yt-clip] Failed to delete existing verification codes", {
-        email,
-        error: "DB_ERROR",
-        detail: deleteResult.error
-      });
-      throw new HttpError(500, "DB_ERROR");
-    }
-  } catch (error) {
-    if (error instanceof HttpError) {
-      throw error;
-    }
-    console.error("[yt-clip] DB error while deleting verification codes", {
-      email,
-      error: "DB_ERROR",
-      detail: error instanceof Error ? error.message : String(error)
-    });
-    throw new HttpError(500, "DB_ERROR");
-  }
-
-  try {
-    const insertResult = await env.DB.prepare(
-      "INSERT INTO email_verification_codes (email, code_hash, expires_at) VALUES (?, ?, ?)"
-    )
-      .bind(email, codeHash, expiresAt)
-      .run();
-
-    if (!insertResult.success) {
-      console.error("[yt-clip] Failed to insert verification code", {
-        email,
-        error: "DB_ERROR",
-        detail: insertResult.error
-      });
-      throw new HttpError(500, "DB_ERROR");
-    }
-  } catch (error) {
-    if (error instanceof HttpError) {
-      throw error;
-    }
-    console.error("[yt-clip] DB error while inserting verification code", {
-      email,
-      error: "DB_ERROR",
-      detail: error instanceof Error ? error.message : String(error)
-    });
-    throw new HttpError(500, "DB_ERROR");
-  }
-
-  return { code, expiresAt };
-}
-
-async function verifyAndConsumeEmailCode(env: Env, email: string, code: string): Promise<void> {
-  const verification = await env.DB.prepare(
-    `SELECT id, code_hash, expires_at, consumed_at
-       FROM email_verification_codes
-      WHERE email = ?
-      ORDER BY created_at DESC
-      LIMIT 1`
-  )
-    .bind(email)
-    .first<Pick<EmailVerificationRow, "id" | "code_hash" | "expires_at" | "consumed_at">>();
-
-  if (!verification) {
-    throw new HttpError(400, "요청된 인증 코드가 없습니다.");
-  }
-
-  if (verification.consumed_at) {
-    throw new HttpError(400, "이미 사용된 인증 코드입니다.");
-  }
-
-  if (isExpired(verification.expires_at)) {
-    await env.DB.prepare("DELETE FROM email_verification_codes WHERE id = ?")
-      .bind(verification.id)
-      .run();
-    throw new HttpError(400, "인증 코드의 유효기간이 만료되었습니다.");
-  }
-
-  const providedHash = await hashValue(code);
-  if (providedHash !== verification.code_hash) {
-    throw new HttpError(400, "인증 코드가 일치하지 않습니다.");
-  }
-
-  const nowIso = new Date().toISOString();
-  await env.DB.prepare("UPDATE email_verification_codes SET consumed_at = ? WHERE id = ?")
-    .bind(nowIso, verification.id)
-    .run();
-}
-
-async function createEmailSession(env: Env, email: string): Promise<{ token: string; expiresAt: string }> {
-  const token = generateRandomToken();
-  const tokenHash = await hashValue(token);
-  const nowIso = new Date().toISOString();
-  const sessionExpires = new Date(Date.now() + 30 * 60 * 1000).toISOString();
-
-  await env.DB.prepare("DELETE FROM email_sessions WHERE email = ? AND expires_at <= ?")
-    .bind(email, nowIso)
-    .run();
-
-  const insertSession = await env.DB.prepare(
-    "INSERT INTO email_sessions (email, token_hash, expires_at) VALUES (?, ?, ?)"
-  )
-    .bind(email, tokenHash, sessionExpires)
-    .run();
-
-  if (!insertSession.success) {
-    throw new HttpError(500, insertSession.error ?? "Failed to create session");
-  }
-
-  return { token, expiresAt: sessionExpires };
 }
 
 const collectAllowedHeaders = (requestedHeaders: string | null): string => {
@@ -1412,7 +1001,7 @@ export default {
       return emptyResponse(204, cors);
     }
 
-    if (path.startsWith("/api/") || path.startsWith("/auth/")) {
+    if (path.startsWith("/api/")) {
       return await handleApi(request, env, cors, url, path);
     }
 
@@ -1429,27 +1018,6 @@ async function handleApi(
 ): Promise<Response> {
   try {
     await ensureDatabaseSchema(env.DB);
-    await ensureUserPasswordColumns(env.DB);
-
-    if (request.method === "POST" && path === "/auth/email/request") {
-      return await requestEmailLogin(request, env, cors);
-    }
-
-    if (request.method === "POST" && path === "/auth/email/verify") {
-      return await verifyEmailLogin(request, env, cors);
-    }
-
-    if (request.method === "POST" && path === "/auth/email/register/request") {
-      return await requestEmailRegistration(request, env, cors);
-    }
-
-    if (request.method === "POST" && path === "/auth/email/register/verify") {
-      return await verifyEmailRegistration(request, env, cors);
-    }
-
-    if (request.method === "POST" && path === "/auth/email/login") {
-      return await loginWithPassword(request, env, cors);
-    }
 
     if (request.method === "POST" && path === "/api/users/login") {
       return await loginUser(request, env, cors);
@@ -1477,9 +1045,6 @@ async function handleApi(
     }
     if (request.method === "POST" && path === "/api/users/me/nickname") {
       return await updateNickname(request, env, requireUser(user), cors);
-    }
-    if (request.method === "POST" && path === "/api/users/me/password") {
-      return await updatePassword(request, env, requireUser(user), cors);
     }
     if (request.method === "POST" && path === "/api/users/me/favorites") {
       return await toggleFavorite(request, env, requireUser(user), cors);
@@ -1672,6 +1237,33 @@ async function createArtist(
     201,
     cors
   );
+}
+
+async function updateNickname(
+  request: Request,
+  env: Env,
+  user: UserContext,
+  cors: CorsConfig
+): Promise<Response> {
+  const body = await readJson(request);
+  const nicknameRaw = typeof body.nickname === "string" ? body.nickname.trim() : "";
+  if (!nicknameRaw) {
+    throw new HttpError(400, "nickname is required");
+  }
+  if (nicknameRaw.length < 2 || nicknameRaw.length > 20) {
+    throw new HttpError(400, "닉네임은 2자 이상 20자 이하로 입력해주세요.");
+  }
+
+  const updateResult = await env.DB.prepare("UPDATE users SET display_name = ? WHERE id = ?")
+    .bind(nicknameRaw, user.id)
+    .run();
+
+  if (!updateResult.success) {
+    throw new HttpError(500, updateResult.error ?? "닉네임을 저장하지 못했습니다.");
+  }
+
+  user.displayName = nicknameRaw;
+  return jsonResponse({ ...user }, 200, cors);
 }
 
 async function updateArtistProfile(
@@ -2416,291 +2008,15 @@ async function getUserFromHeaders(env: Env, headers: Headers): Promise<UserConte
   if (token.includes(".")) {
     const verified = await verifyGoogleIdToken(env, token);
     if (verified) {
-      return await upsertUser(env, verified.email, null);
+      return await upsertUser(env, verified.email, verified.displayName ?? null);
     }
   }
-  const emailSession = await verifyEmailSession(env, token);
-  if (emailSession) {
-    return await upsertUser(env, emailSession.email, null);
-  }
   return null;
-}
-
-async function verifyEmailSession(env: Env, token: string): Promise<{ email: string } | null> {
-  const tokenHash = await hashValue(token);
-  const session = await env.DB.prepare(
-    "SELECT id, email, expires_at FROM email_sessions WHERE token_hash = ?"
-  )
-    .bind(tokenHash)
-    .first<Pick<EmailSessionRow, "id" | "email" | "expires_at">>();
-  if (!session) {
-    return null;
-  }
-  if (isExpired(session.expires_at)) {
-    await env.DB.prepare("DELETE FROM email_sessions WHERE id = ?")
-      .bind(session.id)
-      .run();
-    return null;
-  }
-  return { email: session.email };
 }
 
 async function loginUser(request: Request, env: Env, cors: CorsConfig): Promise<Response> {
   const user = await getUserFromHeaders(env, request.headers);
   return jsonResponse(requireUser(user), 200, cors);
-}
-
-async function requestEmailLogin(request: Request, env: Env, cors: CorsConfig): Promise<Response> {
-  const body = await readJson(request);
-  const emailRaw = normalizeEmail(body.email);
-  if (!emailRaw) {
-    throw new HttpError(400, "email is required");
-  }
-  if (!EMAIL_PATTERN.test(emailRaw)) {
-    throw new HttpError(400, "email format is invalid");
-  }
-
-  const { code } = await createEmailVerification(env, emailRaw);
-
-  return jsonResponse(
-    {
-      message: "인증 코드가 이메일로 전송되었습니다.",
-      debugCode: code
-    },
-    200,
-    cors
-  );
-}
-
-async function verifyEmailLogin(request: Request, env: Env, cors: CorsConfig): Promise<Response> {
-  const body = await readJson(request);
-  const emailRaw = normalizeEmail(body.email);
-  const codeRaw = typeof body.code === "string" ? body.code.trim() : "";
-  if (!emailRaw || !codeRaw) {
-    throw new HttpError(400, "email and code are required");
-  }
-
-  await verifyAndConsumeEmailCode(env, emailRaw, codeRaw);
-
-  const { token, expiresAt } = await createEmailSession(env, emailRaw);
-
-  const user = await upsertUser(env, emailRaw, null);
-
-  return jsonResponse(
-    {
-      token,
-      expiresAt,
-      user
-    },
-    200,
-    cors
-  );
-}
-
-async function requestEmailRegistration(request: Request, env: Env, cors: CorsConfig): Promise<Response> {
-  const body = await readJson(request);
-  const emailRaw = normalizeEmail(body.email);
-  if (!emailRaw) {
-    throw new HttpError(400, "email is required");
-  }
-  if (!EMAIL_PATTERN.test(emailRaw)) {
-    throw new HttpError(400, "email format is invalid");
-  }
-
-  await createEmailVerification(env, emailRaw);
-
-  return jsonResponse(
-    {
-      success: true
-    },
-    200,
-    cors
-  );
-}
-
-async function verifyEmailRegistration(request: Request, env: Env, cors: CorsConfig): Promise<Response> {
-  const body = await readJson(request);
-  const emailRaw = normalizeEmail(body.email);
-  const codeRaw = typeof body.code === "string" ? body.code.trim() : "";
-  const passwordRaw = typeof body.password === "string" ? body.password : "";
-  const confirmRaw = typeof body.passwordConfirm === "string" ? body.passwordConfirm : "";
-
-  if (!emailRaw || !codeRaw) {
-    throw new HttpError(400, "email and code are required");
-  }
-
-  if (!passwordRaw) {
-    throw new HttpError(400, "password is required");
-  }
-
-  if (passwordRaw.length < 8) {
-    throw new HttpError(400, "비밀번호는 8자 이상 입력해주세요.");
-  }
-
-  if (passwordRaw !== confirmRaw) {
-    throw new HttpError(400, "비밀번호 확인이 일치하지 않습니다.");
-  }
-
-  await verifyAndConsumeEmailCode(env, emailRaw, codeRaw);
-
-  const { hash, salt } = await hashPassword(passwordRaw);
-  const user = await upsertUser(env, emailRaw, null);
-  const nowIso = new Date().toISOString();
-
-  const updateResult = await env.DB.prepare(
-    "UPDATE users SET password_hash = ?, password_salt = ?, password_updated_at = ? WHERE id = ?"
-  )
-    .bind(hash, salt, nowIso, user.id)
-    .run();
-
-  if (!updateResult.success) {
-    throw new HttpError(500, updateResult.error ?? "비밀번호를 저장하지 못했습니다.");
-  }
-
-  const { token, expiresAt } = await createEmailSession(env, emailRaw);
-
-  return jsonResponse(
-    {
-      token,
-      expiresAt,
-      user
-    },
-    200,
-    cors
-  );
-}
-
-async function loginWithPassword(request: Request, env: Env, cors: CorsConfig): Promise<Response> {
-  const body = await readJson(request);
-  const emailRaw = normalizeEmail(body.email);
-  const passwordRaw = typeof body.password === "string" ? body.password : "";
-
-  if (!emailRaw || !passwordRaw) {
-    throw new HttpError(400, "email and password are required");
-  }
-
-  const userRow = await env.DB.prepare(
-    "SELECT id, email, display_name, password_hash, password_salt FROM users WHERE email = ?"
-  )
-    .bind(emailRaw)
-    .first<{
-      id: number;
-      email: string;
-      display_name: string | null;
-      password_hash: string | null;
-      password_salt: string | null;
-    }>();
-
-  if (!userRow || !userRow.password_hash || !userRow.password_salt) {
-    throw new HttpError(400, "등록된 계정이 없거나 비밀번호가 설정되지 않았습니다.");
-  }
-
-  const isValid = await verifyPassword(passwordRaw, userRow.password_salt, userRow.password_hash);
-  if (!isValid) {
-    throw new HttpError(401, "이메일 또는 비밀번호가 일치하지 않습니다.");
-  }
-
-  const { token, expiresAt } = await createEmailSession(env, emailRaw);
-  const user: UserContext = {
-    id: userRow.id,
-    email: userRow.email,
-    displayName: userRow.display_name ?? null
-  };
-
-  return jsonResponse(
-    {
-      token,
-      expiresAt,
-      user
-    },
-    200,
-    cors
-  );
-}
-
-async function updateNickname(
-  request: Request,
-  env: Env,
-  user: UserContext,
-  cors: CorsConfig
-): Promise<Response> {
-  const body = await readJson(request);
-  const nicknameRaw = typeof body.nickname === "string" ? body.nickname.trim() : "";
-  if (!nicknameRaw) {
-    throw new HttpError(400, "nickname is required");
-  }
-  if (nicknameRaw.length < 2 || nicknameRaw.length > 20) {
-    throw new HttpError(400, "닉네임은 2자 이상 20자 이하로 입력해주세요.");
-  }
-
-  const updateResult = await env.DB.prepare("UPDATE users SET display_name = ? WHERE id = ?")
-    .bind(nicknameRaw, user.id)
-    .run();
-
-  if (!updateResult.success) {
-    throw new HttpError(500, updateResult.error ?? "닉네임을 저장하지 못했습니다.");
-  }
-
-  user.displayName = nicknameRaw;
-  return jsonResponse({ ...user }, 200, cors);
-}
-
-async function updatePassword(
-  request: Request,
-  env: Env,
-  user: UserContext,
-  cors: CorsConfig
-): Promise<Response> {
-  const body = await readJson(request);
-  const currentPasswordRaw = typeof body.currentPassword === "string" ? body.currentPassword : "";
-  const newPasswordRaw = typeof body.newPassword === "string" ? body.newPassword : "";
-  const confirmPasswordRaw = typeof body.confirmPassword === "string" ? body.confirmPassword : "";
-
-  if (!newPasswordRaw) {
-    throw new HttpError(400, "새 비밀번호를 입력해주세요.");
-  }
-
-  if (newPasswordRaw.length < 8) {
-    throw new HttpError(400, "비밀번호는 8자 이상 입력해주세요.");
-  }
-
-  if (newPasswordRaw !== confirmPasswordRaw) {
-    throw new HttpError(400, "비밀번호 확인이 일치하지 않습니다.");
-  }
-
-  const existing = await env.DB.prepare(
-    "SELECT password_hash, password_salt FROM users WHERE id = ?"
-  )
-    .bind(user.id)
-    .first<{
-      password_hash: string | null;
-      password_salt: string | null;
-    }>();
-
-  if (existing?.password_hash && existing.password_salt) {
-    if (!currentPasswordRaw) {
-      throw new HttpError(400, "현재 비밀번호를 입력해주세요.");
-    }
-    const isValid = await verifyPassword(currentPasswordRaw, existing.password_salt, existing.password_hash);
-    if (!isValid) {
-      throw new HttpError(400, "현재 비밀번호가 일치하지 않습니다.");
-    }
-  }
-
-  const { hash, salt } = await hashPassword(newPasswordRaw);
-  const nowIso = new Date().toISOString();
-
-  const updateResult = await env.DB.prepare(
-    "UPDATE users SET password_hash = ?, password_salt = ?, password_updated_at = ? WHERE id = ?"
-  )
-    .bind(hash, salt, nowIso, user.id)
-    .run();
-
-  if (!updateResult.success) {
-    throw new HttpError(500, updateResult.error ?? "비밀번호를 저장하지 못했습니다.");
-  }
-
-  return jsonResponse({ success: true }, 200, cors);
 }
 
 function requireUser(user: UserContext | null): UserContext {
