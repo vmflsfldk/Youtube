@@ -1470,6 +1470,11 @@ async function handleApi(
     if (request.method === "GET" && path === "/api/artists") {
       return await listArtists(url, env, user, cors);
     }
+    const updateArtistProfileMatch = path.match(/^\/api\/artists\/(\d+)\/profile$/);
+    if (request.method === "PUT" && updateArtistProfileMatch) {
+      const artistId = Number(updateArtistProfileMatch[1]);
+      return await updateArtistProfile(request, env, requireUser(user), cors, artistId);
+    }
     if (request.method === "POST" && path === "/api/users/me/nickname") {
       return await updateNickname(request, env, requireUser(user), cors);
     }
@@ -1667,6 +1672,93 @@ async function createArtist(
     201,
     cors
   );
+}
+
+async function updateArtistProfile(
+  request: Request,
+  env: Env,
+  user: UserContext,
+  cors: CorsConfig,
+  artistIdParam: number
+): Promise<Response> {
+  const artistId = Number(artistIdParam);
+  if (!Number.isFinite(artistId)) {
+    throw new HttpError(400, "artistId must be a number");
+  }
+
+  await ensureArtistUpdatedAtColumn(env.DB);
+  await ensureArtistDisplayNameColumn(env.DB);
+  await ensureArtistProfileImageColumn(env.DB);
+  await ensureArtistChannelTitleColumn(env.DB);
+  await ensureArtistCountryColumns(env.DB);
+  await ensureArtistAgencyColumn(env.DB);
+
+  await ensureArtist(env, artistId, user.id);
+
+  const body = await readJson(request);
+  const agencyRaw = typeof body.agency === "string" ? body.agency : null;
+  const normalizedAgencyValue = agencyRaw ? agencyRaw.trim() : "";
+  const agency = normalizedAgencyValue.length > 0 ? normalizedAgencyValue : null;
+  const tags = sanitizeArtistTags(body.tags);
+
+  const updateResult = await env.DB
+    .prepare("UPDATE artists SET agency = ? WHERE id = ?")
+    .bind(agency, artistId)
+    .run();
+  if (!updateResult.success) {
+    throw new HttpError(500, updateResult.error ?? "Failed to update artist profile");
+  }
+
+  const deleteTagsResult = await env.DB
+    .prepare("DELETE FROM artist_tags WHERE artist_id = ?")
+    .bind(artistId)
+    .run();
+  if (!deleteTagsResult.success) {
+    throw new HttpError(500, deleteTagsResult.error ?? "Failed to update artist tags");
+  }
+
+  for (const tag of tags) {
+    const tagResult = await env.DB
+      .prepare("INSERT OR IGNORE INTO artist_tags (artist_id, tag) VALUES (?, ?)")
+      .bind(artistId, tag)
+      .run();
+    if (!tagResult.success) {
+      console.warn(
+        `[yt-clip] Failed to persist artist tag ${tag} for artist ${artistId}: ${tagResult.error ?? "unknown error"}`
+      );
+    }
+  }
+
+  const artistRow = await env.DB
+    .prepare(
+      `SELECT a.id,
+              a.name,
+              a.display_name,
+              a.youtube_channel_id,
+              a.youtube_channel_title,
+              a.profile_image_url,
+              a.available_ko,
+              a.available_en,
+              a.available_jp,
+              a.agency,
+              GROUP_CONCAT(at.tag, char(31)) AS tags
+         FROM artists a
+         LEFT JOIN artist_tags at ON at.artist_id = a.id
+        WHERE a.id = ?
+     GROUP BY a.id`
+    )
+    .bind(artistId)
+    .first<ArtistQueryRow>();
+
+  if (!artistRow) {
+    throw new HttpError(404, `Artist not found: ${artistId}`);
+  }
+
+  const normalizedRow = normalizeArtistRow(artistRow);
+  const hydratedRow = await refreshArtistMetadataIfNeeded(env, normalizedRow);
+  const responsePayload = toArtistResponse(hydratedRow);
+
+  return jsonResponse(responsePayload, 200, cors);
 }
 
 async function listArtists(
