@@ -12,6 +12,7 @@ public record ArtistResponse(
         boolean availableKo,
         boolean availableEn,
         boolean availableJp,
+        String agency,
         List<String> tags
 ) {
 }
