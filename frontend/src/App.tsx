@@ -460,6 +460,8 @@ type ClipCreationPayload = {
 type ArtistFormState = {
   name: string;
   channelId: string;
+  tags: string;
+  agency: string;
   countries: {
     ko: boolean;
     en: boolean;
@@ -474,6 +476,8 @@ const resolveArtistCountryBadges = (artist: ArtistResponse) =>
 const createInitialArtistFormState = (): ArtistFormState => ({
   name: '',
   channelId: '',
+  tags: '',
+  agency: '',
   countries: {
     ko: true,
     en: false,
@@ -532,6 +536,13 @@ interface ArtistDebugLogEntry {
   request: {
     channelId: string;
     name?: string;
+    agency?: string;
+    tags?: string[];
+    countries?: {
+      ko: boolean;
+      en: boolean;
+      jp: boolean;
+    };
   };
   response?: unknown;
   error?: string;
@@ -808,7 +819,8 @@ export default function App() {
         artist.name,
         artist.displayName,
         artist.youtubeChannelId,
-        artist.youtubeChannelTitle ?? undefined
+        artist.youtubeChannelTitle ?? undefined,
+        typeof artist.agency === 'string' ? artist.agency : undefined
       ]
         .filter((value): value is string => Boolean(value && value.trim()))
         .map((value) => value.toLowerCase());
@@ -1377,6 +1389,8 @@ export default function App() {
     }
     const trimmedName = artistForm.name.trim();
     const trimmedChannelId = artistForm.channelId.trim();
+    const trimmedAgency = artistForm.agency.trim();
+    const parsedTags = parseTags(artistForm.tags);
     const { ko, en, jp } = artistForm.countries;
     const hasCountrySelection = ko || en || jp;
     setArtistPreviewError(null);
@@ -1386,6 +1400,8 @@ export default function App() {
     const requestContext = {
       channelId: trimmedChannelId,
       name: trimmedName,
+      agency: trimmedAgency || undefined,
+      tags: parsedTags,
       countries: { ko, en, jp }
     } as const;
     const candidateChannelIds = new Set<string>();
@@ -1476,7 +1492,9 @@ export default function App() {
           youtubeChannelId: trimmedChannelId,
           availableKo: ko,
           availableEn: en,
-          availableJp: jp
+          availableJp: jp,
+          tags: parsedTags,
+          agency: trimmedAgency
         },
         { headers: authHeaders }
       );
@@ -2195,6 +2213,16 @@ export default function App() {
       artist.displayName || artist.name
     )}`;
     const countryBadges = resolveArtistCountryBadges(artist);
+    const agency = typeof artist.agency === 'string' ? artist.agency.trim() : '';
+    const tags = Array.isArray(artist.tags)
+      ? Array.from(
+          new Set(
+            artist.tags
+              .map((tag) => (typeof tag === 'string' ? tag.trim() : ''))
+              .filter((tag): tag is string => tag.length > 0)
+          )
+        )
+      : [];
     const classNames = ['artist-library__card'];
     if (isActive) {
       classNames.push('selected');
@@ -2256,6 +2284,20 @@ export default function App() {
             {artist.youtubeChannelTitle || artist.youtubeChannelId}
           </span>
         </div>
+        {(agency || tags.length > 0) && (
+          <div className="artist-library__meta">
+            {agency && <span className="artist-library__agency">{agency}</span>}
+            {tags.length > 0 && (
+              <div className="artist-library__tags">
+                {tags.map((tag) => (
+                  <span key={tag} className="artist-tag">
+                    #{tag}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
         {countryBadges.length > 0 && (
           <div className="artist-library__countries">
             {countryBadges.map((badge) => (
@@ -2981,6 +3023,29 @@ export default function App() {
                           required
                           disabled={creationDisabled}
                         />
+                        <div className="artist-registration__field-grid">
+                          <div className="artist-registration__field">
+                            <label htmlFor="artistTags">아티스트 태그</label>
+                            <input
+                              id="artistTags"
+                              placeholder="예: 라이브, 커버"
+                              value={artistForm.tags}
+                              onChange={(event) => setArtistForm((prev) => ({ ...prev, tags: event.target.value }))}
+                              disabled={creationDisabled}
+                            />
+                            <p className="form-hint">콤마(,)로 구분하여 입력하세요.</p>
+                          </div>
+                          <div className="artist-registration__field">
+                            <label htmlFor="artistAgency">소속사</label>
+                            <input
+                              id="artistAgency"
+                              placeholder="소속사 이름"
+                              value={artistForm.agency}
+                              onChange={(event) => setArtistForm((prev) => ({ ...prev, agency: event.target.value }))}
+                              disabled={creationDisabled}
+                            />
+                          </div>
+                        </div>
                         <fieldset className="artist-registration__countries">
                           <legend>서비스 국가</legend>
                           <p className="artist-registration__countries-hint">복수 선택 가능</p>
