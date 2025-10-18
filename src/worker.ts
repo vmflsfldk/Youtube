@@ -34,7 +34,11 @@ interface ArtistResponse {
   youtubeChannelId: string;
   youtubeChannelTitle?: string | null;
   profileImageUrl?: string | null;
+  availableKo: boolean;
+  availableEn: boolean;
+  availableJp: boolean;
   agency?: string | null;
+  tags: string[];
 }
 
 const VIDEO_CONTENT_TYPES = ["OFFICIAL", "CLIP_SOURCE"] as const;
@@ -42,6 +46,8 @@ type VideoContentType = (typeof VIDEO_CONTENT_TYPES)[number];
 
 const VIDEO_CATEGORIES = ["live", "cover", "original"] as const;
 type VideoCategory = (typeof VIDEO_CATEGORIES)[number];
+
+const ARTIST_TAG_DELIMITER = "\u001F";
 
 const isVideoContentType = (value: unknown): value is VideoContentType => {
   if (typeof value !== "string") {
@@ -146,6 +152,34 @@ interface ClipCandidateResponse {
   label: string;
 }
 
+interface ChannelMetadataDebug {
+  input: string;
+  identifier: ReturnType<typeof parseYouTubeChannelIdentifier>;
+  htmlCandidates: string[];
+  attemptedHtml: boolean;
+  attemptedApi: boolean;
+  apiStatus: number | null;
+  usedHtmlFallback: boolean;
+  usedApi: boolean;
+  htmlChannelId: string | null;
+  htmlTitle: string | null;
+  htmlThumbnail: string | null;
+  resolvedChannelId: string | null;
+  warnings: string[];
+  videoFetchAttempted: boolean;
+  videoFetchStatus: number | null;
+  videoFilterKeywords: string[];
+  filteredVideoCount: number;
+  videoFetchError: string | null;
+}
+
+interface ChannelMetadata {
+  title: string | null;
+  profileImageUrl: string | null;
+  channelId: string | null;
+  debug: ChannelMetadataDebug;
+}
+
 interface WorkerTestOverrides {
   fetchVideoMetadata(env: Env, videoId: string): Promise<{
     title: string;
@@ -154,6 +188,7 @@ interface WorkerTestOverrides {
     channelId: string | null;
     description: string | null;
   }>;
+  fetchChannelMetadata(env: Env, channelId: string): Promise<ChannelMetadata>;
   detectFromChapterSources(
     env: Env,
     youtubeVideoId: string,
@@ -165,6 +200,7 @@ interface WorkerTestOverrides {
 
 const testOverrides: WorkerTestOverrides = {
   fetchVideoMetadata,
+  fetchChannelMetadata,
   detectFromChapterSources,
   detectFromDescription,
   detectFromCaptions
@@ -297,7 +333,25 @@ interface ArtistRow {
   youtube_channel_id: string;
   youtube_channel_title: string | null;
   profile_image_url: string | null;
+  available_ko: number | null;
+  available_en: number | null;
+  available_jp: number | null;
   agency: string | null;
+  tags: string[];
+}
+
+interface ArtistQueryRow {
+  id: number;
+  name: string;
+  display_name: string | null;
+  youtube_channel_id: string;
+  youtube_channel_title: string | null;
+  profile_image_url: string | null;
+  available_ko: number | null;
+  available_en: number | null;
+  available_jp: number | null;
+  agency: string | null;
+  tags: string | null;
 }
 
 interface TableInfoRow {
@@ -327,6 +381,7 @@ let hasEnsuredArtistDisplayNameColumn = false;
 let hasEnsuredArtistProfileImageColumn = false;
 let hasEnsuredArtistUpdatedAtColumn = false;
 let hasEnsuredArtistChannelTitleColumn = false;
+let hasEnsuredArtistCountryColumns = false;
 let hasEnsuredArtistAgencyColumn = false;
 let hasEnsuredUserPasswordColumns = false;
 let hasEnsuredVideoContentTypeColumn = false;
@@ -356,6 +411,108 @@ const generateNumericCode = (): string => {
   const buffer = new Uint32Array(1);
   crypto.getRandomValues(buffer);
   return (buffer[0] % 1_000_000).toString().padStart(6, "0");
+};
+
+const sanitizeArtistTags = (value: unknown): string[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const sanitized: string[] = [];
+  const seen = new Set<string>();
+  for (const entry of value) {
+    if (typeof entry !== "string") {
+      continue;
+    }
+    const trimmed = entry.trim();
+    if (!trimmed) {
+      continue;
+    }
+    const normalized = trimmed.slice(0, 255);
+    const key = normalized.toLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    sanitized.push(normalized);
+  }
+  sanitized.sort((a, b) => a.localeCompare(b));
+  return sanitized;
+};
+
+const parseArtistTagList = (value: string | null | undefined): string[] => {
+  if (!value) {
+    return [];
+  }
+  const segments = value.split(ARTIST_TAG_DELIMITER);
+  const seen = new Set<string>();
+  const tags: string[] = [];
+  for (const segment of segments) {
+    const trimmed = segment.trim();
+    if (!trimmed) {
+      continue;
+    }
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    tags.push(trimmed);
+  }
+  tags.sort((a, b) => a.localeCompare(b));
+  return tags;
+};
+
+const toBooleanFlag = (value: number | string | null | undefined): boolean => {
+  if (typeof value === "number") {
+    return value === 1;
+  }
+  if (typeof value === "string") {
+    const normalized = value.trim();
+    if (!normalized) {
+      return false;
+    }
+    const numeric = Number.parseInt(normalized, 10);
+    if (Number.isFinite(numeric)) {
+      return numeric === 1;
+    }
+    return normalized.toLowerCase() === "true";
+  }
+  return false;
+};
+
+const normalizeAvailabilityInput = (value: unknown): number => {
+  if (typeof value === "boolean") {
+    return value ? 1 : 0;
+  }
+  if (typeof value === "number") {
+    return value === 1 ? 1 : 0;
+  }
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (!normalized) {
+      return 0;
+    }
+    if (normalized === "1" || normalized === "true") {
+      return 1;
+    }
+  }
+  return 0;
+};
+
+const normalizeArtistRow = (row: ArtistQueryRow): ArtistRow => {
+  return {
+    id: row.id,
+    name: row.name,
+    display_name: row.display_name,
+    youtube_channel_id: row.youtube_channel_id,
+    youtube_channel_title: row.youtube_channel_title,
+    profile_image_url: row.profile_image_url,
+    available_ko: Number(row.available_ko ?? 0),
+    available_en: Number(row.available_en ?? 0),
+    available_jp: Number(row.available_jp ?? 0),
+    agency: row.agency,
+    tags: parseArtistTagList(row.tags)
+  };
 };
 
 const generateRandomToken = (): string => {
@@ -682,6 +839,33 @@ async function ensureArtistChannelTitleColumn(db: D1Database): Promise<void> {
   }
 
   hasEnsuredArtistChannelTitleColumn = true;
+}
+
+async function ensureArtistCountryColumns(db: D1Database): Promise<void> {
+  if (hasEnsuredArtistCountryColumns) {
+    return;
+  }
+
+  const { results } = await db.prepare("PRAGMA table_info(artists)").all<TableInfoRow>();
+  const columns = new Set((results ?? []).map((column) => column.name?.toLowerCase() ?? ""));
+
+  const operations: Array<{ name: string; sql: string }> = [
+    { name: "available_ko", sql: "ALTER TABLE artists ADD COLUMN available_ko INTEGER NOT NULL DEFAULT 0" },
+    { name: "available_en", sql: "ALTER TABLE artists ADD COLUMN available_en INTEGER NOT NULL DEFAULT 0" },
+    { name: "available_jp", sql: "ALTER TABLE artists ADD COLUMN available_jp INTEGER NOT NULL DEFAULT 0" }
+  ];
+
+  for (const operation of operations) {
+    if (columns.has(operation.name)) {
+      continue;
+    }
+    const alterResult = await db.prepare(operation.sql).run();
+    if (!alterResult.success && !isDuplicateColumnError(alterResult.error)) {
+      throw new Error(alterResult.error ?? `Failed to add ${operation.name} column to artists table`);
+    }
+  }
+
+  hasEnsuredArtistCountryColumns = true;
 }
 
 async function ensureArtistAgencyColumn(db: D1Database): Promise<void> {
@@ -1330,7 +1514,7 @@ async function previewArtist(
     throw new HttpError(400, "youtubeChannelId is required");
   }
 
-  const metadata = await fetchChannelMetadata(env, youtubeChannelId);
+  const metadata = await testOverrides.fetchChannelMetadata(env, youtubeChannelId);
   const resolvedChannelId = metadata.channelId?.trim() || null;
   const filteredVideos = await fetchFilteredChannelUploads(env, resolvedChannelId ?? youtubeChannelId, metadata.debug);
 
@@ -1369,6 +1553,10 @@ async function createArtist(
   const agencyRaw = typeof body.agency === "string" ? body.agency : null;
   const normalizedAgencyValue = agencyRaw ? agencyRaw.trim() : "";
   const agency = normalizedAgencyValue.length > 0 ? normalizedAgencyValue : null;
+  const availableKo = normalizeAvailabilityInput(body.availableKo);
+  const availableEn = normalizeAvailabilityInput(body.availableEn);
+  const availableJp = normalizeAvailabilityInput(body.availableJp);
+  const tags = sanitizeArtistTags(body.tags);
   if (!name) {
     throw new HttpError(400, "name is required");
   }
@@ -1380,9 +1568,10 @@ async function createArtist(
   await ensureArtistDisplayNameColumn(env.DB);
   await ensureArtistProfileImageColumn(env.DB);
   await ensureArtistChannelTitleColumn(env.DB);
+  await ensureArtistCountryColumns(env.DB);
   await ensureArtistAgencyColumn(env.DB);
 
-  const metadata = await fetchChannelMetadata(env, youtubeChannelId);
+  const metadata = await testOverrides.fetchChannelMetadata(env, youtubeChannelId);
   const resolvedChannelId = metadata.channelId?.trim() || youtubeChannelId;
   const displayName = displayNameRaw.trim() || metadata.title || name;
   const profileImageUrl = metadata.profileImageUrl;
@@ -1400,9 +1589,19 @@ async function createArtist(
   }
 
   const insertResult = await env.DB.prepare(
-    "INSERT INTO artists (name, display_name, youtube_channel_id, youtube_channel_title, agency, created_by) VALUES (?, ?, ?, ?, ?, ?)"
+    "INSERT INTO artists (name, display_name, youtube_channel_id, youtube_channel_title, available_ko, available_en, available_jp, agency, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
   )
-    .bind(name, displayName, resolvedChannelId, channelTitle, agency, user.id)
+    .bind(
+      name,
+      displayName,
+      resolvedChannelId,
+      channelTitle,
+      availableKo,
+      availableEn,
+      availableJp,
+      agency,
+      user.id
+    )
     .run();
   if (!insertResult.success) {
     throw new HttpError(500, insertResult.error ?? "Failed to insert artist");
@@ -1424,6 +1623,20 @@ async function createArtist(
     }
   }
 
+  if (tags.length > 0) {
+    for (const tag of tags) {
+      const tagResult = await env.DB
+        .prepare("INSERT OR IGNORE INTO artist_tags (artist_id, tag) VALUES (?, ?)")
+        .bind(artistId, tag)
+        .run();
+      if (!tagResult.success) {
+        console.warn(
+          `[yt-clip] Failed to persist artist tag ${tag} for artist ${artistId}: ${tagResult.error ?? "unknown error"}`
+        );
+      }
+    }
+  }
+
   return jsonResponse(
     {
       id: artistId,
@@ -1432,7 +1645,11 @@ async function createArtist(
       youtubeChannelId: resolvedChannelId,
       youtubeChannelTitle: channelTitle,
       profileImageUrl: finalProfileImageUrl,
-      agency
+      availableKo: availableKo === 1,
+      availableEn: availableEn === 1,
+      availableJp: availableJp === 1,
+      agency,
+      tags
     } satisfies ArtistResponse,
     201,
     cors
@@ -1450,29 +1667,54 @@ async function listArtists(
   await ensureArtistDisplayNameColumn(env.DB);
   await ensureArtistProfileImageColumn(env.DB);
   await ensureArtistChannelTitleColumn(env.DB);
+  await ensureArtistCountryColumns(env.DB);
   await ensureArtistAgencyColumn(env.DB);
-  let results: ArtistRow[] | null | undefined;
+  let results: ArtistQueryRow[] | null | undefined;
   if (mine) {
     const requestingUser = requireUser(user);
     const response = await env.DB.prepare(
-      `SELECT a.id, a.name, a.display_name, a.youtube_channel_id, a.youtube_channel_title, a.profile_image_url, a.agency
+      `SELECT a.id,
+              a.name,
+              a.display_name,
+              a.youtube_channel_id,
+              a.youtube_channel_title,
+              a.profile_image_url,
+              a.available_ko,
+              a.available_en,
+              a.available_jp,
+              a.agency,
+              GROUP_CONCAT(at.tag, char(31)) AS tags
          FROM artists a
          JOIN user_favorite_artists ufa ON ufa.artist_id = a.id
+         LEFT JOIN artist_tags at ON at.artist_id = a.id
         WHERE ufa.user_id = ?
+     GROUP BY a.id
         ORDER BY a.name`
     )
       .bind(requestingUser.id)
-      .all<ArtistRow>();
+      .all<ArtistQueryRow>();
     results = response.results;
   } else {
     const response = await env.DB.prepare(
-      `SELECT id, name, display_name, youtube_channel_id, youtube_channel_title, profile_image_url, agency
-         FROM artists
-        ORDER BY id DESC`
-    ).all<ArtistRow>();
+      `SELECT a.id,
+              a.name,
+              a.display_name,
+              a.youtube_channel_id,
+              a.youtube_channel_title,
+              a.profile_image_url,
+              a.available_ko,
+              a.available_en,
+              a.available_jp,
+              a.agency,
+              GROUP_CONCAT(at.tag, char(31)) AS tags
+         FROM artists a
+         LEFT JOIN artist_tags at ON at.artist_id = a.id
+     GROUP BY a.id
+        ORDER BY a.id DESC`
+    ).all<ArtistQueryRow>();
     results = response.results;
   }
-  const rows = results ?? [];
+  const rows = (results ?? []).map(normalizeArtistRow);
   const hydrated = await Promise.all(rows.map((row) => refreshArtistMetadataIfNeeded(env, row)));
   const artists = hydrated.map(toArtistResponse);
   return jsonResponse(artists, 200, cors);
@@ -2433,7 +2675,7 @@ async function refreshArtistMetadataIfNeeded(env: Env, row: ArtistRow): Promise<
     return row;
   }
 
-  const metadata = await fetchChannelMetadata(env, channelId);
+  const metadata = await testOverrides.fetchChannelMetadata(env, channelId);
 
   const assignments: string[] = [];
   const values: unknown[] = [];
@@ -2497,7 +2739,11 @@ function toArtistResponse(row: ArtistRow): ArtistResponse {
     youtubeChannelId: row.youtube_channel_id,
     youtubeChannelTitle: row.youtube_channel_title ?? null,
     profileImageUrl: row.profile_image_url ?? null,
-    agency: row.agency ?? null
+    availableKo: toBooleanFlag(row.available_ko),
+    availableEn: toBooleanFlag(row.available_en),
+    availableJp: toBooleanFlag(row.available_jp),
+    agency: row.agency ?? null,
+    tags: row.tags ?? []
   };
 }
 
@@ -3240,34 +3486,6 @@ type ChannelUploadVideo = {
   thumbnailUrl: string | null;
   publishedAt: string | null;
 };
-
-interface ChannelMetadataDebug {
-  input: string;
-  identifier: ReturnType<typeof parseYouTubeChannelIdentifier>;
-  htmlCandidates: string[];
-  attemptedHtml: boolean;
-  attemptedApi: boolean;
-  apiStatus: number | null;
-  usedHtmlFallback: boolean;
-  usedApi: boolean;
-  htmlChannelId: string | null;
-  htmlTitle: string | null;
-  htmlThumbnail: string | null;
-  resolvedChannelId: string | null;
-  warnings: string[];
-  videoFetchAttempted: boolean;
-  videoFetchStatus: number | null;
-  videoFilterKeywords: string[];
-  filteredVideoCount: number;
-  videoFetchError: string | null;
-}
-
-interface ChannelMetadata {
-  title: string | null;
-  profileImageUrl: string | null;
-  channelId: string | null;
-  debug: ChannelMetadataDebug;
-}
 
 async function fetchChannelMetadata(env: Env, channelId: string): Promise<ChannelMetadata> {
   const trimmedChannelId = channelId.trim();
@@ -4062,6 +4280,9 @@ export function __setWorkerTestOverrides(overrides: Partial<WorkerTestOverrides>
   if (overrides.fetchVideoMetadata) {
     testOverrides.fetchVideoMetadata = overrides.fetchVideoMetadata;
   }
+  if (overrides.fetchChannelMetadata) {
+    testOverrides.fetchChannelMetadata = overrides.fetchChannelMetadata;
+  }
   if (overrides.detectFromChapterSources) {
     testOverrides.detectFromChapterSources = overrides.detectFromChapterSources;
   }
@@ -4075,12 +4296,14 @@ export function __setWorkerTestOverrides(overrides: Partial<WorkerTestOverrides>
 
 export function __resetWorkerTestState(): void {
   testOverrides.fetchVideoMetadata = fetchVideoMetadata;
+  testOverrides.fetchChannelMetadata = fetchChannelMetadata;
   testOverrides.detectFromChapterSources = detectFromChapterSources;
   testOverrides.detectFromDescription = detectFromDescription;
   testOverrides.detectFromCaptions = detectFromCaptions;
   hasEnsuredArtistDisplayNameColumn = false;
   hasEnsuredArtistProfileImageColumn = false;
   hasEnsuredArtistChannelTitleColumn = false;
+  hasEnsuredArtistCountryColumns = false;
   hasEnsuredArtistAgencyColumn = false;
   hasEnsuredVideoContentTypeColumn = false;
   hasEnsuredVideoHiddenColumn = false;
@@ -4091,6 +4314,7 @@ export function __setHasEnsuredVideoColumnsForTests(value: boolean): void {
   hasEnsuredArtistDisplayNameColumn = value;
   hasEnsuredArtistProfileImageColumn = value;
   hasEnsuredArtistChannelTitleColumn = value;
+  hasEnsuredArtistCountryColumns = value;
   hasEnsuredArtistAgencyColumn = value;
   hasEnsuredVideoContentTypeColumn = value;
   hasEnsuredVideoHiddenColumn = value;
@@ -4100,5 +4324,7 @@ export function __setHasEnsuredVideoColumnsForTests(value: boolean): void {
 export {
   suggestClipCandidates as __suggestClipCandidatesForTests,
   getOrCreateVideoByUrl as __getOrCreateVideoByUrlForTests,
-  listMediaLibrary as __listMediaLibraryForTests
+  listMediaLibrary as __listMediaLibraryForTests,
+  createArtist as __createArtistForTests,
+  listArtists as __listArtistsForTests
 };
