@@ -1,9 +1,9 @@
 package com.example.youtube.controller;
 
 import com.example.youtube.config.UserRequestInterceptor;
+import com.example.youtube.dto.ArtistProfileRequest;
 import com.example.youtube.dto.ArtistRequest;
 import com.example.youtube.dto.ArtistResponse;
-import com.example.youtube.dto.ArtistTagRequest;
 import com.example.youtube.dto.FavoriteToggleRequest;
 import com.example.youtube.model.UserAccount;
 import com.example.youtube.service.ArtistService;
@@ -48,11 +48,11 @@ public class ArtistController {
         return artistService.listAll();
     }
 
-    @PutMapping("/artists/{artistId}/tags")
-    public ArtistResponse updateTags(@PathVariable Long artistId,
-                                     @Valid @RequestBody ArtistTagRequest request,
-                                     @RequestAttribute(UserRequestInterceptor.CURRENT_USER_ATTR) UserAccount user) {
-        return artistService.updateTags(artistId, request.tags(), user);
+    @PutMapping("/artists/{artistId}/profile")
+    public ArtistResponse updateProfile(@PathVariable Long artistId,
+                                        @Valid @RequestBody ArtistProfileRequest request,
+                                        @RequestAttribute(UserRequestInterceptor.CURRENT_USER_ATTR) UserAccount user) {
+        return artistService.updateProfile(artistId, request.tags(), request.agency(), user);
     }
 
     @GetMapping("/artists/search")

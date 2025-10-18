@@ -385,6 +385,30 @@ interface ArtistResponse {
   tags: string[];
 }
 
+type ArtistProfileFormState = {
+  agency: string;
+  tags: string;
+};
+
+const formatArtistTagsForInput = (
+  tags: ArtistResponse['tags'] | null | undefined
+): string => {
+  if (!Array.isArray(tags)) {
+    return '';
+  }
+  const normalized = tags
+    .map((tag) => (typeof tag === 'string' ? tag.trim() : ''))
+    .filter((tag): tag is string => tag.length > 0);
+  return Array.from(new Set(normalized)).join(', ');
+};
+
+const createArtistProfileFormState = (
+  artist: ArtistResponse | null | undefined
+): ArtistProfileFormState => ({
+  agency: typeof artist?.agency === 'string' ? artist.agency : '',
+  tags: formatArtistTagsForInput(artist?.tags)
+});
+
 interface VideoSectionResponse {
   title: string;
   startSec: number;
@@ -706,6 +730,14 @@ export default function App() {
   const [artistForm, setArtistForm] = useState<ArtistFormState>(() => createInitialArtistFormState());
   const [artistSearchQuery, setArtistSearchQuery] = useState('');
   const [artistTagQuery, setArtistTagQuery] = useState('');
+  const [artistProfileForm, setArtistProfileForm] = useState<ArtistProfileFormState>(() =>
+    createArtistProfileFormState(null)
+  );
+  const [artistProfileStatus, setArtistProfileStatus] = useState<
+    { type: 'success' | 'error'; message: string }
+  | null
+  >(null);
+  const [isArtistProfileSaving, setArtistProfileSaving] = useState(false);
   const [videoForm, setVideoForm] = useState({ url: '', artistId: '', description: '', captionsJson: '' });
   const [clipForm, setClipForm] = useState<ClipFormState>(() => createInitialClipFormState());
   const autoDetectInFlightRef = useRef(false);
@@ -2357,6 +2389,11 @@ export default function App() {
   const selectedArtistId = selectedArtist?.id ?? null;
 
   useEffect(() => {
+    setArtistProfileForm(createArtistProfileFormState(selectedArtist));
+    setArtistProfileStatus(null);
+  }, [selectedArtist]);
+
+  useEffect(() => {
     setActiveLibraryView('videoList');
     setArtistRegistrationOpen(false);
   }, [selectedArtistId]);
@@ -2386,6 +2423,45 @@ export default function App() {
     setActiveLibraryView('clipList');
     scrollToSectionWithFrame(clipListSectionRef);
   }, [setActiveLibraryView, scrollToSectionWithFrame]);
+  const handleArtistProfileReset = useCallback(() => {
+    if (!selectedArtist) {
+      setArtistProfileForm(createArtistProfileFormState(null));
+      setArtistProfileStatus(null);
+      return;
+    }
+    setArtistProfileForm(createArtistProfileFormState(selectedArtist));
+    setArtistProfileStatus(null);
+  }, [selectedArtist]);
+  const handleArtistProfileSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!selectedArtistId || creationDisabled) {
+      return;
+    }
+    const trimmedAgency = artistProfileForm.agency.trim();
+    const parsedTags = parseTags(artistProfileForm.tags);
+    setArtistProfileSaving(true);
+    setArtistProfileStatus(null);
+    try {
+      const response = await http.put<ArtistResponse>(
+        `/artists/${selectedArtistId}/profile`,
+        {
+          agency: trimmedAgency.length > 0 ? trimmedAgency : null,
+          tags: parsedTags
+        },
+        { headers: authHeaders }
+      );
+      setArtists((previous) =>
+        previous.map((artist) => (artist.id === response.data.id ? response.data : artist))
+      );
+      setArtistProfileForm(createArtistProfileFormState(response.data));
+      setArtistProfileStatus({ type: 'success', message: '아티스트 정보가 저장되었습니다.' });
+    } catch (error) {
+      const message = extractAxiosErrorMessage(error, '아티스트 정보를 저장하지 못했습니다.');
+      setArtistProfileStatus({ type: 'error', message });
+    } finally {
+      setArtistProfileSaving(false);
+    }
+  };
   const handleClipCardToggle = useCallback((clip: ClipResponse) => {
     if (!clip.youtubeVideoId) {
       return;
@@ -3383,6 +3459,76 @@ export default function App() {
                           <span className="artist-library__action-hint">로그인 후 등록할 수 있습니다.</span>
                         )}
                       </div>
+                      <section className="artist-library__detail-section">
+                        <div className="artist-library__section-header">
+                          <h4>아티스트 정보</h4>
+                          <span className="artist-library__status">
+                            {isArtistProfileSaving ? '저장 중...' : '소속사와 태그를 관리하세요.'}
+                          </span>
+                        </div>
+                        <form
+                          onSubmit={handleArtistProfileSubmit}
+                          className="stacked-form artist-library__form"
+                        >
+                          <label htmlFor="artistDetailAgency">소속사</label>
+                          <input
+                            id="artistDetailAgency"
+                            placeholder="소속사를 입력하세요"
+                            value={artistProfileForm.agency}
+                            onChange={(event) => {
+                              setArtistProfileForm((prev) => ({
+                                ...prev,
+                                agency: event.target.value
+                              }));
+                              setArtistProfileStatus(null);
+                            }}
+                            disabled={creationDisabled || isArtistProfileSaving}
+                          />
+                          <label htmlFor="artistDetailTags">태그 (쉼표로 구분)</label>
+                          <input
+                            id="artistDetailTags"
+                            placeholder="예: 라이브, 커버"
+                            value={artistProfileForm.tags}
+                            onChange={(event) => {
+                              setArtistProfileForm((prev) => ({
+                                ...prev,
+                                tags: event.target.value
+                              }));
+                              setArtistProfileStatus(null);
+                            }}
+                            disabled={creationDisabled || isArtistProfileSaving}
+                          />
+                          <p className="form-hint">쉼표로 구분해 태그를 입력하세요.</p>
+                          {artistProfileStatus && (
+                            <p
+                              className={`login-status__message${
+                                artistProfileStatus.type === 'error' ? ' error' : ''
+                              }`}
+                              role={artistProfileStatus.type === 'error' ? 'alert' : 'status'}
+                            >
+                              {artistProfileStatus.message}
+                            </p>
+                          )}
+                          <div className="artist-library__form-actions">
+                            <button
+                              type="submit"
+                              disabled={creationDisabled || isArtistProfileSaving}
+                            >
+                              {isArtistProfileSaving ? '저장 중...' : '정보 저장'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleArtistProfileReset}
+                              disabled={isArtistProfileSaving || !selectedArtist}
+                            >
+                              되돌리기
+                            </button>
+                          </div>
+                          {creationDisabled && (
+                            <p className="form-hint">로그인 후 수정할 수 있습니다.</p>
+                          )}
+                        </form>
+                      </section>
                       {isLibraryMediaFormOpen && selectedArtist && (
                         <section className="artist-library__detail-section artist-library__form-section">
                           <div className="artist-library__section-header">

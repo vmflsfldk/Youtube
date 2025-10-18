@@ -1746,6 +1746,17 @@ button:disabled:hover {
   color: var(--color-text-muted);
 }
 
+.artist-library__form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.artist-library__form-actions button {
+  flex: 0 0 auto;
+}
+
 .artist-library__empty {
   margin: 0;
   padding: 16px;
