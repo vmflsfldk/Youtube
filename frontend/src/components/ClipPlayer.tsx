@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import YouTube, { YouTubePlayer, YouTubeProps } from 'react-youtube';
 
 interface ClipPlayerProps {
@@ -13,7 +13,18 @@ type YouTubeStateChangeEvent = Parameters<NonNullable<YouTubeProps['onStateChang
 
 export default function ClipPlayer({ youtubeVideoId, startSec, endSec, autoplay = true }: ClipPlayerProps) {
   const playerRef = useRef<YouTubePlayer | null>(null);
-  const playerOrigin = typeof window !== 'undefined' ? window.location.origin : undefined;
+  const { playerOrigin, playerReferrer } = useMemo(() => {
+    if (typeof window === 'undefined') {
+      return { playerOrigin: undefined, playerReferrer: undefined };
+    }
+
+    const { origin, href } = window.location;
+
+    return {
+      playerOrigin: origin,
+      playerReferrer: href
+    };
+  }, []);
 
   const loadSegment = useCallback(
     (player: YouTubePlayer) => {
@@ -24,13 +35,17 @@ export default function ClipPlayer({ youtubeVideoId, startSec, endSec, autoplay 
       if (typeof endSec === 'number' && Number.isFinite(endSec)) {
         config.endSeconds = endSec;
       }
+      if (playerOrigin) {
+        player.setOption('origin', playerOrigin);
+      }
+
       if (autoplay) {
         player.loadVideoById(config);
       } else {
         player.cueVideoById(config);
       }
     },
-    [youtubeVideoId, startSec, endSec, autoplay]
+    [youtubeVideoId, startSec, endSec, autoplay, playerOrigin]
   );
 
   const handleReady = useCallback<NonNullable<YouTubeProps['onReady']>>(
@@ -60,12 +75,14 @@ export default function ClipPlayer({ youtubeVideoId, startSec, endSec, autoplay 
     <YouTube
       videoId={youtubeVideoId}
       opts={{
+        host: 'https://www.youtube.com',
         playerVars: {
           autoplay: autoplay ? 1 : 0,
           controls: 1,
           start: startSec,
           ...(typeof endSec === 'number' && Number.isFinite(endSec) ? { end: endSec } : {}),
-          ...(playerOrigin ? { origin: playerOrigin } : {})
+          ...(playerOrigin ? { origin: playerOrigin } : {}),
+          ...(playerReferrer ? { widget_referrer: playerReferrer } : {})
         }
       }}
       onReady={handleReady}
