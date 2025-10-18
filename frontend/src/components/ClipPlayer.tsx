@@ -13,6 +13,7 @@ type YouTubeStateChangeEvent = Parameters<NonNullable<YouTubeProps['onStateChang
 
 export default function ClipPlayer({ youtubeVideoId, startSec, endSec, autoplay = true }: ClipPlayerProps) {
   const playerRef = useRef<YouTubePlayer | null>(null);
+  const playerOrigin = typeof window !== 'undefined' ? window.location.origin : undefined;
 
   const loadSegment = useCallback(
     (player: YouTubePlayer) => {
@@ -63,7 +64,8 @@ export default function ClipPlayer({ youtubeVideoId, startSec, endSec, autoplay 
           autoplay: autoplay ? 1 : 0,
           controls: 1,
           start: startSec,
-          ...(typeof endSec === 'number' && Number.isFinite(endSec) ? { end: endSec } : {})
+          ...(typeof endSec === 'number' && Number.isFinite(endSec) ? { end: endSec } : {}),
+          ...(playerOrigin ? { origin: playerOrigin } : {})
         }
       }}
       onReady={handleReady}
