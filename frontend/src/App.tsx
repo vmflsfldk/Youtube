@@ -730,6 +730,8 @@ export default function App() {
   const [artistForm, setArtistForm] = useState<ArtistFormState>(() => createInitialArtistFormState());
   const [artistSearchQuery, setArtistSearchQuery] = useState('');
   const [artistTagQuery, setArtistTagQuery] = useState('');
+  const [artistCountryFilter, setArtistCountryFilter] = useState<'all' | ArtistCountryKey>('all');
+  const [artistAgencyFilter, setArtistAgencyFilter] = useState('all');
   const [artistProfileForm, setArtistProfileForm] = useState<ArtistProfileFormState>(() =>
     createArtistProfileFormState(null)
   );
@@ -839,10 +841,48 @@ export default function App() {
     return artistPreview.data.videos.slice(0, 12);
   }, [artistPreview]);
 
+  const artistAgencies = useMemo(() => {
+    const agencies = new Map<string, string>();
+    artists.forEach((artist) => {
+      if (typeof artist.agency === 'string') {
+        const trimmed = artist.agency.trim();
+        if (!trimmed) {
+          return;
+        }
+        const normalized = trimmed.toLowerCase();
+        if (!agencies.has(normalized)) {
+          agencies.set(normalized, trimmed);
+        }
+      }
+    });
+    return Array.from(agencies.values()).sort((a, b) => a.localeCompare(b));
+  }, [artists]);
+
+  useEffect(() => {
+    if (artistAgencyFilter === 'all') {
+      return;
+    }
+    const normalizedFilter = artistAgencyFilter.trim().toLowerCase();
+    const hasAgency = artistAgencies.some(
+      (agency) => agency.trim().toLowerCase() === normalizedFilter
+    );
+    if (!hasAgency) {
+      setArtistAgencyFilter('all');
+    }
+  }, [artistAgencyFilter, artistAgencies]);
+
   const filteredArtists = useMemo((): ArtistResponse[] => {
     const nameQuery = artistSearchQuery.trim().toLowerCase();
     const tagQuery = artistTagQuery.trim().toLowerCase();
-    if (!nameQuery && !tagQuery) {
+    const normalizedAgencyFilter =
+      artistAgencyFilter === 'all' ? null : artistAgencyFilter.trim().toLowerCase();
+
+    if (
+      !nameQuery &&
+      !tagQuery &&
+      artistCountryFilter === 'all' &&
+      !normalizedAgencyFilter
+    ) {
       return artists;
     }
 
@@ -862,10 +902,20 @@ export default function App() {
 
       const matchesName = !nameQuery || searchableFields.some((value) => value.includes(nameQuery));
       const matchesTag = !tagQuery || tags.some((tag) => tag.includes(tagQuery));
+      const matchesCountry = artistCountryFilter === 'all' || Boolean(artist[artistCountryFilter]);
+      const agencyValue =
+        typeof artist.agency === 'string' ? artist.agency.trim().toLowerCase() : '';
+      const matchesAgency = !normalizedAgencyFilter || agencyValue === normalizedAgencyFilter;
 
-      return matchesName && matchesTag;
+      return matchesName && matchesTag && matchesCountry && matchesAgency;
     });
-  }, [artistSearchQuery, artistTagQuery, artists]);
+  }, [
+    artistSearchQuery,
+    artistTagQuery,
+    artistCountryFilter,
+    artistAgencyFilter,
+    artists
+  ]);
 
   const previewVideoKeywords = useMemo(() => {
     const rawKeywords = artistPreview?.data?.debug?.videoFilterKeywords ?? [];
@@ -3410,6 +3460,40 @@ export default function App() {
                           </button>
                         )}
                       </div>
+                    </div>
+                  </div>
+                  <div className="artist-directory__filter-group">
+                    <div className="artist-directory__filter">
+                      <label htmlFor="artistCountryFilter">서비스 국가</label>
+                      <select
+                        id="artistCountryFilter"
+                        value={artistCountryFilter}
+                        onChange={(event) =>
+                          setArtistCountryFilter(event.target.value as 'all' | ArtistCountryKey)
+                        }
+                      >
+                        <option value="all">전체</option>
+                        {ARTIST_COUNTRY_METADATA.map((country) => (
+                          <option key={country.key} value={country.key}>
+                            {country.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="artist-directory__filter">
+                      <label htmlFor="artistAgencyFilter">소속사</label>
+                      <select
+                        id="artistAgencyFilter"
+                        value={artistAgencyFilter}
+                        onChange={(event) => setArtistAgencyFilter(event.target.value)}
+                      >
+                        <option value="all">전체</option>
+                        {artistAgencies.map((agency) => (
+                          <option key={agency} value={agency}>
+                            {agency}
+                          </option>
+                        ))}
+                      </select>
                     </div>
                   </div>
                 </div>
