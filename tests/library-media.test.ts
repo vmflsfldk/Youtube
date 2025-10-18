@@ -38,6 +38,10 @@ type ArtistRecord = {
   youtube_channel_id: string;
   youtube_channel_title: string | null;
   profile_image_url: string | null;
+  available_ko: number;
+  available_en: number;
+  available_jp: number;
+  agency: string | null;
 };
 
 type VideoRecord = {
@@ -191,7 +195,11 @@ test("listMediaLibrary returns media and clips for requesting user", async () =>
         display_name: "Artist 1",
         youtube_channel_id: "chan-1",
         youtube_channel_title: "Channel One",
-        profile_image_url: "https://example.com/artist1.png"
+        profile_image_url: "https://example.com/artist1.png",
+        available_ko: 1,
+        available_en: 1,
+        available_jp: 0,
+        agency: "Agency One"
       },
       {
         id: 20,
@@ -200,7 +208,11 @@ test("listMediaLibrary returns media and clips for requesting user", async () =>
         display_name: "Other",
         youtube_channel_id: "chan-2",
         youtube_channel_title: "Channel Two",
-        profile_image_url: "https://example.com/artist2.png"
+        profile_image_url: "https://example.com/artist2.png",
+        available_ko: 0,
+        available_en: 1,
+        available_jp: 1,
+        agency: null
       }
     ],
     [
