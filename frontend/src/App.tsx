@@ -12,7 +12,6 @@ import {
 import axios from 'axios';
 import ClipPlayer from './components/ClipPlayer';
 import GoogleLoginButton from './components/GoogleLoginButton';
-import SignupPopup from './components/SignupPopup';
 
 type MaybeArray<T> =
   | T[]
@@ -590,7 +589,7 @@ const normalizeClip = (clip: ClipLike): ClipResponse => {
   };
 };
 
-type SectionKey = 'library' | 'playlist' | 'mypage';
+type SectionKey = 'library' | 'playlist';
 
 const allowCrossOriginApi = String(import.meta.env.VITE_ALLOW_CROSS_ORIGIN_API ?? '')
   .toLowerCase()
@@ -647,12 +646,6 @@ const http = axios.create({
   baseURL: resolveApiBaseUrl()
 });
 
-const resolveAuthBaseUrl = () => resolveApiBaseUrl().replace(/\/api$/, '/auth');
-
-const authHttp = axios.create({
-  baseURL: resolveAuthBaseUrl()
-});
-
 interface GoogleIdTokenPayload {
   email?: string;
   name?: string;
@@ -665,8 +658,6 @@ interface UserResponse {
   email: string;
   displayName: string | null;
 }
-
-type EmailRegisterPhase = 'idle' | 'code-sent';
 
 const decodeGoogleToken = (token: string): GoogleIdTokenPayload | null => {
   try {
@@ -779,9 +770,6 @@ export default function App() {
   const [autoDetectMode, setAutoDetectMode] = useState('chapters');
   const [isArtistVideosLoading, setArtistVideosLoading] = useState(false);
   const [isGoogleReady, setIsGoogleReady] = useState(false);
-  const [emailRegisterEmail, setEmailRegisterEmail] = useState('');
-  const [emailRegisterCode, setEmailRegisterCode] = useState('');
-  const [emailRegisterPassword, setEmailRegisterPassword] = useState('');
   const [artistPreview, setArtistPreview] = useState<{
     inputChannel: string;
     data: ArtistPreviewResponse;
@@ -963,21 +951,6 @@ export default function App() {
     }
     return `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
   }, []);
-  const [emailRegisterPasswordConfirm, setEmailRegisterPasswordConfirm] = useState('');
-  const [emailRegisterPhase, setEmailRegisterPhase] = useState<EmailRegisterPhase>('idle');
-  const [emailRegisterMessage, setEmailRegisterMessage] = useState<string | null>(null);
-  const [emailRegisterError, setEmailRegisterError] = useState<string | null>(null);
-  const [emailRegisterDebugCode, setEmailRegisterDebugCode] = useState<string | null>(null);
-  const [passwordLoginEmail, setPasswordLoginEmail] = useState('');
-  const [passwordLoginPassword, setPasswordLoginPassword] = useState('');
-  const [passwordLoginMessage, setPasswordLoginMessage] = useState<string | null>(null);
-  const [passwordLoginError, setPasswordLoginError] = useState<string | null>(null);
-  const [isSignupPopupOpen, setSignupPopupOpen] = useState(false);
-  const [passwordChangeCurrent, setPasswordChangeCurrent] = useState('');
-  const [passwordChangeNew, setPasswordChangeNew] = useState('');
-  const [passwordChangeConfirm, setPasswordChangeConfirm] = useState('');
-  const [passwordChangeStatus, setPasswordChangeStatus] = useState<string | null>(null);
-  const [passwordChangeError, setPasswordChangeError] = useState<string | null>(null);
   const [nicknameInput, setNicknameInput] = useState('');
   const [nicknameStatus, setNicknameStatus] = useState<string | null>(null);
   const [nicknameError, setNicknameError] = useState<string | null>(null);
@@ -993,28 +966,6 @@ export default function App() {
     };
     return headers;
   }, [authToken]);
-
-  const closeSignupPopup = useCallback(() => {
-    setSignupPopupOpen(false);
-    setEmailRegisterPhase('idle');
-    setEmailRegisterCode('');
-    setEmailRegisterPassword('');
-    setEmailRegisterPasswordConfirm('');
-    setEmailRegisterMessage(null);
-    setEmailRegisterError(null);
-    setEmailRegisterDebugCode(null);
-  }, []);
-
-  const openSignupPopup = useCallback(() => {
-    setEmailRegisterPhase('idle');
-    setEmailRegisterMessage(null);
-    setEmailRegisterError(null);
-    setEmailRegisterDebugCode(null);
-    setEmailRegisterCode('');
-    setEmailRegisterPassword('');
-    setEmailRegisterPasswordConfirm('');
-    setSignupPopupOpen(true);
-  }, []);
 
   const isAuthenticated = Boolean(authToken && currentUser);
   const creationDisabled = !isAuthenticated;
@@ -1047,24 +998,19 @@ export default function App() {
       return;
     }
     setAuthToken(credential);
-    setEmailRegisterPhase('idle');
-    setEmailRegisterMessage(null);
-    setEmailRegisterError(null);
-    setEmailRegisterDebugCode(null);
-    setEmailRegisterCode('');
-    setEmailRegisterPassword('');
-    setEmailRegisterPasswordConfirm('');
-    setPasswordLoginMessage(null);
-    setPasswordLoginError(null);
+    setNicknameStatus(null);
+    setNicknameError(null);
   }, []);
 
   const handleSignOut = useCallback(() => {
-    closeSignupPopup();
     setAuthToken(null);
     setCurrentUser(null);
     setIsLoadingUser(false);
     setArtists([]);
     setVideos([]);
+    setHiddenVideoIds([]);
+    setFavoriteVideoIds([]);
+    setPlaylistVideoIds([]);
     setClips([]);
     setPlaylistVideos([]);
     setPlaylistClips([]);
@@ -1073,27 +1019,10 @@ export default function App() {
     setSelectedVideo(null);
     setVideoForm({ url: '', artistId: '', description: '', captionsJson: '' });
     setClipForm(createInitialClipFormState());
-    setEmailRegisterEmail('');
-    setEmailRegisterCode('');
-    setEmailRegisterPassword('');
-    setEmailRegisterPasswordConfirm('');
-    setEmailRegisterPhase('idle');
-    setEmailRegisterMessage(null);
-    setEmailRegisterError(null);
-    setEmailRegisterDebugCode(null);
-    setPasswordLoginEmail('');
-    setPasswordLoginPassword('');
-    setPasswordLoginMessage(null);
-    setPasswordLoginError(null);
     setNicknameInput('');
     setNicknameStatus(null);
     setNicknameError(null);
-    setPasswordChangeCurrent('');
-    setPasswordChangeNew('');
-    setPasswordChangeConfirm('');
-    setPasswordChangeStatus(null);
-    setPasswordChangeError(null);
-  }, [closeSignupPopup]);
+  }, []);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -1215,197 +1144,6 @@ export default function App() {
       cancelled = true;
     };
   }, [authToken, authHeaders]);
-
-  const handleEmailRegisterRequest = useCallback(
-    async (event: FormEvent<HTMLFormElement>) => {
-      event.preventDefault();
-      const trimmedEmail = emailRegisterEmail.trim();
-      if (!trimmedEmail) {
-        setEmailRegisterError('이메일을 입력해주세요.');
-        return;
-      }
-      setEmailRegisterError(null);
-      setEmailRegisterMessage(null);
-      setEmailRegisterDebugCode(null);
-      try {
-        const response = await authHttp.post<{ message?: string; debugCode?: string }>(
-          '/email/register/request',
-          { email: trimmedEmail }
-        );
-        setEmailRegisterPhase('code-sent');
-        setEmailRegisterMessage(response.data.message ?? '인증 코드가 전송되었습니다.');
-        if (response.data.debugCode) {
-          setEmailRegisterDebugCode(response.data.debugCode);
-        }
-      } catch (error) {
-        console.error('Failed to request email registration code', error);
-        if (axios.isAxiosError(error) && error.response?.data && typeof error.response.data === 'object') {
-          const data = error.response.data as { error?: string; message?: string };
-          setEmailRegisterError(data.error ?? data.message ?? '인증 코드 발송에 실패했습니다.');
-        } else {
-          setEmailRegisterError('인증 코드 발송에 실패했습니다.');
-        }
-      }
-    },
-    [emailRegisterEmail]
-  );
-
-  const handleEmailRegisterVerify = useCallback(
-    async (event: FormEvent<HTMLFormElement>) => {
-      event.preventDefault();
-      if (emailRegisterPhase !== 'code-sent') {
-        return;
-      }
-      const trimmedEmail = emailRegisterEmail.trim();
-      const trimmedCode = emailRegisterCode.trim();
-      const trimmedPassword = emailRegisterPassword;
-      const trimmedConfirm = emailRegisterPasswordConfirm;
-      if (!trimmedCode) {
-        setEmailRegisterError('인증 코드를 입력해주세요.');
-        return;
-      }
-      if (!trimmedPassword) {
-        setEmailRegisterError('비밀번호를 입력해주세요.');
-        return;
-      }
-      if (trimmedPassword !== trimmedConfirm) {
-        setEmailRegisterError('비밀번호 확인이 일치하지 않습니다.');
-        return;
-      }
-      setEmailRegisterError(null);
-      setEmailRegisterMessage(null);
-      setEmailRegisterDebugCode(null);
-      try {
-        const response = await authHttp.post<{ token: string; user: UserResponse }>(
-          '/email/register/verify',
-          {
-            email: trimmedEmail,
-            code: trimmedCode,
-            password: trimmedPassword,
-            passwordConfirm: trimmedConfirm
-          }
-        );
-        setAuthToken(response.data.token);
-        setCurrentUser(response.data.user);
-        setNicknameInput(response.data.user.displayName ?? '');
-        closeSignupPopup();
-      } catch (error) {
-        console.error('Failed to verify email registration code', error);
-        let message = '회원가입에 실패했습니다.';
-        if (axios.isAxiosError(error) && error.response?.data && typeof error.response.data === 'object') {
-          const data = error.response.data as { error?: string; message?: string };
-          message = data.error ?? data.message ?? message;
-        }
-        setEmailRegisterError(message);
-      }
-    },
-    [
-      emailRegisterPhase,
-      emailRegisterEmail,
-      emailRegisterCode,
-      emailRegisterPassword,
-      emailRegisterPasswordConfirm,
-      closeSignupPopup
-    ]
-  );
-
-  const handlePasswordLogin = useCallback(
-    async (event: FormEvent<HTMLFormElement>) => {
-      event.preventDefault();
-      const trimmedEmail = passwordLoginEmail.trim();
-      if (!trimmedEmail) {
-        setPasswordLoginError('이메일을 입력해주세요.');
-        return;
-      }
-      if (!passwordLoginPassword) {
-        setPasswordLoginError('비밀번호를 입력해주세요.');
-        return;
-      }
-      setPasswordLoginError(null);
-      setPasswordLoginMessage(null);
-      try {
-        const response = await authHttp.post<{ token: string; user: UserResponse }>(
-          '/email/login',
-          { email: trimmedEmail, password: passwordLoginPassword }
-        );
-        setAuthToken(response.data.token);
-        setCurrentUser(response.data.user);
-        setNicknameInput(response.data.user.displayName ?? '');
-        setPasswordLoginMessage('이메일 로그인에 성공했습니다.');
-        setPasswordLoginPassword('');
-      } catch (error) {
-        console.error('Failed to login with email and password', error);
-        let message = '로그인에 실패했습니다.';
-        if (axios.isAxiosError(error) && error.response?.data && typeof error.response.data === 'object') {
-          const data = error.response.data as { error?: string; message?: string };
-          message = data.error ?? data.message ?? message;
-        }
-        setPasswordLoginError(message);
-      }
-    },
-    [passwordLoginEmail, passwordLoginPassword]
-  );
-
-  const handlePasswordChangeSubmit = useCallback(
-    async (event: FormEvent<HTMLFormElement>) => {
-      event.preventDefault();
-      if (!isAuthenticated) {
-        return;
-      }
-
-      if (!passwordChangeNew) {
-        setPasswordChangeError('새 비밀번호를 입력해주세요.');
-        setPasswordChangeStatus(null);
-        return;
-      }
-
-      if (passwordChangeNew.length < 8) {
-        setPasswordChangeError('비밀번호는 8자 이상 입력해주세요.');
-        setPasswordChangeStatus(null);
-        return;
-      }
-
-      if (passwordChangeNew !== passwordChangeConfirm) {
-        setPasswordChangeError('비밀번호 확인이 일치하지 않습니다.');
-        setPasswordChangeStatus(null);
-        return;
-      }
-
-      setPasswordChangeError(null);
-      setPasswordChangeStatus(null);
-
-      try {
-        await http.post(
-          '/users/me/password',
-          {
-            currentPassword: passwordChangeCurrent,
-            newPassword: passwordChangeNew,
-            confirmPassword: passwordChangeConfirm
-          },
-          { headers: authHeaders }
-        );
-        setPasswordChangeStatus('비밀번호가 변경되었습니다.');
-        setPasswordChangeCurrent('');
-        setPasswordChangeNew('');
-        setPasswordChangeConfirm('');
-      } catch (error) {
-        console.error('Failed to update password', error);
-        if (axios.isAxiosError(error) && error.response?.data && typeof error.response.data === 'object') {
-          const data = error.response.data as { error?: string; message?: string };
-          setPasswordChangeError(data.error ?? data.message ?? '비밀번호 변경에 실패했습니다.');
-        } else {
-          setPasswordChangeError('비밀번호 변경에 실패했습니다.');
-        }
-      }
-    },
-    [
-      isAuthenticated,
-      passwordChangeConfirm,
-      passwordChangeCurrent,
-      passwordChangeNew,
-      authHeaders
-    ]
-  );
 
   const handleNicknameSubmit = async (event: FormEvent) => {
     event.preventDefault();
@@ -2864,24 +2602,8 @@ export default function App() {
       }
     ];
 
-    if (isAuthenticated) {
-      tabs.push({
-        id: 'mypage',
-        label: '마이페이지',
-        description: '프로필 및 보안 설정 관리',
-        icon: (
-          <svg viewBox="0 0 24 24" role="presentation" aria-hidden="true">
-            <path
-              d="M12 2a5 5 0 0 1 5 5v1a5 5 0 1 1-10 0V7a5 5 0 0 1 5-5Zm0 12c3.87 0 7 2.239 7 5v1a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-1c0-2.761 3.13-5 7-5Z"
-              fill="currentColor"
-            />
-          </svg>
-        )
-      });
-    }
-
     return tabs;
-  }, [isAuthenticated]);
+  }, []);
 
   const activeSidebarTab = sidebarTabs.find((tab) => tab.id === activeSection) ?? sidebarTabs[0];
 
@@ -2890,12 +2612,15 @@ export default function App() {
   useEffect(() => {
     if (!previousAuthRef.current && isAuthenticated) {
       setActiveSection('library');
-      closeSignupPopup();
-    } else if (previousAuthRef.current && !isAuthenticated && activeSection === 'mypage') {
-      setActiveSection('library');
     }
     previousAuthRef.current = isAuthenticated;
-  }, [isAuthenticated, activeSection, closeSignupPopup]);
+  }, [isAuthenticated]);
+
+
+  const fallbackDisplayName =
+    typeof currentUser?.displayName === 'string' ? currentUser.displayName.trim() : '';
+  const greetingName =
+    nicknameInput.trim() || fallbackDisplayName || currentUser?.email || '사용자';
 
 
   return (
@@ -2913,26 +2638,32 @@ export default function App() {
         <div className="sidebar__auth-card">
           <div className="sidebar__auth-header">
             <h2>{isAuthenticated ? '내 계정' : '로그인'}</h2>
-            <p>{isAuthenticated ? '마이페이지에서 프로필과 보안 설정을 관리하세요.' : '아티스트 관리를 위해 로그인하세요.'}</p>
+            <p>
+              {isAuthenticated
+                ? '닉네임을 바로 수정하고 계정을 관리하세요.'
+                : '아티스트 관리를 위해 Google 계정으로 로그인하세요.'}
+            </p>
           </div>
           {isAuthenticated ? (
             <div className="sidebar__auth-content">
-              <p className="login-status__message">
-                {currentUser?.displayName
-                  ? `${currentUser.displayName} 님, 환영합니다!`
-                  : `${currentUser?.email ?? ''} 계정으로 로그인되었습니다.`}
-              </p>
+              <p className="login-status__message">{`${greetingName} 님, 환영합니다!`}</p>
               {currentUser?.email && (
                 <p className="sidebar__auth-email">{currentUser.email}</p>
               )}
               {isLoadingUser && <p className="sidebar__auth-muted">사용자 정보를 불러오는 중...</p>}
-              {passwordLoginMessage && (
-                <p className="login-status__message">{passwordLoginMessage}</p>
-              )}
+              <form className="stacked-form sidebar__nickname-form" onSubmit={handleNicknameSubmit}>
+                <label htmlFor="nicknameInput">닉네임</label>
+                <input
+                  id="nicknameInput"
+                  placeholder="닉네임"
+                  value={nicknameInput}
+                  onChange={(event) => setNicknameInput(event.target.value)}
+                />
+                <button type="submit">닉네임 저장</button>
+              </form>
+              {nicknameStatus && <p className="login-status__message">{nicknameStatus}</p>}
+              {nicknameError && <p className="login-status__message error">{nicknameError}</p>}
               <div className="sidebar__auth-actions">
-                <button type="button" onClick={() => setActiveSection('mypage')} className="sidebar__auth-button primary">
-                  마이페이지로 이동
-                </button>
                 <button type="button" onClick={handleSignOut} className="sidebar__auth-button">
                   로그아웃
                 </button>
@@ -2950,36 +2681,7 @@ export default function App() {
                   <span className="sidebar__auth-muted">구글 로그인 준비 중...</span>
                 )}
               </div>
-              <form className="stacked-form" onSubmit={handlePasswordLogin}>
-                <label htmlFor="loginEmailInput">이메일 로그인</label>
-                <input
-                  id="loginEmailInput"
-                  type="email"
-                  placeholder="이메일 주소"
-                  value={passwordLoginEmail}
-                  onChange={(event) => setPasswordLoginEmail(event.target.value)}
-                />
-                <label htmlFor="loginPassword">비밀번호</label>
-                <input
-                  id="loginPassword"
-                  type="password"
-                  placeholder="비밀번호"
-                  value={passwordLoginPassword}
-                  onChange={(event) => setPasswordLoginPassword(event.target.value)}
-                />
-                <button type="submit">로그인</button>
-              </form>
-              <div className="sidebar__auth-footer">
-                <button type="button" className="sidebar__auth-button" onClick={openSignupPopup}>
-                  이메일 회원가입
-                </button>
-              </div>
-              {passwordLoginMessage && (
-                <p className="login-status__message">{passwordLoginMessage}</p>
-              )}
-              {passwordLoginError && (
-                <p className="login-status__message error">{passwordLoginError}</p>
-              )}
+              <p className="sidebar__auth-muted">Google 계정으로 로그인 후 전체 기능을 이용할 수 있습니다.</p>
             </div>
           )}
         </div>
@@ -3016,85 +2718,6 @@ export default function App() {
         </header>
 
         <div className="content-panels">
-
-
-          
-
-          <section
-            className={`content-panel${activeSection === 'mypage' ? ' active' : ''}`}
-            role="tabpanel"
-            aria-labelledby="sidebar-tab-mypage"
-            hidden={activeSection !== 'mypage'}
-          >
-            <div className="panel settings-panel">
-              {isAuthenticated ? (
-                <>
-                  <div className="settings-section">
-                    <h2>프로필 설정</h2>
-                    <p>닉네임은 저장된 클립과 플레이리스트에서 표시됩니다.</p>
-                    <form className="stacked-form" onSubmit={handleNicknameSubmit}>
-                      <label htmlFor="nicknameInput">닉네임</label>
-                      <input
-                        id="nicknameInput"
-                        placeholder="닉네임"
-                        value={nicknameInput}
-                        onChange={(event) => setNicknameInput(event.target.value)}
-                      />
-                      <button type="submit">닉네임 저장</button>
-                    </form>
-                    {nicknameStatus && <p className="login-status__message">{nicknameStatus}</p>}
-                    {nicknameError && <p className="login-status__message error">{nicknameError}</p>}
-                  </div>
-
-                  <div className="settings-section">
-                    <h3>비밀번호 변경</h3>
-                    <p className="sidebar__auth-muted">로그인 세션은 로그인 시점 기준 30분간 유지됩니다.</p>
-                    <form className="stacked-form" onSubmit={handlePasswordChangeSubmit}>
-                      <label htmlFor="currentPassword">현재 비밀번호</label>
-                      <input
-                        id="currentPassword"
-                        type="password"
-                        placeholder="현재 비밀번호"
-                        value={passwordChangeCurrent}
-                        onChange={(event) => setPasswordChangeCurrent(event.target.value)}
-                      />
-                      <label htmlFor="newPassword">새 비밀번호</label>
-                      <input
-                        id="newPassword"
-                        type="password"
-                        placeholder="새 비밀번호 (8자 이상)"
-                        value={passwordChangeNew}
-                        onChange={(event) => setPasswordChangeNew(event.target.value)}
-                      />
-                      <label htmlFor="newPasswordConfirm">비밀번호 확인</label>
-                      <input
-                        id="newPasswordConfirm"
-                        type="password"
-                        placeholder="새 비밀번호 다시 입력"
-                        value={passwordChangeConfirm}
-                        onChange={(event) => setPasswordChangeConfirm(event.target.value)}
-                      />
-                      <button type="submit">비밀번호 변경</button>
-                    </form>
-                    {passwordChangeStatus && <p className="login-status__message">{passwordChangeStatus}</p>}
-                    {passwordChangeError && <p className="login-status__message error">{passwordChangeError}</p>}
-                  </div>
-                </>
-              ) : (
-                <div className="settings-empty">
-                  <p className="login-status__message">마이페이지는 로그인 후 이용할 수 있습니다.</p>
-                  <div className="sidebar__auth-actions">
-                    <button type="button" className="sidebar__auth-button primary" onClick={openSignupPopup}>
-                      회원가입
-                    </button>
-                    <button type="button" className="sidebar__auth-button" onClick={() => setActiveSection('library')}>
-                      아티스트 목록 보기
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </section>
 
           <section
             className={`content-panel${activeSection === 'library' ? ' active' : ''}`}
@@ -4261,24 +3884,6 @@ export default function App() {
         </div>
       </main>
 
-      <SignupPopup
-        open={isSignupPopupOpen}
-        onClose={closeSignupPopup}
-        email={emailRegisterEmail}
-        onEmailChange={setEmailRegisterEmail}
-        phase={emailRegisterPhase}
-        onRequestCode={handleEmailRegisterRequest}
-        code={emailRegisterCode}
-        onCodeChange={setEmailRegisterCode}
-        password={emailRegisterPassword}
-        onPasswordChange={setEmailRegisterPassword}
-        passwordConfirm={emailRegisterPasswordConfirm}
-        onPasswordConfirmChange={setEmailRegisterPasswordConfirm}
-        onVerify={handleEmailRegisterVerify}
-        message={emailRegisterMessage}
-        error={emailRegisterError}
-        debugCode={emailRegisterDebugCode}
-      />
     </div>
   );
 }
