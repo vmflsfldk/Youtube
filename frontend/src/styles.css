@@ -1524,6 +1524,22 @@ button:disabled:hover {
   letter-spacing: 0.02em;
 }
 
+.artist-tag--removable {
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.artist-tag--removable:hover,
+.artist-tag--removable:focus-visible {
+  background: rgba(248, 113, 113, 0.24);
+  color: var(--color-text-primary);
+}
+
+.artist-tag--removable:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(248, 113, 113, 0.45);
+}
+
 .artist-library__avatar {
   width: 76px;
   height: 76px;
