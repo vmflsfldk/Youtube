@@ -1818,6 +1818,11 @@ export default function App() {
         const normalizedClips = ensureArray(response.data?.clips).map(normalizeClip);
         setVideos(fetchedVideos);
         setClips(normalizedClips);
+        const defaultPlaylistVideos = fetchedVideos.filter(
+          (video) => categorizeVideo(video) !== 'live'
+        );
+        setPlaylistVideos(defaultPlaylistVideos);
+        setPlaylistClips(normalizedClips);
         setHiddenVideoIds((previous) =>
           previous.filter((id) => fetchedVideos.some((video) => video.id === id))
         );
