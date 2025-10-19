@@ -4102,11 +4102,11 @@ export default function App() {
                   {filteredPlaylistEntries.map((entry, index) => {
                     if (entry.type === 'video') {
                       const video = entry.video;
+                      const youtubeVideoId = (video.youtubeVideoId ?? '').trim();
+                      const hasPlayableVideo = youtubeVideoId.length > 0;
                       const videoThumbnail =
                         video.thumbnailUrl ||
-                        (video.youtubeVideoId
-                          ? `https://img.youtube.com/vi/${video.youtubeVideoId}/hqdefault.jpg`
-                          : null);
+                        (hasPlayableVideo ? `https://img.youtube.com/vi/${youtubeVideoId}/hqdefault.jpg` : null);
                       const videoTitle = video.title || video.youtubeVideoId || '제목 없는 영상';
                       const videoArtist =
                         video.artistDisplayName ||
@@ -4116,22 +4116,26 @@ export default function App() {
                       return (
                         <div className="playlist-entry playlist-entry--video" key={`playlist-video-${video.id}`}>
                           <div className="playlist-video-card">
-                            {videoThumbnail ? (
-                              <img
-                                className="playlist-video-card__thumbnail"
-                                src={videoThumbnail}
-                                alt={`${videoTitle} 썸네일`}
-                                loading="lazy"
-                                decoding="async"
-                              />
-                            ) : (
-                              <div
-                                className="playlist-video-card__thumbnail playlist-video-card__thumbnail--placeholder"
-                                aria-hidden="true"
-                              >
-                                <span>썸네일 없음</span>
-                              </div>
-                            )}
+                            <div className="playlist-video-card__media">
+                              {hasPlayableVideo ? (
+                                <ClipPlayer youtubeVideoId={youtubeVideoId} startSec={0} autoplay={false} />
+                              ) : videoThumbnail ? (
+                                <img
+                                  className="playlist-video-card__thumbnail"
+                                  src={videoThumbnail}
+                                  alt={`${videoTitle} 썸네일`}
+                                  loading="lazy"
+                                  decoding="async"
+                                />
+                              ) : (
+                                <div
+                                  className="playlist-video-card__thumbnail playlist-video-card__thumbnail--placeholder"
+                                  aria-hidden="true"
+                                >
+                                  <span>썸네일 없음</span>
+                                </div>
+                              )}
+                            </div>
                             <div className="playlist-video-card__meta">
                               <h3 className="playlist-video-card__title">{videoTitle}</h3>
                               <div className="playlist-video-card__details">
