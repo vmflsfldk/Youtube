@@ -1642,7 +1642,7 @@ async function listVideos(url: URL, env: Env, user: UserContext, cors: CorsConfi
   if (!Number.isFinite(artistId)) {
     throw new HttpError(400, "artistId query parameter is required");
   }
-  await ensureArtist(env, artistId, user.id);
+  await ensureArtistExists(env, artistId);
   await ensureVideoContentTypeColumn(env.DB);
   await ensureVideoHiddenColumn(env.DB);
   await ensureVideoCategoryColumn(env.DB);
@@ -2159,6 +2159,19 @@ async function ensureArtist(env: Env, artistId: number, userId: number): Promise
         AND created_by = ?`
   )
     .bind(artistId, userId)
+    .first<{ id: number }>();
+  if (!artist) {
+    throw new HttpError(404, `Artist not found: ${artistId}`);
+  }
+}
+
+async function ensureArtistExists(env: Env, artistId: number): Promise<void> {
+  const artist = await env.DB.prepare(
+    `SELECT id
+       FROM artists
+      WHERE id = ?`
+  )
+    .bind(artistId)
     .first<{ id: number }>();
   if (!artist) {
     throw new HttpError(404, `Artist not found: ${artistId}`);
@@ -3845,6 +3858,7 @@ export {
   suggestClipCandidates as __suggestClipCandidatesForTests,
   getOrCreateVideoByUrl as __getOrCreateVideoByUrlForTests,
   listMediaLibrary as __listMediaLibraryForTests,
+  listVideos as __listVideosForTests,
   createArtist as __createArtistForTests,
   listArtists as __listArtistsForTests
 };
