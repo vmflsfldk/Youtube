@@ -518,6 +518,7 @@ async function ensureDatabaseSchema(db: D1Database): Promise<void> {
       )`,
       context: "artists"
     },
+    {
       sql: `CREATE TABLE IF NOT EXISTS user_favorite_artists (
         user_id INTEGER NOT NULL,
         artist_id INTEGER NOT NULL,
@@ -1660,7 +1661,7 @@ async function listVideos(url: URL, env: Env, user: UserContext, cors: CorsConfi
 }
 
 async function listMediaLibrary(env: Env, user: UserContext | null, cors: CorsConfig): Promise<Response> {
-  const requestingUser = requireUser(user);
+  requireUser(user);
 
   await ensureArtistDisplayNameColumn(env.DB);
   await ensureArtistProfileImageColumn(env.DB);
@@ -1690,11 +1691,8 @@ async function listMediaLibrary(env: Env, user: UserContext | null, cors: CorsCo
         a.profile_image_url AS artist_profile_image_url
       FROM videos v
       JOIN artists a ON a.id = v.artist_id
-     WHERE a.created_by = ?
      ORDER BY v.id DESC`
-  )
-    .bind(requestingUser.id)
-    .all<VideoLibraryRow>();
+  ).all<VideoLibraryRow>();
 
   const videos = (results ?? []).map(toVideoLibraryResponse);
 
