@@ -81,21 +81,25 @@ export default function ClipPlayer({ youtubeVideoId, startSec, endSec, autoplay 
   }, []);
 
   return (
-    <YouTube
-      videoId={youtubeVideoId}
-      opts={{
-        host: 'https://www.youtube.com',
-        playerVars: {
-          autoplay: autoplay ? 1 : 0,
-          controls: 1,
-          start: startSec,
-          ...(typeof endSec === 'number' && Number.isFinite(endSec) ? { end: endSec } : {}),
-          ...(playerOrigin ? { origin: playerOrigin } : {}),
-          ...(playerReferrer ? { widget_referrer: playerReferrer } : {})
-        }
-      }}
-      onReady={handleReady}
-      onStateChange={handleStateChange}
-    />
+    <div className="clip-player">
+      <YouTube
+        videoId={youtubeVideoId}
+        opts={{
+          host: 'https://www.youtube.com',
+          width: '100%',
+          height: '100%',
+          playerVars: {
+            autoplay: autoplay ? 1 : 0,
+            controls: 1,
+            start: startSec,
+            ...(typeof endSec === 'number' && Number.isFinite(endSec) ? { end: endSec } : {}),
+            ...(playerOrigin ? { origin: playerOrigin } : {}),
+            ...(playerReferrer ? { widget_referrer: playerReferrer } : {})
+          }
+        }}
+        onReady={handleReady}
+        onStateChange={handleStateChange}
+      />
+    </div>
   );
 }
