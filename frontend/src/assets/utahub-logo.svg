@@ -1,0 +1,29 @@
+<svg width="160" height="160" viewBox="0 0 160 160" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">UtaHub microphone logo</title>
+  <desc id="desc">Rounded microphone icon with a play button inside, rendered with a teal to indigo gradient.</desc>
+  <defs>
+    <linearGradient id="utahubGradient" x1="32" y1="16" x2="136" y2="152" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#22D3EE" />
+      <stop offset="1" stop-color="#6366F1" />
+    </linearGradient>
+    <linearGradient id="utahubGradientSoft" x1="44" y1="92" x2="116" y2="144" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#38E8E1" />
+      <stop offset="1" stop-color="#4F46E5" />
+    </linearGradient>
+    <linearGradient id="playGradient" x1="84" y1="54" x2="106" y2="82" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#67E8F9" />
+      <stop offset="1" stop-color="#60A5FA" />
+    </linearGradient>
+    <filter id="shadow" x="10" y="2" width="140" height="156" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="18" stdDeviation="14" flood-opacity="0.35" flood-color="#1E40AF" />
+    </filter>
+  </defs>
+  <g filter="url(#shadow)">
+    <rect x="56" y="20" width="48" height="78" rx="24" fill="url(#utahubGradient)" />
+    <rect x="52" y="16" width="56" height="86" rx="28" stroke="url(#utahubGradient)" stroke-width="4" fill="none" />
+    <path d="M40 80H48C48 97.6731 62.3269 112 80 112C97.6731 112 112 97.6731 112 80H120C120 103.196 101.196 122 78 122H82C58.804 122 40 103.196 40 80Z" fill="url(#utahubGradientSoft)" />
+    <rect x="74" y="120" width="12" height="26" rx="6" fill="url(#utahubGradient)" />
+    <path d="M52 140C48.6863 140 46 142.686 46 146C46 149.314 48.6863 152 52 152H108C111.314 152 114 149.314 114 146C114 142.686 111.314 140 108 140H52Z" fill="url(#utahubGradientSoft)" />
+    <path d="M80 58L100 72L80 86V58Z" fill="url(#playGradient)" />
+  </g>
+</svg>

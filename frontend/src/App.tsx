@@ -12,6 +12,7 @@ import {
 import axios from 'axios';
 import ClipPlayer from './components/ClipPlayer';
 import GoogleLoginButton from './components/GoogleLoginButton';
+import utahubLogo from './assets/utahub-logo.svg';
 
 type MaybeArray<T> =
   | T[]
@@ -2788,8 +2789,8 @@ export default function App() {
     <div className="app-shell">
       <aside className="sidebar" aria-label="주요 탐색">
         <div className="sidebar__brand">
-          <div className="sidebar__logo" aria-hidden="true">
-            <span>UH</span>
+          <div className="sidebar__logo">
+            <img src={utahubLogo} alt="UtaHub 로고" />
           </div>
           <div className="sidebar__brand-copy">
             <p className="sidebar__eyebrow">UtaHub</p>
