@@ -2781,8 +2781,10 @@ export default function App() {
 
   const fallbackDisplayName =
     typeof currentUser?.displayName === 'string' ? currentUser.displayName.trim() : '';
-  const greetingName =
-    nicknameInput.trim() || fallbackDisplayName || currentUser?.email || '사용자';
+  const greetingName = (fallbackDisplayName || nicknameInput).trim();
+  const greetingMessage = greetingName
+    ? `${greetingName} 님, 환영합니다!`
+    : '닉네임을 설정해주세요.';
 
 
   return (
@@ -2808,10 +2810,7 @@ export default function App() {
           </div>
           {isAuthenticated ? (
             <div className="sidebar__auth-content">
-              <p className="login-status__message">{`${greetingName} 님, 환영합니다!`}</p>
-              {currentUser?.email && (
-                <p className="sidebar__auth-email">{currentUser.email}</p>
-              )}
+              <p className="login-status__message">{greetingMessage}</p>
               {isLoadingUser && <p className="sidebar__auth-muted">사용자 정보를 불러오는 중...</p>}
               <form className="stacked-form sidebar__nickname-form" onSubmit={handleNicknameSubmit}>
                 <label htmlFor="nicknameInput">닉네임</label>
