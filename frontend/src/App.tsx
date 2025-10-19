@@ -1422,15 +1422,11 @@ export default function App() {
   const reloadArtistVideos = useCallback(
     async (options?: { signal?: AbortSignal }) => {
       const currentArtistId = Number(videoForm.artistId);
-      const guestSession = !isAuthenticated;
       if (!videoForm.artistId || Number.isNaN(currentArtistId)) {
         if (!options?.signal?.aborted) {
           setVideos([]);
           setSelectedVideo(null);
           setArtistVideosLoading(false);
-          if (guestSession) {
-            setClips([]);
-          }
         }
         return;
       }
@@ -1439,40 +1435,10 @@ export default function App() {
         setArtistVideosLoading(true);
       }
 
-      if (guestSession) {
-        try {
-          const response = await http.get<ClipResponse[]>('/clips', {
-            params: { artistId: currentArtistId },
-            signal: options?.signal
-          });
-
-          if (options?.signal?.aborted) {
-            return;
-          }
-
-          const normalizedClips = ensureArray(response.data).map(normalizeClip);
-          setClips(normalizedClips);
-        } catch (error) {
-          if (options?.signal?.aborted) {
-            return;
-          }
-          console.error('Failed to load clips', error);
-          setClips([]);
-        } finally {
-          if (!options?.signal?.aborted) {
-            setVideos([]);
-            setSelectedVideo(null);
-            setArtistVideosLoading(false);
-          }
-        }
-        return;
-      }
-
       try {
         const response = await http.get<VideoResponse[]>('/videos', {
           headers: authHeaders,
-          params: { artistId: currentArtistId },
-          signal: options?.signal
+          params: { artistId: currentArtistId }
         });
 
         if (options?.signal?.aborted) {
@@ -1497,7 +1463,7 @@ export default function App() {
         }
       }
     },
-    [videoForm.artistId, authHeaders, http, isAuthenticated]
+    [videoForm.artistId, authHeaders]
   );
 
   const applyVideoRegistrationResult = useCallback(
