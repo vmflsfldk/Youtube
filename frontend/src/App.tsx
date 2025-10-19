@@ -4031,7 +4031,7 @@ export default function App() {
                                         )}
                                       </div>
                                     )}
-                                    {isActive && clip.youtubeVideoId && (
+                                    {activeSection === 'library' && isActive && clip.youtubeVideoId && (
                                       <div className="artist-library__clip-player">
                                         <ClipPlayer
                                           youtubeVideoId={clip.youtubeVideoId}

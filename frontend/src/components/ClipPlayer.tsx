@@ -71,6 +71,15 @@ export default function ClipPlayer({ youtubeVideoId, startSec, endSec, autoplay 
     }
   }, [loadSegment]);
 
+  useEffect(() => {
+    return () => {
+      if (playerRef.current) {
+        playerRef.current.stopVideo();
+        playerRef.current = null;
+      }
+    };
+  }, []);
+
   return (
     <YouTube
       videoId={youtubeVideoId}
