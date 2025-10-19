@@ -170,3 +170,38 @@ test("listVideos allows access to another user's artist", async (t) => {
   assert.equal(payload[0].artistId, 2);
   assert.equal(payload[0].youtubeVideoId, "abcdefghijk");
 });
+
+test("listVideos allows unauthenticated access", async (t) => {
+  __resetWorkerTestState();
+  __setHasEnsuredVideoColumnsForTests(true);
+  t.after(() => __resetWorkerTestState());
+
+  const artists: ArtistTableRow[] = [{ id: 3, created_by: 3 }];
+  const videos: VideoTableRow[] = [
+    {
+      id: 301,
+      artist_id: 3,
+      youtube_video_id: "unauthvid",
+      title: "Public Video",
+      duration_sec: 120,
+      thumbnail_url: "thumb",
+      channel_id: "channel",
+      description: null,
+      captions_json: null,
+      category: null,
+      content_type: "OFFICIAL",
+      hidden: 0
+    }
+  ];
+
+  const db = new FakeD1Database(artists, videos);
+  const env: Env = { DB: db };
+  const url = new URL("https://example.com/api/videos?artistId=3");
+
+  const response = await listVideos(url, env, null, corsConfig);
+  assert.equal(response.status, 200);
+
+  const payload = (await response.json()) as any[];
+  assert.equal(payload.length, 1);
+  assert.equal(payload[0].youtubeVideoId, "unauthvid");
+});
