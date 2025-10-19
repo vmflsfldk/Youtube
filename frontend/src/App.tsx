@@ -719,6 +719,7 @@ export default function App() {
   const [playlistVideos, setPlaylistVideos] = useState<VideoResponse[]>([]);
   const [playlistClips, setPlaylistClips] = useState<ClipResponse[]>([]);
   const [playlistSearchQuery, setPlaylistSearchQuery] = useState('');
+  const [isMobileNavOpen, setMobileNavOpen] = useState(false);
   const [selectedVideo, setSelectedVideo] = useState<number | null>(null);
   const [clipCandidates, setClipCandidates] = useState<ClipCandidateResponse[]>([]);
   const [videoSubmissionStatus, setVideoSubmissionStatus] = useState<
@@ -770,6 +771,37 @@ export default function App() {
   const autoDetectedVideoIdRef = useRef<number | null>(null);
   const videoListSectionRef = useRef<HTMLElement | null>(null);
   const clipListSectionRef = useRef<HTMLElement | null>(null);
+  const closeMobileNav = useCallback(() => {
+    setMobileNavOpen(false);
+  }, []);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') {
+      return;
+    }
+    const { body } = document;
+    const previousOverflow = body.style.overflow;
+    body.style.overflow = isMobileNavOpen ? 'hidden' : '';
+
+    return () => {
+      body.style.overflow = previousOverflow;
+    };
+  }, [isMobileNavOpen]);
+
+  useEffect(() => {
+    if (!isMobileNavOpen) {
+      return;
+    }
+    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setMobileNavOpen(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isMobileNavOpen]);
+
   const scrollToSection = useCallback((sectionRef: RefObject<HTMLElement | null>) => {
     sectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, []);
@@ -2826,7 +2858,30 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <aside className="sidebar" aria-label="주요 탐색">
+      <button
+        type="button"
+        className={`mobile-nav-toggle${isMobileNavOpen ? ' is-active' : ''}`}
+        aria-expanded={isMobileNavOpen}
+        aria-controls="app-sidebar"
+        aria-label={isMobileNavOpen ? '사이드바 닫기' : '사이드바 열기'}
+        onClick={() => setMobileNavOpen((prev) => !prev)}
+      >
+        <span aria-hidden="true" className="mobile-nav-toggle__icon" />
+      </button>
+      {isMobileNavOpen && (
+        <button
+          type="button"
+          className="sidebar-overlay"
+          onClick={closeMobileNav}
+          aria-label="사이드바 닫기"
+        />
+      )}
+
+      <aside
+        id="app-sidebar"
+        className={`sidebar${isMobileNavOpen ? ' mobile-open' : ''}`}
+        aria-label="주요 탐색"
+      >
         <div className="sidebar__brand">
           <div className="sidebar__logo">
             <img src={utahubLogo} alt="UtaHub 로고" />
@@ -2892,7 +2947,12 @@ export default function App() {
                 id={`sidebar-tab-${tab.id}`}
                 type="button"
                 className={`sidebar__tab${isActive ? ' active' : ''}`}
-                onClick={() => setActiveSection(tab.id)}
+                onClick={() => {
+                  setActiveSection(tab.id);
+                  if (isMobileNavOpen) {
+                    closeMobileNav();
+                  }
+                }}
                 aria-current={isActive ? 'page' : undefined}
               >
                 <span className="sidebar__tab-icon">{tab.icon}</span>
