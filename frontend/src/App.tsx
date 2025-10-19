@@ -1788,6 +1788,49 @@ export default function App() {
   }, [http, isAuthenticated]);
 
   useEffect(() => {
+    if (isAuthenticated) {
+      return;
+    }
+
+    const controller = new AbortController();
+
+    if (!selectedVideo) {
+      setClips([]);
+      return () => {
+        controller.abort();
+      };
+    }
+
+    setClips([]);
+
+    const loadClips = async () => {
+      try {
+        const response = await http.get<ClipResponse[]>('/clips', {
+          params: { videoId: selectedVideo },
+          signal: controller.signal
+        });
+        if (controller.signal.aborted) {
+          return;
+        }
+        const normalizedClips = ensureArray(response.data).map(normalizeClip);
+        setClips(normalizedClips);
+      } catch (error) {
+        if (controller.signal.aborted) {
+          return;
+        }
+        console.error('Failed to load clips for selected video', error);
+        setClips([]);
+      }
+    };
+
+    void loadClips();
+
+    return () => {
+      controller.abort();
+    };
+  }, [http, isAuthenticated, selectedVideo]);
+
+  useEffect(() => {
     if (!isAuthenticated) {
       setVideos([]);
       setClips([]);
