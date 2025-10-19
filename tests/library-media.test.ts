@@ -117,20 +117,20 @@ class FakeD1Database implements D1Database {
     const normalized = query.replace(/\s+/g, " ").trim().toLowerCase();
 
     if (normalized.startsWith("select v.id, v.artist_id") && normalized.includes("from videos v join artists a")) {
-      const [createdBy] = values as [number];
       const rows = this.videos
         .map((video) => {
           const artist = this.artists.find((item) => item.id === video.artist_id);
-          return artist && artist.created_by === createdBy
-            ? ({
-                ...video,
-                artist_name: artist.name,
-                artist_display_name: artist.display_name,
-                artist_youtube_channel_id: artist.youtube_channel_id,
-                artist_youtube_channel_title: artist.youtube_channel_title,
-                artist_profile_image_url: artist.profile_image_url
-              } as unknown as T)
-            : null;
+          if (!artist) {
+            return null;
+          }
+          return {
+            ...video,
+            artist_name: artist.name,
+            artist_display_name: artist.display_name,
+            artist_youtube_channel_id: artist.youtube_channel_id,
+            artist_youtube_channel_title: artist.youtube_channel_title,
+            artist_profile_image_url: artist.profile_image_url
+          } as unknown as T;
         })
         .filter((row): row is T => row !== null)
         .sort((a, b) => (b as unknown as { id: number }).id - (a as unknown as { id: number }).id);
@@ -298,24 +298,24 @@ test("listMediaLibrary returns media and clips for requesting user", async () =>
     }>;
   };
 
-  assert.equal(payload.videos.length, 2);
+  assert.equal(payload.videos.length, 3);
   assert.deepEqual(
     payload.videos.map((video) => video.id),
-    [2, 1],
+    [3, 2, 1],
     "videos should be ordered by id desc"
   );
   assert.deepEqual(
     payload.videos.map((video) => video.artistName),
-    ["Artist One", "Artist One"]
+    ["Other Artist", "Artist One", "Artist One"]
   );
   assert.deepEqual(
     payload.videos.map((video) => video.artistYoutubeChannelId),
-    ["chan-1", "chan-1"]
+    ["chan-2", "chan-1", "chan-1"]
   );
 
-  assert.equal(payload.clips.length, 2);
+  assert.equal(payload.clips.length, 3);
   const clipIds = payload.clips.map((clip) => clip.id).sort((a, b) => a - b);
-  assert.deepEqual(clipIds, [101, 102]);
+  assert.deepEqual(clipIds, [101, 102, 103]);
   const chorusClip = payload.clips.find((clip) => clip.id === 102);
   assert(chorusClip);
   assert.equal(chorusClip?.artistId, 10);
@@ -323,6 +323,14 @@ test("listMediaLibrary returns media and clips for requesting user", async () =>
   assert.equal(chorusClip?.youtubeVideoId, "videobbbbbbb2");
   assert.equal(chorusClip?.videoTitle, "Second Video");
   assert.deepEqual(chorusClip?.tags, ["tag-c"]);
+
+  const otherClip = payload.clips.find((clip) => clip.id === 103);
+  assert(otherClip);
+  assert.equal(otherClip?.artistId, 20);
+  assert.equal(otherClip?.artistName, "Other Artist");
+  assert.equal(otherClip?.youtubeVideoId, "videoccccccc3");
+  assert.equal(otherClip?.videoTitle, "Third Video");
+  assert.deepEqual(otherClip?.tags, ["tag-x"]);
 });
 
 test("listMediaLibrary throws for unauthenticated requests", async () => {
