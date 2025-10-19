@@ -2148,6 +2148,7 @@ button:disabled:hover {
   align-items: center;
   gap: 6px;
   transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
+  width: auto;
 }
 
 .artist-library__video-action:hover {
@@ -3351,7 +3352,8 @@ button:disabled:hover {
     padding: 20px;
   }
 
-  button {
+  .panel > button,
+  .stacked-form > button {
     width: 100%;
   }
 
