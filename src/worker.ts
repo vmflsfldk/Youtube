@@ -1982,7 +1982,7 @@ async function listClips(url: URL, env: Env, user: UserContext, cors: CorsConfig
     if (!Number.isFinite(artistId)) {
       throw new HttpError(400, "artistId must be a number");
     }
-    await ensureArtist(env, artistId, user.id);
+    await ensureArtistExists(env, artistId);
     const { results } = await env.DB.prepare(
       `SELECT c.id, c.video_id, c.title, c.start_sec, c.end_sec
          FROM clips c
@@ -1998,7 +1998,7 @@ async function listClips(url: URL, env: Env, user: UserContext, cors: CorsConfig
     if (!Number.isFinite(videoId)) {
       throw new HttpError(400, "videoId must be a number");
     }
-    await ensureVideo(env, videoId, user.id);
+    await ensureVideoExists(env, videoId);
     const { results } = await env.DB.prepare(
       `SELECT id, video_id, title, start_sec, end_sec
          FROM clips
@@ -2187,6 +2187,19 @@ async function ensureVideo(env: Env, videoId: number, userId: number): Promise<v
         AND a.created_by = ?`
   )
     .bind(videoId, userId)
+    .first<{ id: number }>();
+  if (!video) {
+    throw new HttpError(404, `Video not found: ${videoId}`);
+  }
+}
+
+async function ensureVideoExists(env: Env, videoId: number): Promise<void> {
+  const video = await env.DB.prepare(
+    `SELECT id
+       FROM videos
+      WHERE id = ?`
+  )
+    .bind(videoId)
     .first<{ id: number }>();
   if (!video) {
     throw new HttpError(404, `Video not found: ${videoId}`);
@@ -3857,6 +3870,7 @@ export function __setHasEnsuredVideoColumnsForTests(value: boolean): void {
 export {
   suggestClipCandidates as __suggestClipCandidatesForTests,
   getOrCreateVideoByUrl as __getOrCreateVideoByUrlForTests,
+  listClips as __listClipsForTests,
   listMediaLibrary as __listMediaLibraryForTests,
   listVideos as __listVideosForTests,
   createArtist as __createArtistForTests,
