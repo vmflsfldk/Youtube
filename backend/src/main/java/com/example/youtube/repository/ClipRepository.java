@@ -15,4 +15,6 @@ public interface ClipRepository extends JpaRepository<Clip, Long> {
     List<Clip> findByVideo(Video video);
 
     boolean existsByVideoAndStartSecAndEndSec(Video video, int startSec, int endSec);
+
+    boolean existsByVideoAndStartSecAndEndSecAndIdNot(Video video, int startSec, int endSec, Long id);
 }

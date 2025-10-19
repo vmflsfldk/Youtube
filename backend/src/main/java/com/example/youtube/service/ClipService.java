@@ -2,6 +2,7 @@ package com.example.youtube.service;
 
 import com.example.youtube.dto.ClipCreateRequest;
 import com.example.youtube.dto.ClipResponse;
+import com.example.youtube.dto.ClipUpdateRequest;
 import com.example.youtube.model.Artist;
 import com.example.youtube.model.Clip;
 import com.example.youtube.model.Video;
@@ -66,6 +67,35 @@ public class ClipService {
         return clipRepository.findByVideo(video).stream()
                 .map(this::map)
                 .collect(Collectors.toList());
+    }
+
+    @Transactional
+    public ClipResponse update(Long clipId, ClipUpdateRequest request) {
+        Clip clip = clipRepository.findById(clipId)
+                .orElseThrow(() -> new EntityNotFoundException("Clip not found: " + clipId));
+
+        Video video = clip.getVideo();
+        Artist artist = video.getArtist();
+        if (artist == null) {
+            throw new EntityNotFoundException("Artist not found for clip: " + clipId);
+        }
+
+        int startSec = request.startSec();
+        int endSec = request.endSec();
+
+        if (endSec <= startSec) {
+            throw new IllegalArgumentException("endSec must be greater than startSec");
+        }
+
+        if (clipRepository.existsByVideoAndStartSecAndEndSecAndIdNot(video, startSec, endSec, clipId)) {
+            throw new IllegalArgumentException("A clip with the same time range already exists for this video");
+        }
+
+        clip.setStartSec(startSec);
+        clip.setEndSec(endSec);
+
+        Clip saved = clipRepository.save(clip);
+        return map(saved);
     }
 
     private ClipResponse map(Clip clip) {

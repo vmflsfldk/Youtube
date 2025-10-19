@@ -4,12 +4,15 @@ import com.example.youtube.dto.ClipAutoDetectRequest;
 import com.example.youtube.dto.ClipCandidateResponse;
 import com.example.youtube.dto.ClipCreateRequest;
 import com.example.youtube.dto.ClipResponse;
+import com.example.youtube.dto.ClipUpdateRequest;
 import com.example.youtube.service.ClipAutoDetectionService;
 import com.example.youtube.service.ClipService;
 import jakarta.validation.Valid;
 import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -47,5 +50,10 @@ public class ClipController {
     @PostMapping("/clips/auto-detect")
     public List<ClipCandidateResponse> autoDetect(@Valid @RequestBody ClipAutoDetectRequest request) {
         return clipAutoDetectionService.detect(request.videoId(), request.mode());
+    }
+
+    @PutMapping("/clips/{id}")
+    public ClipResponse updateClip(@PathVariable("id") Long id, @Valid @RequestBody ClipUpdateRequest request) {
+        return clipService.update(id, request);
     }
 }
