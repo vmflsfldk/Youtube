@@ -730,6 +730,10 @@ export default function App() {
     { type: 'success' | 'error'; message: string }
   | null
   >(null);
+  const artistProfileTags = useMemo(
+    () => Array.from(new Set(parseTags(artistProfileForm.tags))),
+    [artistProfileForm.tags]
+  );
   const [isArtistProfileSaving, setArtistProfileSaving] = useState(false);
   const [videoForm, setVideoForm] = useState({ url: '', artistId: '', description: '', captionsJson: '' });
   const [clipForm, setClipForm] = useState<ClipFormState>(() => createInitialClipFormState());
@@ -2211,6 +2215,17 @@ export default function App() {
     setActiveLibraryView('clipList');
     scrollToSectionWithFrame(clipListSectionRef);
   }, [setActiveLibraryView, scrollToSectionWithFrame]);
+  const handleArtistProfileTagRemove = useCallback(
+    (tag: string) => {
+      const updatedTags = artistProfileTags.filter((existingTag) => existingTag !== tag);
+      setArtistProfileForm((prev) => ({
+        ...prev,
+        tags: formatArtistTagsForInput(updatedTags)
+      }));
+      setArtistProfileStatus(null);
+    },
+    [artistProfileTags]
+  );
   const handleArtistProfileReset = useCallback(() => {
     if (!selectedArtist) {
       setArtistProfileForm(createArtistProfileFormState(null));
@@ -3206,6 +3221,21 @@ export default function App() {
                             disabled={creationDisabled || isArtistProfileSaving}
                           />
                           <p className="form-hint">쉼표로 구분해 태그를 입력하세요.</p>
+                          {artistProfileTags.length > 0 && (
+                            <div className="artist-library__tags">
+                              {artistProfileTags.map((tag) => (
+                                <button
+                                  key={tag}
+                                  type="button"
+                                  className="artist-tag artist-tag--removable"
+                                  onClick={() => handleArtistProfileTagRemove(tag)}
+                                  aria-label={`태그 ${tag} 제거`}
+                                >
+                                  {tag}
+                                </button>
+                              ))}
+                            </div>
+                          )}
                           {artistProfileStatus && (
                             <p
                               className={`login-status__message${
