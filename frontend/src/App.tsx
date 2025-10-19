@@ -2784,11 +2784,11 @@ export default function App() {
       <aside className="sidebar" aria-label="주요 탐색">
         <div className="sidebar__brand">
           <div className="sidebar__logo" aria-hidden="true">
-            <span>YT</span>
+            <span>UH</span>
           </div>
           <div className="sidebar__brand-copy">
-            <p className="sidebar__eyebrow">Youtube Clip Curator</p>
-            <h1>Creator Studio</h1>
+            <p className="sidebar__eyebrow">UtaHub</p>
+            <h1>UtaHub Studio</h1>
           </div>
         </div>
         <div className="sidebar__auth-card">
@@ -2867,7 +2867,7 @@ export default function App() {
       <main className="content-area">
         <header className="content-header">
           <div>
-            <p className="content-header__eyebrow">Youtube Clip Curator</p>
+            <p className="content-header__eyebrow">UtaHub</p>
             <h2>{activeSidebarTab.label}</h2>
             <p className="content-header__description">{activeSidebarTab.description}</p>
           </div>
