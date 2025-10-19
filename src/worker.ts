@@ -1058,7 +1058,7 @@ async function handleApi(
         return await createVideo(request, env, requireUser(user), cors);
       }
       if (request.method === "GET") {
-        return await listVideos(url, env, requireUser(user), cors);
+        return await listVideos(url, env, user, cors);
       }
     }
     if (request.method === "POST" && path === "/api/videos/clip-suggestions") {
@@ -1069,7 +1069,7 @@ async function handleApi(
         return await createClip(request, env, requireUser(user), cors);
       }
       if (request.method === "GET") {
-        return await listClips(url, env, requireUser(user), cors);
+        return await listClips(url, env, user, cors);
       }
     }
     const updateClipMatch = path.match(/^\/api\/clips\/(\d+)$/);
@@ -1636,7 +1636,12 @@ async function suggestClipCandidates(
   );
 }
 
-async function listVideos(url: URL, env: Env, user: UserContext, cors: CorsConfig): Promise<Response> {
+async function listVideos(
+  url: URL,
+  env: Env,
+  _user: UserContext | null,
+  cors: CorsConfig
+): Promise<Response> {
   const artistIdParam = url.searchParams.get("artistId");
   const artistId = artistIdParam ? Number(artistIdParam) : NaN;
   if (!Number.isFinite(artistId)) {
@@ -1974,7 +1979,12 @@ async function updateClip(
   return jsonResponse(updatedClip, 200, cors);
 }
 
-async function listClips(url: URL, env: Env, user: UserContext, cors: CorsConfig): Promise<Response> {
+async function listClips(
+  url: URL,
+  env: Env,
+  _user: UserContext | null,
+  cors: CorsConfig
+): Promise<Response> {
   const artistIdParam = url.searchParams.get("artistId");
   const videoIdParam = url.searchParams.get("videoId");
   if (artistIdParam) {

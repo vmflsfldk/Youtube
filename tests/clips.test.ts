@@ -204,6 +204,39 @@ test("listClips allows access to clips for another user's artist", async (t) => 
   assert.equal(payload[0].youtubeVideoId, "video201");
 });
 
+test("listClips allows unauthenticated access by artist", async (t) => {
+  __resetWorkerTestState();
+  t.after(() => __resetWorkerTestState());
+
+  const artists: ArtistRow[] = [{ id: 3, created_by: 3 }];
+  const videos: VideoRow[] = [{ id: 301, artist_id: 3, youtube_video_id: "vid301", title: "Solo" }];
+  const clips: ClipRow[] = [
+    { id: 701, video_id: 301, title: "Intro", start_sec: 0, end_sec: 30 },
+    { id: 702, video_id: 301, title: "Outro", start_sec: 300, end_sec: 330 }
+  ];
+  const clipTags: ClipTagRow[] = [
+    { clip_id: 701, tag: "opening" },
+    { clip_id: 702, tag: "ending" }
+  ];
+
+  const db = new FakeD1Database(artists, videos, clips, clipTags);
+  const env: Env = { DB: db };
+  const url = new URL("https://example.com/api/clips?artistId=3");
+
+  const response = await listClips(url, env, null, corsConfig);
+  assert.equal(response.status, 200);
+
+  const payload = (await response.json()) as any[];
+  assert.equal(payload.length, 2);
+  assert.deepEqual(
+    payload.map((clip) => ({ id: clip.id, tags: clip.tags })),
+    [
+      { id: 701, tags: ["opening"] },
+      { id: 702, tags: ["ending"] }
+    ]
+  );
+});
+
 test("listClips allows access to clips for another user's video", async (t) => {
   __resetWorkerTestState();
   t.after(() => __resetWorkerTestState());
