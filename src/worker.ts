@@ -927,7 +927,7 @@ const corsHeaders = (config: CorsConfig): Headers => {
   headers.append("Vary", "Access-Control-Request-Headers");
   headers.append("Vary", "Access-Control-Request-Method");
   headers.set("Access-Control-Allow-Headers", collectAllowedHeaders(config.requestHeaders));
-  headers.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS");
   if (allowedOrigin !== "*") {
     headers.set("Access-Control-Allow-Credentials", "true");
   }
@@ -1071,6 +1071,11 @@ async function handleApi(
       if (request.method === "GET") {
         return await listClips(url, env, requireUser(user), cors);
       }
+    }
+    const updateClipMatch = path.match(/^\/api\/clips\/(\d+)$/);
+    if (request.method === "PUT" && updateClipMatch) {
+      const clipId = Number(updateClipMatch[1]);
+      return await updateClip(request, env, requireUser(user), cors, clipId);
     }
     if (request.method === "POST" && path === "/api/clips/auto-detect") {
       return await autoDetect(request, env, requireUser(user), cors);
@@ -1872,6 +1877,101 @@ async function createClip(
   }
   const clip = await attachTags(env, [clipRow], { includeVideoMeta: true });
   return jsonResponse(clip[0], 201, cors);
+}
+
+async function updateClip(
+  request: Request,
+  env: Env,
+  user: UserContext,
+  cors: CorsConfig,
+  clipId: number
+): Promise<Response> {
+  if (!Number.isFinite(clipId)) {
+    throw new HttpError(400, "clipId must be a number");
+  }
+
+  const existingClip = await env.DB.prepare(
+    `SELECT c.id, c.video_id, c.title, c.start_sec, c.end_sec
+       FROM clips c
+       JOIN videos v ON v.id = c.video_id
+       JOIN artists a ON a.id = v.artist_id
+      WHERE c.id = ?
+        AND a.created_by = ?`
+  )
+    .bind(clipId, user.id)
+    .first<ClipRow>();
+
+  if (!existingClip) {
+    throw new HttpError(404, `Clip not found: ${clipId}`);
+  }
+
+  const body = await readJson(request);
+
+  const parseTimeField = (value: unknown, field: string): number => {
+    if (typeof value === "number") {
+      return value;
+    }
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (trimmed.length === 0) {
+        throw new HttpError(400, `${field} must be provided`);
+      }
+      const numeric = Number(trimmed);
+      if (Number.isFinite(numeric)) {
+        return numeric;
+      }
+    }
+    throw new HttpError(400, `${field} must be a number`);
+  };
+
+  const startSec = parseTimeField(body.startSec, "startSec");
+  const endSec = parseTimeField(body.endSec, "endSec");
+
+  if (!Number.isFinite(startSec) || !Number.isFinite(endSec)) {
+    throw new HttpError(400, "startSec and endSec must be numbers");
+  }
+
+  if (endSec <= startSec) {
+    throw new HttpError(400, "endSec must be greater than startSec");
+  }
+
+  const duplicateClip = await env.DB
+    .prepare(
+      `SELECT id
+         FROM clips
+        WHERE video_id = ?
+          AND id != ?
+          AND start_sec = ?
+          AND end_sec = ?`
+    )
+    .bind(existingClip.video_id, clipId, startSec, endSec)
+    .first<Pick<ClipRow, "id">>();
+
+  if (duplicateClip) {
+    throw new HttpError(409, "A clip with the same time range already exists for this video");
+  }
+
+  const updateResult = await env.DB
+    .prepare("UPDATE clips SET start_sec = ?, end_sec = ? WHERE id = ?")
+    .bind(startSec, endSec, clipId)
+    .run();
+
+  if (!updateResult.success) {
+    throw new HttpError(500, updateResult.error ?? "Failed to update clip");
+  }
+
+  const updatedClipRow = await env.DB
+    .prepare("SELECT id, video_id, title, start_sec, end_sec FROM clips WHERE id = ?")
+    .bind(clipId)
+    .first<ClipRow>();
+
+  if (!updatedClipRow) {
+    throw new HttpError(500, "Failed to load updated clip");
+  }
+
+  const [updatedClip] = await attachTags(env, [updatedClipRow], { includeVideoMeta: true });
+
+  return jsonResponse(updatedClip, 200, cors);
 }
 
 async function listClips(url: URL, env: Env, user: UserContext, cors: CorsConfig): Promise<Response> {

@@ -2089,6 +2089,114 @@ button:disabled:hover {
   overflow: hidden;
 }
 
+.artist-library__clip-editor {
+  margin-top: 12px;
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background: rgba(15, 23, 42, 0.68);
+  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.08);
+  display: grid;
+  gap: 14px;
+}
+
+.clip-edit-form {
+  display: grid;
+  gap: 16px;
+}
+
+.clip-edit-form__fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.artist-library__clip-editor .clip-time-input input {
+  width: 100%;
+}
+
+.clip-edit-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.clip-edit-actions button {
+  min-width: 96px;
+}
+
+.clip-edit-toggle {
+  align-self: flex-start;
+  padding: 0.55rem 1.2rem;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  background: rgba(15, 23, 42, 0.6);
+  color: var(--color-text-primary);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
+  box-shadow: none;
+}
+
+.clip-edit-toggle:hover {
+  background: rgba(30, 41, 59, 0.82);
+  border-color: rgba(34, 211, 238, 0.55);
+  color: var(--accent-secondary);
+  transform: translateY(-1px);
+}
+
+.clip-edit-toggle:focus-visible {
+  outline: none;
+  border-color: rgba(34, 211, 238, 0.8);
+  box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.28);
+}
+
+.clip-edit-toggle:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  border-color: rgba(148, 163, 184, 0.22);
+}
+
+.clip-edit-cancel {
+  background: rgba(15, 23, 42, 0.5);
+  color: var(--color-text-muted);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  box-shadow: none;
+}
+
+.clip-edit-cancel:hover {
+  background: rgba(30, 41, 59, 0.7);
+  color: var(--color-text-primary);
+  border-color: rgba(148, 163, 184, 0.42);
+}
+
+.clip-edit-cancel:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.26);
+  border-color: rgba(34, 211, 238, 0.5);
+}
+
+.clip-edit-status {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.clip-edit-status--success {
+  color: var(--accent-success);
+}
+
+.clip-edit-status--error {
+  color: var(--accent-warm);
+}
+
+@media (max-width: 768px) {
+  .clip-edit-form__fields {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 1024px) {
   .artist-library__split-view {
     grid-template-columns: 1fr;
