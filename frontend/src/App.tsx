@@ -1446,24 +1446,7 @@ export default function App() {
         }
 
         const fetchedVideos = ensureArray(response.data);
-        const videoLookup = new Map(fetchedVideos.map((video) => [video.id, video]));
         setVideos(fetchedVideos);
-        setClips((previous) =>
-          previous.map((clip) => {
-            const parentVideo = videoLookup.get(clip.videoId);
-            if (!parentVideo) {
-              return clip;
-            }
-            const hasClipYoutubeId = typeof clip.youtubeVideoId === 'string' && clip.youtubeVideoId.trim().length > 0;
-            const hasClipTitle = typeof clip.videoTitle === 'string' && clip.videoTitle.trim().length > 0;
-            const enrichedYoutubeId = hasClipYoutubeId ? clip.youtubeVideoId : parentVideo.youtubeVideoId;
-            const enrichedTitle = hasClipTitle ? clip.videoTitle : parentVideo.title ?? null;
-            if (enrichedYoutubeId === clip.youtubeVideoId && enrichedTitle === clip.videoTitle) {
-              return clip;
-            }
-            return { ...clip, youtubeVideoId: enrichedYoutubeId, videoTitle: enrichedTitle };
-          })
-        );
         setHiddenVideoIds((prev) =>
           prev.filter((id) => !fetchedVideos.some((video) => video.id === id))
         );
@@ -2062,9 +2045,6 @@ export default function App() {
     setClipCandidates([]);
     setActiveLibraryView('videoList');
     setVideoSubmissionStatus(null);
-    if (!isAuthenticated) {
-      setClips([]);
-    }
   };
 
   const handleLibraryVideoSelect = (videoId: number) => {
@@ -2249,49 +2229,6 @@ export default function App() {
   const noFilteredArtists = !noArtistsRegistered && filteredArtists.length === 0 && !selectedArtist;
   const artistList: ArtistResponse[] = filteredArtists as ArtistResponse[];
   const selectedArtistId = selectedArtist?.id ?? null;
-
-  useEffect(() => {
-    if (isAuthenticated) {
-      return;
-    }
-
-    if (!selectedArtistId) {
-      setClips([]);
-      return;
-    }
-
-    const controller = new AbortController();
-    let cancelled = false;
-
-    const loadGuestClips = async () => {
-      try {
-        const response = await http.get<ClipResponse[]>('/clips', {
-          params: { artistId: selectedArtistId },
-          signal: controller.signal
-        });
-        if (cancelled) {
-          return;
-        }
-        const normalizedClips = ensureArray(response.data).map(normalizeClip);
-        setClips(normalizedClips);
-      } catch (error) {
-        if (controller.signal.aborted) {
-          return;
-        }
-        console.error('Failed to load guest clips', error);
-        if (!cancelled) {
-          setClips([]);
-        }
-      }
-    };
-
-    void loadGuestClips();
-
-    return () => {
-      cancelled = true;
-      controller.abort();
-    };
-  }, [http, selectedArtistId, isAuthenticated]);
 
   useEffect(() => {
     setArtistProfileForm(createArtistProfileFormState(selectedArtist));
