@@ -3703,12 +3703,14 @@ export default function App() {
                                       영상 ·{' '}
                                       {selectedVideoData.title || selectedVideoData.youtubeVideoId}
                                     </p>
-                                    <ClipPlayer
-                                      youtubeVideoId={selectedVideoData.youtubeVideoId}
-                                      startSec={previewStartSec}
-                                      endSec={previewEndSec}
-                                      autoplay={false}
-                                    />
+                                    <div className="clip-preview__player">
+                                      <ClipPlayer
+                                        youtubeVideoId={selectedVideoData.youtubeVideoId}
+                                        startSec={previewStartSec}
+                                        endSec={previewEndSec}
+                                        autoplay={false}
+                                      />
+                                    </div>
                                   </>
                                 ) : (
                                   <p className="empty-state">클립 프리뷰를 확인하려면 영상을 선택하세요.</p>
@@ -3800,15 +3802,17 @@ export default function App() {
                                   </span>
                                 </div>
                                 {selectedVideoData.youtubeVideoId ? (
-                                  <ClipPlayer
-                                    youtubeVideoId={selectedVideoData.youtubeVideoId}
-                                    startSec={0}
-                                    endSec={
-                                      selectedVideoData.durationSec && selectedVideoData.durationSec > 0
-                                        ? selectedVideoData.durationSec
-                                        : undefined
-                                    }
-                                  />
+                                  <div className="artist-library__video-preview-player">
+                                    <ClipPlayer
+                                      youtubeVideoId={selectedVideoData.youtubeVideoId}
+                                      startSec={0}
+                                      endSec={
+                                        selectedVideoData.durationSec && selectedVideoData.durationSec > 0
+                                          ? selectedVideoData.durationSec
+                                          : undefined
+                                      }
+                                    />
+                                  </div>
                                 ) : (
                                   <p className="artist-library__video-preview-empty">
                                     유튜브 영상 정보가 없어 재생할 수 없습니다.
