@@ -1953,6 +1953,32 @@ button:disabled:hover {
     flex: 1 1 calc(50% - 10px);
     min-width: 0;
   }
+
+  .artist-library__card {
+    padding: 16px;
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .artist-library__avatar {
+    width: 56px;
+    height: 56px;
+    box-shadow: 0 12px 24px rgba(248, 113, 113, 0.2);
+  }
+
+  .artist-library__info {
+    justify-content: center;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  .artist-library__meta,
+  .artist-library__channel,
+  .artist-library__countries,
+  .artist-library__link {
+    display: none;
+  }
 }
 
 .artist-library__action-hint {
