@@ -7,6 +7,7 @@ public record VideoCreateRequest(
         @NotBlank String videoUrl,
         @NotNull Long artistId,
         String description,
-        String captionsJson
+        String captionsJson,
+        String originalComposer
 ) {
 }

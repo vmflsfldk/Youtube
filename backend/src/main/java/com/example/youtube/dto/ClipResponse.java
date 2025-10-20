@@ -8,6 +8,7 @@ public record ClipResponse(
         String title,
         int startSec,
         int endSec,
-        List<String> tags
+        List<String> tags,
+        String originalComposer
 ) {
 }

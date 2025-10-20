@@ -47,6 +47,7 @@ public class ClipService {
         if (request.tags() != null) {
             clip.setTags(request.tags());
         }
+        clip.setOriginalComposer(request.originalComposer());
         Clip saved = clipRepository.save(clip);
         return map(saved);
     }
@@ -104,6 +105,7 @@ public class ClipService {
                 clip.getTitle(),
                 clip.getStartSec(),
                 clip.getEndSec(),
-                clip.getTags());
+                clip.getTags(),
+                clip.getOriginalComposer());
     }
 }

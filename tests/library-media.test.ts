@@ -57,6 +57,7 @@ type VideoRecord = {
   category: string | null;
   content_type: string | null;
   hidden: number | null;
+  original_composer: string | null;
 };
 
 type ClipRecord = {
@@ -65,6 +66,7 @@ type ClipRecord = {
   title: string;
   start_sec: number;
   end_sec: number;
+  original_composer: string | null;
 };
 
 type ClipTagRecord = {
@@ -137,7 +139,7 @@ class FakeD1Database implements D1Database {
       return { success: true, meta: { duration: 0, changes: 0 }, results: rows };
     }
 
-    if (normalized.startsWith("select id, video_id, title, start_sec, end_sec from clips where video_id in")) {
+    if (normalized.startsWith("select id, video_id, title, start_sec, end_sec, original_composer from clips where video_id in")) {
       const ids = new Set((values as number[]) ?? []);
       const rows = this.clips
         .filter((clip) => ids.has(clip.video_id))
@@ -160,14 +162,15 @@ class FakeD1Database implements D1Database {
       return { success: true, meta: { duration: 0, changes: 0 }, results: rows };
     }
 
-    if (normalized.startsWith("select id, youtube_video_id, title from videos where id in")) {
+    if (normalized.startsWith("select id, youtube_video_id, title, original_composer from videos where id in")) {
       const ids = new Set((values as number[]) ?? []);
       const rows = this.videos
         .filter((video) => ids.has(video.id))
         .map((video) => ({
           id: video.id,
           youtube_video_id: video.youtube_video_id,
-          title: video.title
+          title: video.title,
+          original_composer: video.original_composer
         } as unknown as T));
       return { success: true, meta: { duration: 0, changes: 0 }, results: rows };
     }
@@ -228,7 +231,8 @@ test("listMediaLibrary returns media and clips for requesting user", async () =>
         captions_json: null,
         category: "live",
         content_type: "OFFICIAL",
-        hidden: 0
+        hidden: 0,
+        original_composer: "Composer One"
       },
       {
         id: 2,
@@ -242,7 +246,8 @@ test("listMediaLibrary returns media and clips for requesting user", async () =>
         captions_json: null,
         category: "cover",
         content_type: "CLIP_SOURCE",
-        hidden: 0
+        hidden: 0,
+        original_composer: null
       },
       {
         id: 3,
@@ -256,13 +261,14 @@ test("listMediaLibrary returns media and clips for requesting user", async () =>
         captions_json: null,
         category: null,
         content_type: "OFFICIAL",
-        hidden: 0
+        hidden: 0,
+        original_composer: "Composer Other"
       }
     ],
     [
-      { id: 101, video_id: 1, title: "Intro", start_sec: 0, end_sec: 30 },
-      { id: 102, video_id: 2, title: "Chorus", start_sec: 45, end_sec: 75 },
-      { id: 103, video_id: 3, title: "Other Artist Clip", start_sec: 10, end_sec: 40 }
+      { id: 101, video_id: 1, title: "Intro", start_sec: 0, end_sec: 30, original_composer: "Composer One" },
+      { id: 102, video_id: 2, title: "Chorus", start_sec: 45, end_sec: 75, original_composer: null },
+      { id: 103, video_id: 3, title: "Other Artist Clip", start_sec: 10, end_sec: 40, original_composer: "Composer Other" }
     ],
     [
       { clip_id: 101, tag: "tag-a" },

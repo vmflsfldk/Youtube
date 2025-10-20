@@ -38,6 +38,7 @@ type ClipFormState = {
   endSeconds: string;
   tags: string;
   videoUrl: string;
+  originalComposer: string;
 };
 
 const createInitialClipFormState = (): ClipFormState => ({
@@ -49,7 +50,8 @@ const createInitialClipFormState = (): ClipFormState => ({
   endMinutes: '00',
   endSeconds: '00',
   tags: '',
-  videoUrl: ''
+  videoUrl: '',
+  originalComposer: ''
 });
 
 type ClipEditFormState = {
@@ -448,6 +450,7 @@ interface VideoResponse {
   category?: 'live' | 'cover' | 'original' | null;
   sections?: VideoSectionResponse[];
   hidden?: boolean;
+  originalComposer?: string | null;
   artistName?: string | null;
   artistDisplayName?: string | null;
   artistYoutubeChannelId?: string | null;
@@ -465,6 +468,8 @@ interface ClipResponse {
   thumbnailUrl?: string | null;
   youtubeVideoId?: string;
   videoTitle?: string | null;
+  originalComposer?: string | null;
+  videoOriginalComposer?: string | null;
   artistId?: number;
   artistName?: string | null;
   artistDisplayName?: string | null;
@@ -505,6 +510,7 @@ type ClipCreationPayload = {
   videoUrl?: string;
   artistId?: number;
   videoHidden?: boolean;
+  originalComposer?: string | null;
 };
 
 type ArtistFormState = {
@@ -609,10 +615,17 @@ const normalizeClip = (clip: ClipLike): ClipResponse => {
           .filter(Boolean)
       : [];
 
+  const clipOriginalComposer =
+    typeof clip.originalComposer === 'string' ? clip.originalComposer.trim() : '';
+  const videoOriginalComposer =
+    typeof clip.videoOriginalComposer === 'string' ? clip.videoOriginalComposer.trim() : '';
+
   return {
     ...clip,
     tags: normalizedTags,
-    videoTitle: clip.videoTitle ?? null
+    videoTitle: clip.videoTitle ?? null,
+    originalComposer: clipOriginalComposer.length > 0 ? clipOriginalComposer : null,
+    videoOriginalComposer: videoOriginalComposer.length > 0 ? videoOriginalComposer : null
   };
 };
 
@@ -764,7 +777,13 @@ export default function App() {
     [artistProfileForm.tags]
   );
   const [isArtistProfileSaving, setArtistProfileSaving] = useState(false);
-  const [videoForm, setVideoForm] = useState({ url: '', artistId: '', description: '', captionsJson: '' });
+  const [videoForm, setVideoForm] = useState({
+    url: '',
+    artistId: '',
+    description: '',
+    captionsJson: '',
+    originalComposer: ''
+  });
   const [clipForm, setClipForm] = useState<ClipFormState>(() => createInitialClipFormState());
   const [clipEditForm, setClipEditForm] = useState<ClipEditFormState>(() => createInitialClipEditFormState());
   const [isClipUpdateSaving, setClipUpdateSaving] = useState(false);
@@ -1100,7 +1119,7 @@ export default function App() {
     setPlaylistSearchQuery('');
     setClipCandidates([]);
     setSelectedVideo(null);
-    setVideoForm({ url: '', artistId: '', description: '', captionsJson: '' });
+    setVideoForm({ url: '', artistId: '', description: '', captionsJson: '', originalComposer: '' });
     setClipForm(createInitialClipFormState());
     setNicknameInput('');
     setNicknameStatus(null);
@@ -1563,10 +1582,18 @@ export default function App() {
   );
 
   const requestVideoRegistration = useCallback(
-    async ({ artistId, videoUrl }: { artistId: number; videoUrl: string }) => {
+    async ({
+      artistId,
+      videoUrl,
+      originalComposer
+    }: {
+      artistId: number;
+      videoUrl: string;
+      originalComposer?: string | null;
+    }) => {
       const response = await http.post<VideoClipSuggestionsResponse>(
         '/videos/clip-suggestions',
-        { artistId, videoUrl },
+        { artistId, videoUrl, originalComposer: originalComposer ?? null },
         { headers: authHeaders }
       );
 
@@ -1671,12 +1698,15 @@ export default function App() {
       }
 
       const tags = parseTags(clipForm.tags);
+      const normalizedClipOriginalComposer = clipForm.originalComposer.trim();
 
       const payload: ClipCreationPayload = {
         title: resolvedTitle,
         startSec: section.startSec,
         endSec: section.endSec,
-        tags
+        tags,
+        originalComposer:
+          normalizedClipOriginalComposer.length > 0 ? normalizedClipOriginalComposer : null
       };
 
       let restoreVideoUrl: string | null = null;
@@ -1702,7 +1732,11 @@ export default function App() {
             try {
               const registration = await requestVideoRegistration({
                 artistId: parsedArtistId,
-                videoUrl: restoreVideoUrl
+                videoUrl: restoreVideoUrl,
+                originalComposer:
+                  normalizedClipOriginalComposer.length > 0
+                    ? normalizedClipOriginalComposer
+                    : null
               });
               payload.videoId = registration.video.id;
               const candidateCount = registration.candidates.length;
@@ -1785,8 +1819,15 @@ export default function App() {
       return null;
     }
 
+    const normalizedVideoOriginalComposer = videoForm.originalComposer.trim();
+
     try {
-      const result = await requestVideoRegistration({ artistId: parsedArtistId, videoUrl: trimmedUrl });
+      const result = await requestVideoRegistration({
+        artistId: parsedArtistId,
+        videoUrl: trimmedUrl,
+        originalComposer:
+          normalizedVideoOriginalComposer.length > 0 ? normalizedVideoOriginalComposer : null
+      });
       const candidateCount = result.candidates.length;
       const defaultMessage =
         result.message ??
@@ -1799,7 +1840,13 @@ export default function App() {
           : '이미 등록된 영상을 불러왔습니다. 추천 구간을 찾지 못했습니다.');
 
       setVideoSubmissionStatus({ type: result.created ? 'success' : 'info', message: defaultMessage });
-      setVideoForm((prev) => ({ ...prev, url: '', description: '', captionsJson: '' }));
+      setVideoForm((prev) => ({
+        ...prev,
+        url: '',
+        description: '',
+        captionsJson: '',
+        originalComposer: ''
+      }));
       setClipForm((prev) => ({ ...prev, videoUrl: '' }));
       reloadArtistVideos().catch((error) => console.error('Failed to refresh videos after save', error));
       return result.video;
@@ -1813,6 +1860,7 @@ export default function App() {
     creationDisabled,
     videoForm.url,
     videoForm.artistId,
+    videoForm.originalComposer,
     requestVideoRegistration,
     reloadArtistVideos
   ]);
@@ -1960,6 +2008,8 @@ export default function App() {
       return;
     }
 
+    const normalizedClipOriginalComposer = clipForm.originalComposer.trim();
+
     if (trimmedVideoUrl) {
       const parsedArtistId = Number(videoForm.artistId);
       if (!videoForm.artistId || Number.isNaN(parsedArtistId)) {
@@ -1970,7 +2020,9 @@ export default function App() {
       try {
         const registration = await requestVideoRegistration({
           artistId: parsedArtistId,
-          videoUrl: trimmedVideoUrl
+          videoUrl: trimmedVideoUrl,
+          originalComposer:
+            normalizedClipOriginalComposer.length > 0 ? normalizedClipOriginalComposer : null
         });
         resolvedVideoId = registration.video.id;
         const candidateCount = registration.candidates.length;
@@ -2002,7 +2054,9 @@ export default function App() {
       startSec,
       endSec,
       tags,
-      videoId: resolvedVideoId
+      videoId: resolvedVideoId,
+      originalComposer:
+        normalizedClipOriginalComposer.length > 0 ? normalizedClipOriginalComposer : null
     };
 
     try {
@@ -2025,6 +2079,7 @@ export default function App() {
     clipForm.endHours,
     clipForm.endMinutes,
     clipForm.endSeconds,
+    clipForm.originalComposer,
     selectedVideo,
     videoForm.artistId,
     requestVideoRegistration,
@@ -2638,7 +2693,8 @@ export default function App() {
         video.youtubeVideoId,
         video.artistName,
         video.artistDisplayName,
-        video.artistYoutubeChannelTitle
+        video.artistYoutubeChannelTitle,
+        video.originalComposer
       ];
       return fields.some((field) => field && field.toLowerCase().includes(normalizedPlaylistQuery));
     };
@@ -2650,6 +2706,8 @@ export default function App() {
         clip.videoTitle ?? undefined,
         clip.youtubeVideoId,
         tagText,
+        clip.originalComposer ?? undefined,
+        clip.videoOriginalComposer ?? undefined,
         clip.artistName ?? undefined,
         clip.artistDisplayName ?? undefined,
         clip.artistYoutubeChannelTitle ?? undefined,
@@ -2657,7 +2715,8 @@ export default function App() {
         video?.youtubeVideoId,
         video?.artistName,
         video?.artistDisplayName,
-        video?.artistYoutubeChannelTitle
+        video?.artistYoutubeChannelTitle,
+        video?.originalComposer
       ];
       return fields.some((field) => field && field.toLowerCase().includes(normalizedPlaylistQuery));
     };
@@ -2763,6 +2822,8 @@ export default function App() {
       video.thumbnailUrl ||
       (video.youtubeVideoId ? `https://img.youtube.com/vi/${video.youtubeVideoId}/hqdefault.jpg` : null);
     const videoTitle = video.title || video.youtubeVideoId || '제목 없는 영상';
+    const videoOriginalComposer =
+      typeof video.originalComposer === 'string' ? video.originalComposer.trim() : '';
 
     return (
       <li key={video.id} className="artist-library__video-item">
@@ -2792,6 +2853,11 @@ export default function App() {
             <span className="artist-library__video-subtitle">
               {formatVideoMetaSummary(video)}
             </span>
+            {videoOriginalComposer && (
+              <div className="artist-library__clip-tags">
+                <span className="tag">#원곡:{videoOriginalComposer}</span>
+              </div>
+            )}
             <div className="artist-library__video-actions">
               <button
                 type="button"
@@ -3578,6 +3644,23 @@ export default function App() {
                               </p>
                             )}
                             {!isClipRegistration && (
+                              <>
+                                <label htmlFor="libraryVideoOriginalComposer">원곡자</label>
+                                <input
+                                  id="libraryVideoOriginalComposer"
+                                  placeholder="예: 원곡 또는 작곡가"
+                                  value={videoForm.originalComposer}
+                                  onChange={(event) =>
+                                    setVideoForm((prev) => ({
+                                      ...prev,
+                                      originalComposer: event.target.value
+                                    }))
+                                  }
+                                  disabled={creationDisabled}
+                                />
+                              </>
+                            )}
+                            {!isClipRegistration && (
                               <p className="artist-preview__hint">
                                 영상 등록을 완료하면 아래 <strong>자동 감지된 클립 제안</strong>에서 추천 구간을 확인할 수 있습니다.
                               </p>
@@ -3773,6 +3856,16 @@ export default function App() {
                                   value={clipForm.tags}
                                   onChange={(event) =>
                                     setClipForm((prev) => ({ ...prev, tags: event.target.value }))
+                                  }
+                                  disabled={creationDisabled}
+                                />
+                                <label htmlFor="libraryClipOriginalComposer">원곡자</label>
+                                <input
+                                  id="libraryClipOriginalComposer"
+                                  placeholder="예: 원곡 또는 작곡가"
+                                  value={clipForm.originalComposer}
+                                  onChange={(event) =>
+                                    setClipForm((prev) => ({ ...prev, originalComposer: event.target.value }))
                                   }
                                   disabled={creationDisabled}
                                 />
@@ -3998,6 +4091,13 @@ export default function App() {
                                   isEditingClip && editedEndSec <= editedStartSec
                                     ? editedStartSec + 1
                                     : editedEndSec;
+                                const clipOriginalComposerTag =
+                                  typeof clip.originalComposer === 'string'
+                                    ? clip.originalComposer.trim()
+                                    : '';
+                                const clipTagValues = clipOriginalComposerTag
+                                  ? [`원곡:${clipOriginalComposerTag}`, ...clip.tags]
+                                  : clip.tags;
                                 return (
                                   <li
                                     key={clip.id}
@@ -4016,9 +4116,9 @@ export default function App() {
                                       <span className="artist-library__clip-time">
                                         {formatSeconds(clip.startSec)} → {formatSeconds(clip.endSec)}
                                       </span>
-                                      {clip.tags.length > 0 && (
+                                      {clipTagValues.length > 0 && (
                                         <div className="artist-library__clip-tags">
-                                          {clip.tags.map((tag) => (
+                                          {clipTagValues.map((tag) => (
                                             <span key={tag} className="tag">
                                               #{tag}
                                             </span>
@@ -4251,6 +4351,10 @@ export default function App() {
                         video.artistName ||
                         video.artistYoutubeChannelTitle ||
                         null;
+                      const playlistVideoOriginalComposer =
+                        typeof video.originalComposer === 'string'
+                          ? video.originalComposer.trim()
+                          : '';
                       return (
                         <div className="playlist-entry playlist-entry--video" key={entryKey}>
                           <div className="playlist-video-card">
@@ -4323,6 +4427,11 @@ export default function App() {
                                   {formatVideoMetaSummary(video)}
                                 </span>
                               </div>
+                              {playlistVideoOriginalComposer && (
+                                <div className="tag-row">
+                                  <span className="tag">#원곡:{playlistVideoOriginalComposer}</span>
+                                </div>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -4347,6 +4456,13 @@ export default function App() {
                       parentVideo?.artistDisplayName ??
                       parentVideo?.artistName ??
                       null;
+                    const clipOriginalComposerTag =
+                      typeof clip.originalComposer === 'string'
+                        ? clip.originalComposer.trim()
+                        : '';
+                    const clipTagValues = clipOriginalComposerTag
+                      ? [`원곡:${clipOriginalComposerTag}`, ...clip.tags]
+                      : clip.tags;
 
                     return (
                       <div className="playlist-entry playlist-entry--clip" key={entryKey}>
@@ -4361,9 +4477,9 @@ export default function App() {
                               {resolvedVideoTitle && (
                                 <p className="playlist-clip__video-title">{resolvedVideoTitle}</p>
                               )}
-                              {clip.tags.length > 0 && (
+                              {clipTagValues.length > 0 && (
                                 <div className="tag-row">
-                                  {clip.tags.map((tag) => (
+                                  {clipTagValues.map((tag) => (
                                     <span key={tag} className="tag">
                                       #{tag}
                                     </span>

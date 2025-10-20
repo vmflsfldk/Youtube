@@ -11,6 +11,7 @@ public record ClipCreateRequest(
         @Min(0) int startSec,
         @Min(0) int endSec,
         List<String> tags,
-        Boolean videoHidden
+        Boolean videoHidden,
+        String originalComposer
 ) {
 }

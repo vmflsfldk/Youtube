@@ -30,6 +30,9 @@ public class Clip {
     @Column(name = "tag")
     private List<String> tags = new ArrayList<>();
 
+    @Column(name = "original_composer")
+    private String originalComposer;
+
     public Clip() {
     }
 
@@ -82,5 +85,13 @@ public class Clip {
 
     public void setTags(List<String> tags) {
         this.tags = tags;
+    }
+
+    public String getOriginalComposer() {
+        return originalComposer;
+    }
+
+    public void setOriginalComposer(String originalComposer) {
+        this.originalComposer = originalComposer;
     }
 }
