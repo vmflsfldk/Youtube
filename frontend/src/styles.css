@@ -1688,11 +1688,16 @@ button:disabled:hover {
 @media (max-width: 640px) {
   .artist-library__grid,
   .artist-library__grid-row {
-    gap: 0;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 12px;
   }
 
   .artist-library__card {
-    padding: 16px;
+    padding: 14px 12px;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 10px;
   }
 }
 
@@ -1966,10 +1971,11 @@ button:disabled:hover {
   }
 
   .artist-library__card {
-    padding: 16px;
-    flex-direction: row;
+    padding: 14px 12px;
+    flex-direction: column;
     align-items: center;
-    gap: 12px;
+    text-align: center;
+    gap: 10px;
   }
 
   .artist-library__avatar {
@@ -1980,8 +1986,13 @@ button:disabled:hover {
 
   .artist-library__info {
     justify-content: center;
-    align-items: flex-start;
+    align-items: center;
+    text-align: center;
     gap: 4px;
+  }
+
+  .artist-library__name {
+    font-size: 1rem;
   }
 
   .artist-library__meta,

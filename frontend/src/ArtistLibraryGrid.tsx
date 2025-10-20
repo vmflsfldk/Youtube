@@ -12,12 +12,13 @@ import {
 import { FixedSizeList, ListChildComponentProps } from 'react-window';
 
 const DESKTOP_ROW_GAP = 20;
+const MOBILE_ROW_GAP = 12;
 const getRowGap = (containerWidth: number): number => {
   if (containerWidth > 0 && containerWidth <= 640) {
-    return 0;
+    return MOBILE_ROW_GAP;
   }
   if (containerWidth <= 0 && typeof window !== 'undefined' && window.innerWidth <= 640) {
-    return 0;
+    return MOBILE_ROW_GAP;
   }
   return DESKTOP_ROW_GAP;
 };
@@ -27,7 +28,7 @@ const MIN_CARD_HEIGHT = 200;
 
 const getMinCardWidth = (containerWidth: number): number => {
   if (containerWidth <= 480) {
-    return 160;
+    return 140;
   }
   if (containerWidth <= 768) {
     return 200;
