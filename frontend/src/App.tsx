@@ -1277,49 +1277,53 @@ export default function App() {
   }, [authHeaders]);
 
   useEffect(() => {
+    if (isAuthenticated) {
+      return;
+    }
+
     let cancelled = false;
     let controller: AbortController | null = null;
 
-    if (!isAuthenticated) {
-      setClipCandidates([]);
-      const parsedArtistId = Number(videoForm.artistId);
+    setClipCandidates([]);
+    const parsedArtistId = Number(videoForm.artistId);
 
-      if (!videoForm.artistId || Number.isNaN(parsedArtistId)) {
-        setClips([]);
-      } else {
-        controller = new AbortController();
-        setClips([]);
-        (async () => {
-          try {
-            const response = await http.get<ClipResponse[]>('/clips', {
-              params: { artistId: parsedArtistId },
-              signal: controller?.signal
-            });
-            if (cancelled || controller?.signal.aborted) {
-              return;
-            }
-            const normalizedClips = ensureArray(response.data).map(normalizeClip);
-            setClips(normalizedClips);
-          } catch (error) {
-            if (controller?.signal.aborted) {
-              return;
-            }
-            console.error('Failed to load guest clips', error);
-            if (!cancelled) {
-              setClips([]);
-            }
+    if (!videoForm.artistId || Number.isNaN(parsedArtistId)) {
+      setClips([]);
+    } else {
+      controller = new AbortController();
+      setClips([]);
+      (async () => {
+        try {
+          const response = await http.get<ClipResponse[]>('/clips', {
+            params: { artistId: parsedArtistId },
+            signal: controller?.signal
+          });
+          if (cancelled || controller?.signal.aborted) {
+            return;
           }
-        })();
-      }
+          const normalizedClips = ensureArray(response.data).map(normalizeClip);
+          setClips(normalizedClips);
+        } catch (error) {
+          if (controller?.signal.aborted) {
+            return;
+          }
+          console.error('Failed to load guest clips', error);
+          if (!cancelled) {
+            setClips([]);
+          }
+        }
+      })();
     }
-
-    void fetchArtists();
 
     return () => {
       cancelled = true;
       controller?.abort();
     };
-  }, [isAuthenticated, fetchArtists, http, videoForm.artistId]);
+  }, [isAuthenticated, http, videoForm.artistId]);
+
+  useEffect(() => {
+    void fetchArtists();
+  }, [isAuthenticated, fetchArtists]);
 
   const handleArtistSubmit = async (event: FormEvent) => {
     event.preventDefault();
