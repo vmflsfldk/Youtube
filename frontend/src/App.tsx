@@ -12,6 +12,7 @@ import {
 } from 'react';
 import axios from 'axios';
 import ClipPlayer from './components/ClipPlayer';
+import ClipList, { type ClipListRenderContext, type ClipListRenderResult } from './components/ClipList';
 import PlaylistBar, { type PlaylistBarItem } from './components/PlaylistBar';
 import GoogleLoginButton from './components/GoogleLoginButton';
 import utahubLogo from './assets/utahub-logo.svg';
@@ -697,6 +698,16 @@ type ClipEditStatus = {
   type: 'success' | 'error';
   message: string;
 };
+
+interface ClipListItemData {
+  activeClipId: number | null;
+  clipEditForm: ClipEditFormState;
+  clipEditStatus: ClipEditStatus | null;
+  selectedVideoData: VideoResponse | null;
+  creationDisabled: boolean;
+  isClipUpdateSaving: boolean;
+  activeSection: SectionKey;
+}
 
 interface VideoClipSuggestionsResponse {
   video: VideoResponse;
@@ -3029,6 +3040,271 @@ export default function App() {
     [clips, selectedVideo]
   );
 
+  const clipListItemData = useMemo<ClipListItemData>(
+    () => ({
+      activeClipId,
+      clipEditForm,
+      clipEditStatus,
+      selectedVideoData: selectedVideoData ?? null,
+      creationDisabled,
+      isClipUpdateSaving,
+      activeSection
+    }),
+    [
+      activeClipId,
+      clipEditForm,
+      clipEditStatus,
+      selectedVideoData,
+      creationDisabled,
+      isClipUpdateSaving,
+      activeSection
+    ]
+  );
+
+  const renderClipListItem = useCallback(
+    (
+      clip: ClipResponse,
+      { isVisible, itemData }: ClipListRenderContext<ClipResponse, ClipListItemData>
+    ): ClipListRenderResult => {
+      const {
+        activeClipId: currentActiveClipId,
+        clipEditForm: currentClipEditForm,
+        clipEditStatus: currentClipEditStatus,
+        selectedVideoData: currentSelectedVideo,
+        creationDisabled: currentCreationDisabled,
+        isClipUpdateSaving: currentClipUpdateSaving,
+        activeSection: currentActiveSection
+      } = itemData;
+
+      const isActive = currentActiveClipId === clip.id;
+      const hasYoutubeId = Boolean(clip.youtubeVideoId);
+      const isEditingClip = currentClipEditForm.clipId === clip.id;
+      const editedStartSec = isEditingClip
+        ? parseClipTimeParts(
+            currentClipEditForm.startHours,
+            currentClipEditForm.startMinutes,
+            currentClipEditForm.startSeconds
+          )
+        : clip.startSec;
+      const editedEndSec = isEditingClip
+        ? parseClipTimeParts(
+            currentClipEditForm.endHours,
+            currentClipEditForm.endMinutes,
+            currentClipEditForm.endSeconds
+          )
+        : clip.endSec;
+      const previewStartSec = editedStartSec;
+      const previewEndSec =
+        isEditingClip && editedEndSec <= editedStartSec ? editedStartSec + 1 : editedEndSec;
+      const clipOriginalComposerTag =
+        typeof clip.originalComposer === 'string' ? clip.originalComposer.trim() : '';
+      const clipArtistName = (
+        clip.artistDisplayName ??
+        clip.artistName ??
+        currentSelectedVideo?.artistDisplayName ??
+        currentSelectedVideo?.artistName ??
+        ''
+      ).trim();
+      const clipCategory = categorizeClip(clip, currentSelectedVideo ?? null);
+      const clipVocalTag =
+        clipCategory && clipCategory !== 'live' && clipArtistName ? `보컬:${clipArtistName}` : null;
+      const clipTagValues = buildTagList(
+        clipOriginalComposerTag ? `원곡:${clipOriginalComposerTag}` : null,
+        clipVocalTag,
+        clip.tags
+      );
+
+      const className = `artist-library__clip-card${
+        isActive ? ' artist-library__clip-card--active' : ''
+      }${hasYoutubeId ? '' : ' artist-library__clip-card--disabled'}`;
+
+      const content = (
+        <>
+          <button
+            type="button"
+            className="artist-library__clip-card-button"
+            onClick={() => handleClipCardToggle(clip)}
+            aria-pressed={isActive}
+            disabled={!hasYoutubeId}
+          >
+            <span className="artist-library__clip-title">{clip.title}</span>
+            <span className="artist-library__clip-time">
+              {formatSeconds(clip.startSec)} → {formatSeconds(clip.endSec)}
+            </span>
+            {clipTagValues.length > 0 && (
+              <div className="artist-library__clip-tags">
+                {clipTagValues.map((tag) => (
+                  <span key={tag} className="tag">
+                    #{tag}
+                  </span>
+                ))}
+              </div>
+            )}
+          </button>
+          {clip.youtubeVideoId && (
+            <div className="artist-library__clip-footer">
+              <a
+                className="artist-library__clip-link"
+                href={`https://www.youtube.com/watch?v=${clip.youtubeVideoId}&t=${Math.floor(
+                  clip.startSec
+                )}s`}
+                target="_blank"
+                rel="noreferrer"
+                onClick={(event) => event.stopPropagation()}
+              >
+                유튜브에서 보기
+              </a>
+            </div>
+          )}
+          {isActive && (
+            <div className="artist-library__clip-editor">
+              {isEditingClip ? (
+                <form className="clip-edit-form" onSubmit={handleClipEditSubmit}>
+                  <div className="clip-edit-form__fields">
+                    <fieldset className="clip-time-fieldset">
+                      <legend>시작 시간</legend>
+                      <div className="clip-time-inputs">
+                        <div className="clip-time-input">
+                          <label htmlFor={`clipEditStartHours-${clip.id}`}>시간</label>
+                          <input
+                            id={`clipEditStartHours-${clip.id}`}
+                            type="text"
+                            inputMode="numeric"
+                            placeholder="0"
+                            maxLength={3}
+                            value={currentClipEditForm.startHours}
+                            onChange={handleClipEditTimePartChange('startHours')}
+                            disabled={currentClipUpdateSaving}
+                          />
+                        </div>
+                        <div className="clip-time-input">
+                          <label htmlFor={`clipEditStartMinutes-${clip.id}`}>분</label>
+                          <input
+                            id={`clipEditStartMinutes-${clip.id}`}
+                            type="text"
+                            inputMode="numeric"
+                            placeholder="00"
+                            maxLength={2}
+                            value={currentClipEditForm.startMinutes}
+                            onChange={handleClipEditTimePartChange('startMinutes')}
+                            disabled={currentClipUpdateSaving}
+                          />
+                        </div>
+                        <div className="clip-time-input">
+                          <label htmlFor={`clipEditStartSeconds-${clip.id}`}>초</label>
+                          <input
+                            id={`clipEditStartSeconds-${clip.id}`}
+                            type="text"
+                            inputMode="numeric"
+                            placeholder="00"
+                            maxLength={2}
+                            value={currentClipEditForm.startSeconds}
+                            onChange={handleClipEditTimePartChange('startSeconds')}
+                            disabled={currentClipUpdateSaving}
+                          />
+                        </div>
+                      </div>
+                    </fieldset>
+                    <fieldset className="clip-time-fieldset">
+                      <legend>종료 시간</legend>
+                      <div className="clip-time-inputs">
+                        <div className="clip-time-input">
+                          <label htmlFor={`clipEditEndHours-${clip.id}`}>시간</label>
+                          <input
+                            id={`clipEditEndHours-${clip.id}`}
+                            type="text"
+                            inputMode="numeric"
+                            placeholder="0"
+                            maxLength={3}
+                            value={currentClipEditForm.endHours}
+                            onChange={handleClipEditTimePartChange('endHours')}
+                            disabled={currentClipUpdateSaving}
+                          />
+                        </div>
+                        <div className="clip-time-input">
+                          <label htmlFor={`clipEditEndMinutes-${clip.id}`}>분</label>
+                          <input
+                            id={`clipEditEndMinutes-${clip.id}`}
+                            type="text"
+                            inputMode="numeric"
+                            placeholder="00"
+                            maxLength={2}
+                            value={currentClipEditForm.endMinutes}
+                            onChange={handleClipEditTimePartChange('endMinutes')}
+                            disabled={currentClipUpdateSaving}
+                          />
+                        </div>
+                        <div className="clip-time-input">
+                          <label htmlFor={`clipEditEndSeconds-${clip.id}`}>초</label>
+                          <input
+                            id={`clipEditEndSeconds-${clip.id}`}
+                            type="text"
+                            inputMode="numeric"
+                            placeholder="00"
+                            maxLength={2}
+                            value={currentClipEditForm.endSeconds}
+                            onChange={handleClipEditTimePartChange('endSeconds')}
+                            disabled={currentClipUpdateSaving}
+                          />
+                        </div>
+                      </div>
+                    </fieldset>
+                  </div>
+                  {currentClipEditStatus && isEditingClip && (
+                    <p className={`clip-edit-status clip-edit-status--${currentClipEditStatus.type}`}>
+                      {currentClipEditStatus.message}
+                    </p>
+                  )}
+                  <div className="clip-edit-actions">
+                    <button type="submit" disabled={currentClipUpdateSaving}>
+                      적용
+                    </button>
+                    <button
+                      type="button"
+                      className="clip-edit-cancel"
+                      onClick={handleClipEditCancel}
+                      disabled={currentClipUpdateSaving}
+                    >
+                      취소
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <button
+                  type="button"
+                  className="clip-edit-toggle"
+                  onClick={() => openClipEditor(clip)}
+                  disabled={currentCreationDisabled || !hasYoutubeId || currentClipUpdateSaving}
+                >
+                  시간 수정
+                </button>
+              )}
+            </div>
+          )}
+          {currentActiveSection === 'library' && isActive && clip.youtubeVideoId && isVisible && (
+            <div className="artist-library__clip-player">
+              <ClipPlayer
+                youtubeVideoId={clip.youtubeVideoId}
+                startSec={previewStartSec}
+                endSec={previewEndSec}
+                autoplay
+              />
+            </div>
+          )}
+        </>
+      );
+
+      return { className, content } satisfies ClipListRenderResult;
+    },
+    [
+      handleClipCardToggle,
+      handleClipEditSubmit,
+      handleClipEditTimePartChange,
+      handleClipEditCancel,
+      openClipEditor
+    ]
+  );
+
   type PlaylistEntry =
     | { type: 'video'; itemId: number; video: VideoResponse }
     | { type: 'clip'; itemId: number; clip: ClipResponse; parentVideo: VideoResponse | null };
@@ -4639,231 +4915,13 @@ export default function App() {
                                 댓글 구간에서 자동 저장된 클립입니다. 영상은 라이브러리에 등록되지 않습니다.
                               </p>
                             )}
-                            <ul className="artist-library__clip-list">
-                              {selectedVideoClips.map((clip) => {
-                                const isActive = activeClipId === clip.id;
-                                const hasYoutubeId = Boolean(clip.youtubeVideoId);
-                                const isEditingClip = clipEditForm.clipId === clip.id;
-                                const editedStartSec = isEditingClip
-                                  ? parseClipTimeParts(
-                                      clipEditForm.startHours,
-                                      clipEditForm.startMinutes,
-                                      clipEditForm.startSeconds
-                                    )
-                                  : clip.startSec;
-                                const editedEndSec = isEditingClip
-                                  ? parseClipTimeParts(
-                                      clipEditForm.endHours,
-                                      clipEditForm.endMinutes,
-                                      clipEditForm.endSeconds
-                                    )
-                                  : clip.endSec;
-                                const previewStartSec = editedStartSec;
-                                const previewEndSec =
-                                  isEditingClip && editedEndSec <= editedStartSec
-                                    ? editedStartSec + 1
-                                    : editedEndSec;
-                                const clipOriginalComposerTag =
-                                  typeof clip.originalComposer === 'string'
-                                    ? clip.originalComposer.trim()
-                                    : '';
-                                const clipArtistName = (
-                                  clip.artistDisplayName ??
-                                  clip.artistName ??
-                                  selectedVideoData?.artistDisplayName ??
-                                  selectedVideoData?.artistName ??
-                                  ''
-                                ).trim();
-                                const clipCategory = categorizeClip(clip, selectedVideoData ?? null);
-                                const clipVocalTag =
-                                  clipCategory && clipCategory !== 'live' && clipArtistName
-                                    ? `보컬:${clipArtistName}`
-                                    : null;
-                                const clipTagValues = buildTagList(
-                                  clipOriginalComposerTag ? `원곡:${clipOriginalComposerTag}` : null,
-                                  clipVocalTag,
-                                  clip.tags
-                                );
-                                return (
-                                  <li
-                                    key={clip.id}
-                                    className={`artist-library__clip-card${
-                                      isActive ? ' artist-library__clip-card--active' : ''
-                                    }${hasYoutubeId ? '' : ' artist-library__clip-card--disabled'}`}
-                                  >
-                                    <button
-                                      type="button"
-                                      className="artist-library__clip-card-button"
-                                      onClick={() => handleClipCardToggle(clip)}
-                                      aria-pressed={isActive}
-                                      disabled={!hasYoutubeId}
-                                    >
-                                      <span className="artist-library__clip-title">{clip.title}</span>
-                                      <span className="artist-library__clip-time">
-                                        {formatSeconds(clip.startSec)} → {formatSeconds(clip.endSec)}
-                                      </span>
-                                      {clipTagValues.length > 0 && (
-                                        <div className="artist-library__clip-tags">
-                                          {clipTagValues.map((tag) => (
-                                            <span key={tag} className="tag">
-                                              #{tag}
-                                            </span>
-                                          ))}
-                                        </div>
-                                      )}
-                                    </button>
-                                    {clip.youtubeVideoId && (
-                                      <div className="artist-library__clip-footer">
-                                        <a
-                                          className="artist-library__clip-link"
-                                          href={`https://www.youtube.com/watch?v=${clip.youtubeVideoId}&t=${Math.floor(clip.startSec)}s`}
-                                          target="_blank"
-                                          rel="noreferrer"
-                                          onClick={(event) => event.stopPropagation()}
-                                        >
-                                          유튜브에서 보기
-                                        </a>
-                                      </div>
-                                    )}
-                                    {isActive && (
-                                      <div className="artist-library__clip-editor">
-                                        {isEditingClip ? (
-                                          <form className="clip-edit-form" onSubmit={handleClipEditSubmit}>
-                                            <div className="clip-edit-form__fields">
-                                              <fieldset className="clip-time-fieldset">
-                                                <legend>시작 시간</legend>
-                                                <div className="clip-time-inputs">
-                                                  <div className="clip-time-input">
-                                                    <label htmlFor={`clipEditStartHours-${clip.id}`}>시간</label>
-                                                    <input
-                                                      id={`clipEditStartHours-${clip.id}`}
-                                                      type="text"
-                                                      inputMode="numeric"
-                                                      placeholder="0"
-                                                      maxLength={3}
-                                                      value={clipEditForm.startHours}
-                                                      onChange={handleClipEditTimePartChange('startHours')}
-                                                      disabled={isClipUpdateSaving}
-                                                    />
-                                                  </div>
-                                                  <div className="clip-time-input">
-                                                    <label htmlFor={`clipEditStartMinutes-${clip.id}`}>분</label>
-                                                    <input
-                                                      id={`clipEditStartMinutes-${clip.id}`}
-                                                      type="text"
-                                                      inputMode="numeric"
-                                                      placeholder="00"
-                                                      maxLength={2}
-                                                      value={clipEditForm.startMinutes}
-                                                      onChange={handleClipEditTimePartChange('startMinutes')}
-                                                      disabled={isClipUpdateSaving}
-                                                    />
-                                                  </div>
-                                                  <div className="clip-time-input">
-                                                    <label htmlFor={`clipEditStartSeconds-${clip.id}`}>초</label>
-                                                    <input
-                                                      id={`clipEditStartSeconds-${clip.id}`}
-                                                      type="text"
-                                                      inputMode="numeric"
-                                                      placeholder="00"
-                                                      maxLength={2}
-                                                      value={clipEditForm.startSeconds}
-                                                      onChange={handleClipEditTimePartChange('startSeconds')}
-                                                      disabled={isClipUpdateSaving}
-                                                    />
-                                                  </div>
-                                                </div>
-                                              </fieldset>
-                                              <fieldset className="clip-time-fieldset">
-                                                <legend>종료 시간</legend>
-                                                <div className="clip-time-inputs">
-                                                  <div className="clip-time-input">
-                                                    <label htmlFor={`clipEditEndHours-${clip.id}`}>시간</label>
-                                                    <input
-                                                      id={`clipEditEndHours-${clip.id}`}
-                                                      type="text"
-                                                      inputMode="numeric"
-                                                      placeholder="0"
-                                                      maxLength={3}
-                                                      value={clipEditForm.endHours}
-                                                      onChange={handleClipEditTimePartChange('endHours')}
-                                                      disabled={isClipUpdateSaving}
-                                                    />
-                                                  </div>
-                                                  <div className="clip-time-input">
-                                                    <label htmlFor={`clipEditEndMinutes-${clip.id}`}>분</label>
-                                                    <input
-                                                      id={`clipEditEndMinutes-${clip.id}`}
-                                                      type="text"
-                                                      inputMode="numeric"
-                                                      placeholder="00"
-                                                      maxLength={2}
-                                                      value={clipEditForm.endMinutes}
-                                                      onChange={handleClipEditTimePartChange('endMinutes')}
-                                                      disabled={isClipUpdateSaving}
-                                                    />
-                                                  </div>
-                                                  <div className="clip-time-input">
-                                                    <label htmlFor={`clipEditEndSeconds-${clip.id}`}>초</label>
-                                                    <input
-                                                      id={`clipEditEndSeconds-${clip.id}`}
-                                                      type="text"
-                                                      inputMode="numeric"
-                                                      placeholder="00"
-                                                      maxLength={2}
-                                                      value={clipEditForm.endSeconds}
-                                                      onChange={handleClipEditTimePartChange('endSeconds')}
-                                                      disabled={isClipUpdateSaving}
-                                                    />
-                                                  </div>
-                                                </div>
-                                              </fieldset>
-                                            </div>
-                                            {clipEditStatus && isEditingClip && (
-                                              <p className={`clip-edit-status clip-edit-status--${clipEditStatus.type}`}>
-                                                {clipEditStatus.message}
-                                              </p>
-                                            )}
-                                            <div className="clip-edit-actions">
-                                              <button type="submit" disabled={isClipUpdateSaving}>
-                                                적용
-                                              </button>
-                                              <button
-                                                type="button"
-                                                className="clip-edit-cancel"
-                                                onClick={handleClipEditCancel}
-                                                disabled={isClipUpdateSaving}
-                                              >
-                                                취소
-                                              </button>
-                                            </div>
-                                          </form>
-                                        ) : (
-                                          <button
-                                            type="button"
-                                            className="clip-edit-toggle"
-                                            onClick={() => openClipEditor(clip)}
-                                            disabled={creationDisabled || !hasYoutubeId || isClipUpdateSaving}
-                                          >
-                                            시간 수정
-                                          </button>
-                                        )}
-                                      </div>
-                                    )}
-                                    {activeSection === 'library' && isActive && clip.youtubeVideoId && (
-                                      <div className="artist-library__clip-player">
-                                        <ClipPlayer
-                                          youtubeVideoId={clip.youtubeVideoId}
-                                          startSec={previewStartSec}
-                                          endSec={previewEndSec}
-                                          autoplay
-                                        />
-                                      </div>
-                                    )}
-                                  </li>
-                                );
-                              })}
-                            </ul>
+                            <ClipList
+                              clips={selectedVideoClips}
+                              getItemKey={(clip) => clip.id}
+                              renderItem={renderClipListItem}
+                              itemData={clipListItemData}
+                              className="artist-library__clip-list"
+                            />
                           </>
                         )}
                         </section>
