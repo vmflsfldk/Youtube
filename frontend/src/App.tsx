@@ -20,6 +20,7 @@ import utahubLogo from './assets/utahub-logo.svg';
 import ArtistLibraryGrid from './ArtistLibraryGrid';
 import ArtistLibraryCard, { type ArtistLibraryCardData } from './components/ArtistLibraryCard';
 import ArtistSearchControls from './components/ArtistSearchControls';
+import ClipPreviewPanel from './components/ClipPreviewPanel';
 
 const ClipPlayer = lazy(() => import('./components/ClipPlayer'));
 
@@ -713,10 +714,21 @@ interface ClipListItemData {
   selectedVideoData: VideoResponse | null;
   creationDisabled: boolean;
   isClipUpdateSaving: boolean;
-  activeSection: SectionKey;
   canModifyPlaylist: boolean;
   playlistClipItemMap: Map<number, PlaylistItemResponse>;
   handleClipPlaylistToggle: (clipId: number) => Promise<void>;
+}
+
+interface ClipPreviewData {
+  clipId: number;
+  clipTitle: string;
+  videoTitle: string;
+  youtubeVideoId: string;
+  startSec: number;
+  endSec: number;
+  rangeLabel: string;
+  tags: string[];
+  isEditing: boolean;
 }
 
 interface VideoClipSuggestionsResponse {
@@ -3315,7 +3327,6 @@ export default function App() {
       selectedVideoData: selectedVideoData ?? null,
       creationDisabled,
       isClipUpdateSaving,
-      activeSection,
       canModifyPlaylist: canModifyActivePlaylist,
       playlistClipItemMap,
       handleClipPlaylistToggle
@@ -3327,12 +3338,105 @@ export default function App() {
       selectedVideoData,
       creationDisabled,
       isClipUpdateSaving,
-      activeSection,
       canModifyActivePlaylist,
       playlistClipItemMap,
       handleClipPlaylistToggle
     ]
   );
+
+  const activeClipPreview = useMemo<ClipPreviewData | null>(() => {
+    if (activeSection !== 'library') {
+      return null;
+    }
+    if (activeClipId === null) {
+      return null;
+    }
+
+    const clip = clips.find((candidate) => candidate.id === activeClipId);
+    if (!clip) {
+      return null;
+    }
+    const youtubeVideoId = (clip.youtubeVideoId ?? '').trim();
+    if (!youtubeVideoId) {
+      return null;
+    }
+
+    const parentVideo =
+      (selectedVideoData && selectedVideoData.id === clip.videoId ? selectedVideoData : null) ??
+      videos.find((video) => video.id === clip.videoId) ??
+      null;
+    const isEditingClip = clipEditForm.clipId === clip.id;
+    const editedStartSec = isEditingClip
+      ? parseClipTimeParts(
+          clipEditForm.startHours,
+          clipEditForm.startMinutes,
+          clipEditForm.startSeconds
+        )
+      : clip.startSec;
+    const editedEndSec = isEditingClip
+      ? parseClipTimeParts(clipEditForm.endHours, clipEditForm.endMinutes, clipEditForm.endSeconds)
+      : clip.endSec;
+    const previewStartSec = editedStartSec;
+    const previewEndSec =
+      isEditingClip && editedEndSec <= editedStartSec ? editedStartSec + 1 : editedEndSec;
+
+    const clipOriginalComposerTag =
+      typeof clip.originalComposer === 'string' ? clip.originalComposer.trim() : '';
+    const clipArtistName = (
+      clip.artistDisplayName ??
+      clip.artistName ??
+      parentVideo?.artistDisplayName ??
+      parentVideo?.artistName ??
+      ''
+    ).trim();
+    const clipCategory = categorizeClip(clip, parentVideo ?? null);
+    const clipVocalTag =
+      clipCategory && clipCategory !== 'live' && clipArtistName ? `보컬:${clipArtistName}` : null;
+    const clipTagValues = buildTagList(
+      clipOriginalComposerTag ? `원곡:${clipOriginalComposerTag}` : null,
+      clipVocalTag,
+      clip.tags
+    );
+
+    const clipTitleSource =
+      typeof clip.title === 'string' && clip.title.trim().length > 0
+        ? clip.title
+        : clip.sectionTitle || clip.youtubeChapterTitle || '제목 없는 클립';
+    const clipTitle = clipTitleSource.trim() || '제목 없는 클립';
+    const videoTitleSource =
+      clip.videoTitle ||
+      parentVideo?.title ||
+      parentVideo?.youtubeVideoId ||
+      clip.youtubeVideoId ||
+      '';
+    const videoTitle = typeof videoTitleSource === 'string' ? videoTitleSource.trim() : '';
+    const rangeLabel = `${formatSeconds(previewStartSec)} → ${formatSeconds(previewEndSec)}`;
+
+    return {
+      clipId: clip.id,
+      clipTitle,
+      videoTitle,
+      youtubeVideoId,
+      startSec: previewStartSec,
+      endSec: previewEndSec,
+      rangeLabel,
+      tags: clipTagValues,
+      isEditing: isEditingClip
+    } satisfies ClipPreviewData;
+  }, [
+    activeSection,
+    activeClipId,
+    clips,
+    clipEditForm.clipId,
+    clipEditForm.startHours,
+    clipEditForm.startMinutes,
+    clipEditForm.startSeconds,
+    clipEditForm.endHours,
+    clipEditForm.endMinutes,
+    clipEditForm.endSeconds,
+    selectedVideoData,
+    videos
+  ]);
 
   const renderClipListItem = useCallback(
     (
@@ -3346,7 +3450,6 @@ export default function App() {
         selectedVideoData: currentSelectedVideo,
         creationDisabled: currentCreationDisabled,
         isClipUpdateSaving: currentClipUpdateSaving,
-        activeSection: currentActiveSection,
         canModifyPlaylist,
         playlistClipItemMap: currentPlaylistClipItemMap,
         handleClipPlaylistToggle: toggleClipPlaylist
@@ -3355,23 +3458,6 @@ export default function App() {
       const isActive = currentActiveClipId === clip.id;
       const hasYoutubeId = Boolean(clip.youtubeVideoId);
       const isEditingClip = currentClipEditForm.clipId === clip.id;
-      const editedStartSec = isEditingClip
-        ? parseClipTimeParts(
-            currentClipEditForm.startHours,
-            currentClipEditForm.startMinutes,
-            currentClipEditForm.startSeconds
-          )
-        : clip.startSec;
-      const editedEndSec = isEditingClip
-        ? parseClipTimeParts(
-            currentClipEditForm.endHours,
-            currentClipEditForm.endMinutes,
-            currentClipEditForm.endSeconds
-          )
-        : clip.endSec;
-      const previewStartSec = editedStartSec;
-      const previewEndSec =
-        isEditingClip && editedEndSec <= editedStartSec ? editedStartSec + 1 : editedEndSec;
       const clipOriginalComposerTag =
         typeof clip.originalComposer === 'string' ? clip.originalComposer.trim() : '';
       const clipArtistName = (
@@ -3575,24 +3661,6 @@ export default function App() {
                   시간 수정
                 </button>
               )}
-            </div>
-          )}
-          {currentActiveSection === 'library' && isActive && clip.youtubeVideoId && isVisible && (
-            <div className="artist-library__clip-player">
-              <Suspense
-                fallback={
-                  <div className="artist-library__clip-player-loading" role="status" aria-live="polite">
-                    플레이어 준비 중…
-                  </div>
-                }
-              >
-                <ClipPlayer
-                  youtubeVideoId={clip.youtubeVideoId}
-                  startSec={previewStartSec}
-                  endSec={previewEndSec}
-                  autoplay
-                />
-              </Suspense>
             </div>
           )}
         </>
@@ -5235,6 +5303,34 @@ export default function App() {
                               <p className="artist-preview__hint">
                                 댓글 구간에서 자동 저장된 클립입니다. 영상은 라이브러리에 등록되지 않습니다.
                               </p>
+                            )}
+                            {activeClipPreview && (
+                              <ClipPreviewPanel
+                                clipTitle={activeClipPreview.clipTitle}
+                                videoTitle={activeClipPreview.videoTitle}
+                                rangeLabel={activeClipPreview.rangeLabel}
+                                tags={activeClipPreview.tags}
+                                isEditing={activeClipPreview.isEditing}
+                              >
+                                <Suspense
+                                  fallback={
+                                    <div
+                                      className="artist-library__clip-preview-loading"
+                                      role="status"
+                                      aria-live="polite"
+                                    >
+                                      플레이어 준비 중…
+                                    </div>
+                                  }
+                                >
+                                  <ClipPlayer
+                                    youtubeVideoId={activeClipPreview.youtubeVideoId}
+                                    startSec={activeClipPreview.startSec}
+                                    endSec={activeClipPreview.endSec}
+                                    autoplay
+                                  />
+                                </Suspense>
+                              </ClipPreviewPanel>
                             )}
                             <ClipList
                               clips={selectedVideoClips}
