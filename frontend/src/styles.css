@@ -1688,7 +1688,11 @@ button:disabled:hover {
 @media (max-width: 640px) {
   .artist-library__grid,
   .artist-library__grid-row {
-    gap: 14px;
+    gap: 10px;
+  }
+
+  .artist-library__card {
+    padding: 16px;
   }
 }
 
