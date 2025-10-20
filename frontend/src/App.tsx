@@ -1014,7 +1014,7 @@ export default function App() {
   const [hiddenVideoIds, setHiddenVideoIds] = useState<number[]>([]);
   const [favoriteVideoIds, setFavoriteVideoIds] = useState<number[]>([]);
   const [userPlaylists, setUserPlaylists] = useState<PlaylistResponse[]>([]);
-  const [, setPublicPlaylists] = useState<PlaylistResponse[]>([]);
+  const [publicPlaylists, setPublicPlaylists] = useState<PlaylistResponse[]>([]);
   const [activePlaylist, setActivePlaylist] = useState<PlaylistResponse | null>(null);
   const [expandedVideoCategories, setExpandedVideoCategories] = useState<Record<VideoCategoryKey, boolean>>({
     cover: false,
@@ -2552,7 +2552,7 @@ export default function App() {
     return map;
   }, [playlistItems]);
 
-  const availablePlaylists = useMemo(
+  const availablePlaylists = useMemo<PlaylistResponse[]>(
     () => (isAuthenticated ? userPlaylists : publicPlaylists),
     [isAuthenticated, publicPlaylists, userPlaylists]
   );
