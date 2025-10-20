@@ -3185,6 +3185,44 @@ button:disabled:hover {
   gap: 12px;
   align-items: flex-start;
   margin-bottom: 18px;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    'heading'
+    'selector'
+    'search';
+}
+
+.playlist-panel__heading {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  grid-area: heading;
+}
+
+.playlist-panel__selector {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  grid-area: selector;
+}
+
+.playlist-selector__label {
+  font-size: 0.75rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.playlist-selector__dropdown {
+  width: 100%;
+}
+
+.playlist-selector__empty {
+  padding: 0.85rem 1.1rem;
+  border-radius: 14px;
+  border: 1px dashed rgba(148, 163, 184, 0.4);
+  background: rgba(15, 23, 42, 0.35);
+  color: var(--color-text-muted);
 }
 
 .playlist-panel__header h2 {
@@ -3197,6 +3235,7 @@ button:disabled:hover {
 
 .playlist-search {
   width: 100%;
+  grid-area: search;
 }
 
 .playlist-search input {
@@ -4079,6 +4118,14 @@ button:disabled:hover {
 @media (min-width: 768px) {
   .playlist-panel__header {
     grid-template-columns: minmax(0, 1fr) minmax(220px, 280px);
+    grid-template-areas:
+      'heading selector'
+      'search search';
+    align-items: end;
+  }
+
+  .playlist-panel__selector {
+    align-self: end;
   }
 
   .playlist-video-card {
