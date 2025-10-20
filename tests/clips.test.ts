@@ -36,6 +36,7 @@ type VideoRow = {
   artist_id: number;
   youtube_video_id: string;
   title: string;
+  original_composer: string | null;
 };
 
 type ClipRow = {
@@ -44,6 +45,7 @@ type ClipRow = {
   title: string;
   start_sec: number;
   end_sec: number;
+  original_composer: string | null;
 };
 
 type ClipTagRow = {
@@ -122,28 +124,25 @@ class FakeD1Database implements D1Database {
   async handleAll<T>(query: string, values: unknown[]): Promise<D1Result<T>> {
     const normalized = query.replace(/\s+/g, " ").trim().toLowerCase();
     if (
-      normalized.startsWith(
-        "select c.id, c.video_id, c.title, c.start_sec, c.end_sec from clips c join videos v on v.id = c.video_id where v.artist_id = ? order by c.start_sec"
-      )
+      normalized.startsWith("select c.id, c.video_id, c.title, c.start_sec, c.end_sec") ||
+      normalized.startsWith("select id, video_id, title, start_sec, end_sec, original_composer")
     ) {
-      const [artistId] = values as [number];
-      const rows = this.clips
-        .filter((clip) => this.videos.some((video) => video.id === clip.video_id && video.artist_id === artistId))
-        .sort((a, b) => a.start_sec - b.start_sec)
-        .map((clip) => ({ ...clip } as unknown as T));
-      return { success: true, meta: { duration: 0, changes: 0 }, results: rows };
-    }
-    if (
-      normalized.startsWith(
-        "select id, video_id, title, start_sec, end_sec from clips where video_id = ? order by start_sec"
-      )
-    ) {
-      const [videoId] = values as [number];
-      const rows = this.clips
-        .filter((clip) => clip.video_id === videoId)
-        .sort((a, b) => a.start_sec - b.start_sec)
-        .map((clip) => ({ ...clip } as unknown as T));
-      return { success: true, meta: { duration: 0, changes: 0 }, results: rows };
+      if (normalized.includes("from clips c join videos v on v.id = c.video_id where v.artist_id = ?")) {
+        const [artistId] = values as [number];
+        const rows = this.clips
+          .filter((clip) => this.videos.some((video) => video.id === clip.video_id && video.artist_id === artistId))
+          .sort((a, b) => a.start_sec - b.start_sec)
+          .map((clip) => ({ ...clip } as unknown as T));
+        return { success: true, meta: { duration: 0, changes: 0 }, results: rows };
+      }
+      if (normalized.includes("from clips where video_id = ? order by start_sec")) {
+        const [videoId] = values as [number];
+        const rows = this.clips
+          .filter((clip) => clip.video_id === videoId)
+          .sort((a, b) => a.start_sec - b.start_sec)
+          .map((clip) => ({ ...clip } as unknown as T));
+        return { success: true, meta: { duration: 0, changes: 0 }, results: rows };
+      }
     }
     if (normalized.startsWith("select clip_id, tag from clip_tags where clip_id in")) {
       const clipIds = values as number[];
@@ -153,7 +152,7 @@ class FakeD1Database implements D1Database {
         .map((row) => ({ ...row } as unknown as T));
       return { success: true, meta: { duration: 0, changes: 0 }, results: rows };
     }
-    if (normalized.startsWith("select id, youtube_video_id, title from videos where id in")) {
+    if (normalized.startsWith("select id, youtube_video_id, title, original_composer")) {
       const videoIds = values as number[];
       const rows = this.videos
         .filter((video) => videoIds.includes(video.id))
@@ -179,10 +178,17 @@ test("listClips allows access to clips for another user's artist", async (t) => 
     { id: 2, created_by: 2 }
   ];
   const videos: VideoRow[] = [
-    { id: 201, artist_id: 2, youtube_video_id: "video201", title: "Collab" }
+    { id: 201, artist_id: 2, youtube_video_id: "video201", title: "Collab", original_composer: "Composer Clip" }
   ];
   const clips: ClipRow[] = [
-    { id: 501, video_id: 201, title: "Best Part", start_sec: 30, end_sec: 60 }
+    {
+      id: 501,
+      video_id: 201,
+      title: "Best Part",
+      start_sec: 30,
+      end_sec: 60,
+      original_composer: "Composer Clip"
+    }
   ];
   const clipTags: ClipTagRow[] = [
     { clip_id: 501, tag: "chorus" }
@@ -202,6 +208,7 @@ test("listClips allows access to clips for another user's artist", async (t) => 
   assert.equal(payload[0].videoId, 201);
   assert.deepEqual(payload[0].tags, ["chorus"]);
   assert.equal(payload[0].youtubeVideoId, "video201");
+  assert.equal(payload[0].originalComposer, "Composer Clip");
 });
 
 test("listClips allows unauthenticated access by artist", async (t) => {
@@ -209,10 +216,12 @@ test("listClips allows unauthenticated access by artist", async (t) => {
   t.after(() => __resetWorkerTestState());
 
   const artists: ArtistRow[] = [{ id: 3, created_by: 3 }];
-  const videos: VideoRow[] = [{ id: 301, artist_id: 3, youtube_video_id: "vid301", title: "Solo" }];
+  const videos: VideoRow[] = [
+    { id: 301, artist_id: 3, youtube_video_id: "vid301", title: "Solo", original_composer: null }
+  ];
   const clips: ClipRow[] = [
-    { id: 701, video_id: 301, title: "Intro", start_sec: 0, end_sec: 30 },
-    { id: 702, video_id: 301, title: "Outro", start_sec: 300, end_sec: 330 }
+    { id: 701, video_id: 301, title: "Intro", start_sec: 0, end_sec: 30, original_composer: null },
+    { id: 702, video_id: 301, title: "Outro", start_sec: 300, end_sec: 330, original_composer: null }
   ];
   const clipTags: ClipTagRow[] = [
     { clip_id: 701, tag: "opening" },
@@ -229,10 +238,10 @@ test("listClips allows unauthenticated access by artist", async (t) => {
   const payload = (await response.json()) as any[];
   assert.equal(payload.length, 2);
   assert.deepEqual(
-    payload.map((clip) => ({ id: clip.id, tags: clip.tags })),
+    payload.map((clip) => ({ id: clip.id, tags: clip.tags, originalComposer: clip.originalComposer })),
     [
-      { id: 701, tags: ["opening"] },
-      { id: 702, tags: ["ending"] }
+      { id: 701, tags: ["opening"], originalComposer: null },
+      { id: 702, tags: ["ending"], originalComposer: null }
     ]
   );
 });
@@ -246,10 +255,17 @@ test("listClips allows access to clips for another user's video", async (t) => {
     { id: 2, created_by: 2 }
   ];
   const videos: VideoRow[] = [
-    { id: 202, artist_id: 2, youtube_video_id: "video202", title: "Duet" }
+    { id: 202, artist_id: 2, youtube_video_id: "video202", title: "Duet", original_composer: "Composer Highlight" }
   ];
   const clips: ClipRow[] = [
-    { id: 601, video_id: 202, title: "Highlight", start_sec: 45, end_sec: 75 }
+    {
+      id: 601,
+      video_id: 202,
+      title: "Highlight",
+      start_sec: 45,
+      end_sec: 75,
+      original_composer: "Composer Highlight"
+    }
   ];
   const clipTags: ClipTagRow[] = [];
 
@@ -266,4 +282,5 @@ test("listClips allows access to clips for another user's video", async (t) => {
   assert.equal(payload[0].id, 601);
   assert.equal(payload[0].videoId, 202);
   assert.equal(payload[0].youtubeVideoId, "video202");
+  assert.equal(payload[0].originalComposer, "Composer Highlight");
 });

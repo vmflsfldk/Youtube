@@ -48,6 +48,7 @@ type VideoTableRow = {
   category: string | null;
   content_type: string | null;
   hidden: number | null;
+  original_composer: string | null;
 };
 
 class FakeStatement implements D1PreparedStatement {
@@ -154,7 +155,8 @@ test("listVideos allows access to another user's artist", async (t) => {
       captions_json: null,
       category: null,
       content_type: "OFFICIAL",
-      hidden: 0
+      hidden: 0,
+      original_composer: "Composer A"
     }
   ];
   const db = new FakeD1Database(artists, videos);
@@ -169,6 +171,7 @@ test("listVideos allows access to another user's artist", async (t) => {
   assert.equal(payload.length, 1);
   assert.equal(payload[0].artistId, 2);
   assert.equal(payload[0].youtubeVideoId, "abcdefghijk");
+  assert.equal(payload[0].originalComposer, "Composer A");
 });
 
 test("listVideos allows unauthenticated access", async (t) => {
@@ -190,7 +193,8 @@ test("listVideos allows unauthenticated access", async (t) => {
       captions_json: null,
       category: null,
       content_type: "OFFICIAL",
-      hidden: 0
+      hidden: 0,
+      original_composer: null
     }
   ];
 
@@ -204,4 +208,5 @@ test("listVideos allows unauthenticated access", async (t) => {
   const payload = (await response.json()) as any[];
   assert.equal(payload.length, 1);
   assert.equal(payload[0].youtubeVideoId, "unauthvid");
+  assert.equal(payload[0].originalComposer, null);
 });

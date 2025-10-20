@@ -44,6 +44,7 @@ type VideoTableRow = {
   category: string | null;
   content_type: string | null;
   hidden: number | null;
+  original_composer: string | null;
 };
 
 type ArtistTableRow = {
@@ -128,6 +129,7 @@ class FakeD1Database implements D1Database {
         description,
         captionsJson,
         category,
+        originalComposer,
         contentType,
         hidden,
         videoId
@@ -135,6 +137,7 @@ class FakeD1Database implements D1Database {
         number,
         string,
         number | null,
+        string | null,
         string | null,
         string | null,
         string | null,
@@ -156,6 +159,7 @@ class FakeD1Database implements D1Database {
       video.description = description ?? null;
       video.captions_json = captionsJson ?? null;
       video.category = category ?? null;
+      video.original_composer = originalComposer ?? null;
       video.content_type = contentType ?? null;
       video.hidden = hidden ?? 0;
       return { success: true, meta: { duration: 0, changes: 1 } };
@@ -171,6 +175,7 @@ class FakeD1Database implements D1Database {
         description,
         captionsJson,
         category,
+        originalComposer,
         contentType,
         hidden
       ] = values as [
@@ -178,6 +183,7 @@ class FakeD1Database implements D1Database {
         string,
         string,
         number | null,
+        string | null,
         string | null,
         string | null,
         string | null,
@@ -198,6 +204,7 @@ class FakeD1Database implements D1Database {
         description: description ?? null,
         captions_json: captionsJson ?? null,
         category: category ?? null,
+        original_composer: originalComposer ?? null,
         content_type: contentType ?? null,
         hidden: hidden ?? 0
       };
@@ -279,7 +286,8 @@ test("clip suggestions returns existing video without creating duplicates", asyn
     captions_json: null,
     category: null,
     content_type: "OFFICIAL",
-    hidden: 0
+    hidden: 0,
+    original_composer: null
   };
   const db = new FakeD1Database([{ id: 1, created_by: 42 }], [existingVideo]);
   const env: Env = { DB: db };
@@ -360,6 +368,8 @@ test("clip suggestions fails when video belongs to another artist", async () => 
     description: null,
     captions_json: null,
     content_type: "OFFICIAL",
+    category: null,
+    original_composer: null,
     hidden: 0
   };
   const db = new FakeD1Database(

@@ -74,6 +74,7 @@ public class VideoService {
         }
         video.setDescription(description);
         video.setCaptionsJson(request.captionsJson());
+        video.setOriginalComposer(request.originalComposer());
 
         List<YouTubeVideoSectionProvider.VideoSectionData> sectionData = sectionProvider.fetch(videoId, description,
                 metadata.durationSec());
@@ -133,6 +134,7 @@ public class VideoService {
                 video.getDurationSec(),
                 video.getThumbnailUrl(),
                 video.getChannelId(),
+                video.getOriginalComposer(),
                 sectionResponses);
     }
 
