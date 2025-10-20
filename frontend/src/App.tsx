@@ -3,7 +3,6 @@ import {
   FormEvent,
   KeyboardEvent,
   RefObject,
-  type CSSProperties,
   Suspense,
   lazy,
   useCallback,
@@ -14,11 +13,6 @@ import {
   useState
 } from 'react';
 import axios from 'axios';
-import {
-  FixedSizeList,
-  type ListChildComponentProps,
-  type ListOnItemsRenderedProps
-} from 'react-window';
 import ClipList, { type ClipListRenderContext, type ClipListRenderResult } from './components/ClipList';
 import PlaylistBar, { type PlaylistBarItem } from './components/PlaylistBar';
 import GoogleLoginButton from './components/GoogleLoginButton';
@@ -1029,21 +1023,6 @@ const decodeGoogleToken = (token: string): GoogleIdTokenPayload | null => {
   }
 };
 
-const PLAYLIST_ITEM_GAP = 24;
-const PLAYLIST_ITEM_HEIGHT = 540;
-const PLAYLIST_ITEM_SIZE = PLAYLIST_ITEM_HEIGHT + PLAYLIST_ITEM_GAP;
-const PLAYLIST_LIST_MAX_HEIGHT = 720;
-
-type PlaylistEntriesListItemData = {
-  entry: PlaylistEntry;
-  index: number;
-  entryKey: string;
-  expandedPlaylistEntryId: string | null;
-  handlePlaylistEntryRemove: (itemId: number) => Promise<void> | void;
-  setExpandedPlaylistEntryId: (entryId: string | null) => void;
-  isRemovalDisabled: boolean;
-};
-
 type PlaylistEntriesListProps = {
   entries: PlaylistEntry[];
   expandedPlaylistEntryId: string | null;
@@ -1061,110 +1040,55 @@ function PlaylistEntriesList({
   resolvePlaylistEntryKey,
   isRemovalDisabled
 }: PlaylistEntriesListProps) {
-  const [visibleRange, setVisibleRange] = useState({ start: 0, stop: 0 });
+  if (entries.length === 0) {
+    return null;
+  }
 
-  const itemData = useMemo<PlaylistEntriesListItemData[]>(
-    () =>
-      entries.map((entry, index) => ({
-        entry,
-        index,
-        entryKey: resolvePlaylistEntryKey(entry, index),
-        expandedPlaylistEntryId,
-        handlePlaylistEntryRemove,
-        setExpandedPlaylistEntryId,
-        isRemovalDisabled
-      })),
-    [
-      entries,
-      expandedPlaylistEntryId,
-      handlePlaylistEntryRemove,
-      resolvePlaylistEntryKey,
-      setExpandedPlaylistEntryId,
-      isRemovalDisabled
-    ]
-  );
+  return (
+    <div className="playlist-entries">
+      {entries.map((entry, index) => {
+        const entryKey = resolvePlaylistEntryKey(entry, index);
+        const isExpanded = expandedPlaylistEntryId === entryKey;
 
-  const itemCount = itemData.length;
-  const constrainedHeight = Math.min(itemCount * PLAYLIST_ITEM_SIZE, PLAYLIST_LIST_MAX_HEIGHT);
-  const listHeight = Math.max(constrainedHeight, Math.min(PLAYLIST_ITEM_SIZE, PLAYLIST_LIST_MAX_HEIGHT));
+        if (entry.type === 'video') {
+          const video = entry.video;
+          const youtubeVideoId = (video.youtubeVideoId ?? '').trim();
+          const hasPlayableVideo = youtubeVideoId.length > 0;
+          const canPreviewVideo = hasPlayableVideo;
+          const shouldRenderPlayer = isExpanded;
+          const videoThumbnail =
+            video.thumbnailUrl ||
+            (hasPlayableVideo ? `https://img.youtube.com/vi/${youtubeVideoId}/hqdefault.jpg` : null);
+          const rawVideoTitle = video.title || video.youtubeVideoId || '제목 없는 영상';
+          const videoCategory = categorizeVideo(video);
+          const videoTitle =
+            videoCategory === 'live'
+              ? rawVideoTitle
+              : formatSongTitle(video.title, { fallback: rawVideoTitle });
+          const videoArtist =
+            video.artistDisplayName ||
+            video.artistName ||
+            video.artistYoutubeChannelTitle ||
+            null;
+          const playlistVideoOriginalComposer =
+            typeof video.originalComposer === 'string' ? video.originalComposer.trim() : '';
+          const videoArtistName = (video.artistDisplayName ?? video.artistName ?? '').trim();
+          const playlistVideoTags = buildTagList(
+            playlistVideoOriginalComposer ? `원곡:${playlistVideoOriginalComposer}` : null,
+            videoCategory !== 'live' && videoArtistName ? `보컬:${videoArtistName}` : null
+          );
 
-  const handleItemsRendered = useCallback(
-    ({ visibleStartIndex, visibleStopIndex }: ListOnItemsRenderedProps) => {
-      setVisibleRange({ start: visibleStartIndex, stop: visibleStopIndex });
-    },
-    []
-  );
-
-  const renderRow = useCallback(
-    ({ index, style, data }: ListChildComponentProps<PlaylistEntriesListItemData[]>) => {
-      const item = data[index];
-      if (!item) {
-        return null;
-      }
-
-      const {
-        entry,
-        entryKey,
-        expandedPlaylistEntryId: expandedId,
-        handlePlaylistEntryRemove: removeEntry,
-        setExpandedPlaylistEntryId: setExpandedEntry,
-        isRemovalDisabled: removalDisabled
-      } = item;
-
-      const isExpanded = expandedId === entryKey;
-      const isVisible = index >= visibleRange.start && index <= visibleRange.stop;
-
-      const rowStyle: CSSProperties = {
-        ...style,
-        width: '100%',
-        boxSizing: 'border-box',
-        paddingBottom: PLAYLIST_ITEM_GAP
-      };
-
-      if (entry.type === 'video') {
-        const video = entry.video;
-        const youtubeVideoId = (video.youtubeVideoId ?? '').trim();
-        const hasPlayableVideo = youtubeVideoId.length > 0;
-        const canPreviewVideo = hasPlayableVideo;
-        const shouldRenderPlayer = canPreviewVideo && isExpanded && isVisible;
-        const videoThumbnail =
-          video.thumbnailUrl ||
-          (hasPlayableVideo ? `https://img.youtube.com/vi/${youtubeVideoId}/hqdefault.jpg` : null);
-        const rawVideoTitle = video.title || video.youtubeVideoId || '제목 없는 영상';
-        const videoCategory = categorizeVideo(video);
-        const videoTitle =
-          videoCategory === 'live'
-            ? rawVideoTitle
-            : formatSongTitle(video.title, { fallback: rawVideoTitle });
-        const videoArtist =
-          video.artistDisplayName ||
-          video.artistName ||
-          video.artistYoutubeChannelTitle ||
-          null;
-        const playlistVideoOriginalComposer =
-          typeof video.originalComposer === 'string' ? video.originalComposer.trim() : '';
-        const videoArtistName = (video.artistDisplayName ?? video.artistName ?? '').trim();
-        const playlistVideoTags = buildTagList(
-          playlistVideoOriginalComposer ? `원곡:${playlistVideoOriginalComposer}` : null,
-          videoCategory !== 'live' && videoArtistName ? `보컬:${videoArtistName}` : null
-        );
-
-        return (
-          <div style={rowStyle}>
-            <div className="playlist-entry playlist-entry--video" key={entryKey}>
+          return (
+            <div key={entryKey} className="playlist-entry playlist-entry--video">
               <div className="playlist-video-card">
                 <div className="playlist-video-card__media">
                   <div className={`playlist-preview${shouldRenderPlayer ? ' playlist-preview--expanded' : ''}`}>
-                    {shouldRenderPlayer ? (
+                    {shouldRenderPlayer && canPreviewVideo ? (
                       <>
                         <div className="playlist-preview__player">
                           <Suspense
                             fallback={
-                              <div
-                                className="playlist-preview__loading"
-                                role="status"
-                                aria-live="polite"
-                              >
+                              <div className="playlist-preview__loading" role="status" aria-live="polite">
                                 플레이어 불러오는 중…
                               </div>
                             }
@@ -1176,7 +1100,7 @@ function PlaylistEntriesList({
                           <button
                             type="button"
                             className="playlist-preview-toggle playlist-preview-toggle--close"
-                            onClick={() => setExpandedEntry(null)}
+                            onClick={() => setExpandedPlaylistEntryId(null)}
                           >
                             미리보기 닫기
                           </button>
@@ -1208,7 +1132,7 @@ function PlaylistEntriesList({
                             <button
                               type="button"
                               className="playlist-preview-toggle"
-                              onClick={() => setExpandedEntry(entryKey)}
+                              onClick={() => setExpandedPlaylistEntryId(entryKey)}
                             >
                               미리보기
                             </button>
@@ -1227,8 +1151,8 @@ function PlaylistEntriesList({
                     <button
                       type="button"
                       className="playlist-entry__action"
-                      onClick={() => void removeEntry(entry.itemId)}
-                      disabled={removalDisabled}
+                      onClick={() => void handlePlaylistEntryRemove(entry.itemId)}
+                      disabled={isRemovalDisabled}
                     >
                       재생목록에서 제거
                     </button>
@@ -1250,33 +1174,31 @@ function PlaylistEntriesList({
                 </div>
               </div>
             </div>
-          </div>
-        );
-      }
+          );
+        }
 
-      const clip = entry.clip;
-      const rawClipTitle =
-        clip.title ||
-        clip.sectionTitle ||
-        clip.youtubeChapterTitle ||
-        clip.description ||
-        clip.youtubeVideoId ||
-        clip.videoTitle ||
-        '';
-      const clipTitle =
-        formatSongTitle(clip.title, { tags: clip.tags, fallback: rawClipTitle }) || '제목 없는 클립';
+        const clip = entry.clip;
+        const rawClipTitle =
+          clip.title ||
+          clip.sectionTitle ||
+          clip.youtubeChapterTitle ||
+          clip.description ||
+          clip.youtubeVideoId ||
+          clip.videoTitle ||
+          '';
+        const clipTitle =
+          formatSongTitle(clip.title, { tags: clip.tags, fallback: rawClipTitle }) || '제목 없는 클립';
 
-      return (
-        <div style={rowStyle}>
-          <div className="playlist-entry playlist-entry--clip" key={entryKey}>
+        return (
+          <div key={entryKey} className="playlist-entry playlist-entry--clip">
             <div className="playlist-clip">
               <div className="playlist-clip__card">
                 <div className="playlist-entry__actions">
                   <button
                     type="button"
                     className="playlist-entry__action"
-                    onClick={() => void removeEntry(entry.itemId)}
-                    disabled={removalDisabled}
+                    onClick={() => void handlePlaylistEntryRemove(entry.itemId)}
+                    disabled={isRemovalDisabled}
                   >
                     재생목록에서 제거
                   </button>
@@ -1287,29 +1209,8 @@ function PlaylistEntriesList({
               </div>
             </div>
           </div>
-        </div>
-      );
-    },
-    [visibleRange]
-  );
-
-  if (itemCount === 0) {
-    return null;
-  }
-
-  return (
-    <div className="playlist-entries">
-      <FixedSizeList
-        height={listHeight}
-        itemCount={itemCount}
-        itemSize={PLAYLIST_ITEM_SIZE}
-        width="100%"
-        onItemsRendered={handleItemsRendered}
-        itemData={itemData}
-        itemKey={(index, data) => data[index]?.entryKey ?? index}
-      >
-        {renderRow}
-      </FixedSizeList>
+        );
+      })}
     </div>
   );
 }
