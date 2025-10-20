@@ -3327,6 +3327,50 @@ button:disabled:hover {
   gap: 8px;
 }
 
+.playlist-entry__actions {
+  display: flex;
+  width: 100%;
+  justify-content: flex-end;
+  gap: 12px;
+  align-self: stretch;
+}
+
+.playlist-entry__action {
+  appearance: none;
+  border: 1px solid rgba(148, 163, 184, 0.38);
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.92);
+  color: var(--color-text-primary);
+  font-weight: 600;
+  font-size: 0.85rem;
+  padding: 0.45rem 1.3rem;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease, filter 0.2s ease;
+}
+
+.playlist-entry__action:hover:not(:disabled) {
+  background: rgba(30, 41, 59, 0.92);
+  border-color: rgba(148, 163, 184, 0.48);
+  transform: translateY(-1px);
+}
+
+.playlist-entry__action:active:not(:disabled) {
+  transform: translateY(0);
+  filter: brightness(0.97);
+}
+
+.playlist-entry__action:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 3px;
+}
+
+.playlist-entry__action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  filter: none;
+}
+
 .playlist-clip__meta {
   display: flex;
   flex-direction: column;
