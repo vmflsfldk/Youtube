@@ -2523,7 +2523,8 @@ button:disabled:hover {
 }
 
 .artist-directory__search-group {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 16px;
   width: 100%;
 }
@@ -2534,10 +2535,55 @@ button:disabled:hover {
   width: 100%;
 }
 
-.artist-directory__search {
+.artist-search-controls {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.artist-search-controls__input-row {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.artist-search-controls__mode-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(15, 23, 42, 0.64);
+  align-self: flex-start;
+}
+
+.artist-search-controls__mode-button {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.35rem 0.75rem;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.artist-search-controls__mode-button:hover {
+  color: var(--color-text-primary);
+}
+
+.artist-search-controls__mode-button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.artist-search-controls__mode-button--active {
+  background: rgba(99, 102, 241, 0.2);
+  color: var(--color-text-primary);
+  box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.4);
 }
 
 .artist-directory__filter {
@@ -2546,7 +2592,7 @@ button:disabled:hover {
   gap: 8px;
 }
 
-.artist-directory__search label,
+.artist-search-controls label,
 .artist-directory__filter label {
   font-size: 0.85rem;
   font-weight: 600;
@@ -2617,9 +2663,19 @@ button:disabled:hover {
 }
 
 @media (min-width: 768px) {
-  .artist-directory__search-group,
   .artist-directory__filter-group {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .artist-search-controls__input-row {
+    flex-direction: row;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .artist-search-controls__mode-toggle {
+    align-self: stretch;
+    height: 100%;
   }
 }
 
