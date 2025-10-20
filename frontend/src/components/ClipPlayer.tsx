@@ -6,12 +6,23 @@ interface ClipPlayerProps {
   startSec: number;
   endSec?: number;
   autoplay?: boolean;
+  playing?: boolean;
+  shouldLoop?: boolean;
+  onEnded?: () => void;
 }
 
 type YouTubeReadyEvent = Parameters<NonNullable<YouTubeProps['onReady']>>[0];
 type YouTubeStateChangeEvent = Parameters<NonNullable<YouTubeProps['onStateChange']>>[0];
 
-export default function ClipPlayer({ youtubeVideoId, startSec, endSec, autoplay = true }: ClipPlayerProps) {
+export default function ClipPlayer({
+  youtubeVideoId,
+  startSec,
+  endSec,
+  autoplay = true,
+  playing,
+  shouldLoop = true,
+  onEnded
+}: ClipPlayerProps) {
   const playerRef = useRef<YouTubePlayer | null>(null);
   const { playerOrigin, playerReferrer } = useMemo(() => {
     if (typeof window === 'undefined') {
@@ -52,17 +63,39 @@ export default function ClipPlayer({ youtubeVideoId, startSec, endSec, autoplay 
     (event: YouTubeReadyEvent) => {
       playerRef.current = event.target;
       loadSegment(event.target);
+      if (typeof playing === 'boolean') {
+        if (playing) {
+          event.target.playVideo();
+        } else {
+          event.target.pauseVideo();
+        }
+      }
     },
-    [loadSegment]
+    [loadSegment, playing]
   );
 
   const handleStateChange = useCallback<NonNullable<YouTubeProps['onStateChange']>>(
     (event: YouTubeStateChangeEvent) => {
-      if (typeof endSec === 'number' && Number.isFinite(endSec) && event.data === window.YT?.PlayerState?.ENDED) {
-        event.target.seekTo(startSec, true);
+      const isEnded = event.data === window.YT?.PlayerState?.ENDED;
+      if (!isEnded) {
+        return;
       }
+
+      if (shouldLoop && typeof endSec === 'number' && Number.isFinite(endSec)) {
+        event.target.seekTo(startSec, true);
+        if (typeof playing === 'boolean') {
+          if (playing) {
+            event.target.playVideo();
+          } else {
+            event.target.pauseVideo();
+          }
+        }
+        return;
+      }
+
+      onEnded?.();
     },
-    [startSec, endSec]
+    [startSec, endSec, shouldLoop, playing, onEnded]
   );
 
   useEffect(() => {
@@ -79,6 +112,18 @@ export default function ClipPlayer({ youtubeVideoId, startSec, endSec, autoplay 
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (!playerRef.current || typeof playing !== 'boolean') {
+      return;
+    }
+
+    if (playing) {
+      playerRef.current.playVideo();
+    } else {
+      playerRef.current.pauseVideo();
+    }
+  }, [playing]);
 
   return (
     <div className="clip-player">
