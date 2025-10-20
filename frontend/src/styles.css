@@ -2372,7 +2372,11 @@ button:disabled:hover {
 }
 
 .artist-library__clip-footer {
-  margin-top: 4px;
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
 }
 
 .artist-library__clip-player {

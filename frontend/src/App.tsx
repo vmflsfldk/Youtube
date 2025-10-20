@@ -714,6 +714,9 @@ interface ClipListItemData {
   creationDisabled: boolean;
   isClipUpdateSaving: boolean;
   activeSection: SectionKey;
+  canModifyPlaylist: boolean;
+  playlistClipItemMap: Map<number, PlaylistItemResponse>;
+  handleClipPlaylistToggle: (clipId: number) => Promise<void>;
 }
 
 interface VideoClipSuggestionsResponse {
@@ -2752,6 +2755,16 @@ export default function App() {
     return map;
   }, [playlistItems]);
 
+  const playlistClipItemMap = useMemo(() => {
+    const map = new Map<number, PlaylistItemResponse>();
+    playlistItems.forEach((item) => {
+      if (item.type === 'clip' && item.clip) {
+        map.set(item.clip.id, item);
+      }
+    });
+    return map;
+  }, [playlistItems]);
+
   const playlistVideoMap = useMemo(() => {
     const map = new Map<number, VideoResponse>();
     playlistItems.forEach((item) => {
@@ -2943,6 +2956,59 @@ export default function App() {
       http,
       isAuthenticated,
       playlistVideoItemMap
+    ]
+  );
+
+  const handleClipPlaylistToggle = useCallback(
+    async (clipId: number) => {
+      if (!isAuthenticated) {
+        showAlert('재생목록을 사용하려면 로그인해 주세요.');
+        return;
+      }
+
+      let targetPlaylist = activePlaylist;
+
+      if (!targetPlaylist) {
+        const createdPlaylist = await handleCreatePlaylist();
+        if (!createdPlaylist) {
+          return;
+        }
+        targetPlaylist = createdPlaylist;
+      }
+
+      const playlistId = targetPlaylist.id;
+      const existingItem =
+        targetPlaylist.id === activePlaylist?.id ? playlistClipItemMap.get(clipId) ?? null : null;
+
+      try {
+        if (existingItem) {
+          const response = await http.delete<PlaylistResponse>(
+            `/playlists/${playlistId}/items/${existingItem.id}`,
+            { headers: authHeaders }
+          );
+          applyUserPlaylistUpdate(normalizePlaylist(response.data));
+        } else {
+          const response = await http.post<PlaylistResponse>(
+            `/playlists/${playlistId}/items`,
+            { clipId },
+            { headers: authHeaders }
+          );
+          applyUserPlaylistUpdate(normalizePlaylist(response.data));
+        }
+      } catch (error) {
+        const message = extractAxiosErrorMessage(error, '재생목록을 업데이트하지 못했습니다.');
+        showAlert(message);
+        console.error('Failed to update playlist', error);
+      }
+    },
+    [
+      activePlaylist,
+      applyUserPlaylistUpdate,
+      authHeaders,
+      handleCreatePlaylist,
+      http,
+      isAuthenticated,
+      playlistClipItemMap
     ]
   );
 
@@ -3239,6 +3305,8 @@ export default function App() {
     [clips, selectedVideo]
   );
 
+  const canModifyActivePlaylist = Boolean(isAuthenticated && activePlaylist);
+
   const clipListItemData = useMemo<ClipListItemData>(
     () => ({
       activeClipId,
@@ -3247,7 +3315,10 @@ export default function App() {
       selectedVideoData: selectedVideoData ?? null,
       creationDisabled,
       isClipUpdateSaving,
-      activeSection
+      activeSection,
+      canModifyPlaylist: canModifyActivePlaylist,
+      playlistClipItemMap,
+      handleClipPlaylistToggle
     }),
     [
       activeClipId,
@@ -3256,7 +3327,10 @@ export default function App() {
       selectedVideoData,
       creationDisabled,
       isClipUpdateSaving,
-      activeSection
+      activeSection,
+      canModifyActivePlaylist,
+      playlistClipItemMap,
+      handleClipPlaylistToggle
     ]
   );
 
@@ -3272,7 +3346,10 @@ export default function App() {
         selectedVideoData: currentSelectedVideo,
         creationDisabled: currentCreationDisabled,
         isClipUpdateSaving: currentClipUpdateSaving,
-        activeSection: currentActiveSection
+        activeSection: currentActiveSection,
+        canModifyPlaylist,
+        playlistClipItemMap: currentPlaylistClipItemMap,
+        handleClipPlaylistToggle: toggleClipPlaylist
       } = itemData;
 
       const isActive = currentActiveClipId === clip.id;
@@ -3312,6 +3389,9 @@ export default function App() {
         clipVocalTag,
         clip.tags
       );
+      const playlistClipItem = currentPlaylistClipItemMap.get(clip.id) ?? null;
+      const isClipQueued = playlistClipItem !== null;
+      const isPlaylistToggleDisabled = !hasYoutubeId || !canModifyPlaylist;
 
       const className = `artist-library__clip-card${
         isActive ? ' artist-library__clip-card--active' : ''
@@ -3340,8 +3420,25 @@ export default function App() {
               </div>
             )}
           </button>
-          {clip.youtubeVideoId && (
-            <div className="artist-library__clip-footer">
+          <div className="artist-library__clip-footer">
+            <button
+              type="button"
+              className={`artist-library__video-action artist-library__video-action--playlist${
+                isClipQueued ? ' active' : ''
+              }${isPlaylistToggleDisabled ? ' is-disabled' : ''}`}
+              aria-pressed={isClipQueued}
+              aria-label={isClipQueued ? '재생목록에서 제거' : '재생목록에 추가'}
+              aria-disabled={!canModifyPlaylist}
+              disabled={isPlaylistToggleDisabled}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                void toggleClipPlaylist(clip.id);
+              }}
+            >
+              {isClipQueued ? '재생목록 추가됨' : '재생목록에 추가'}
+            </button>
+            {clip.youtubeVideoId && (
               <a
                 className="artist-library__clip-link"
                 href={`https://www.youtube.com/watch?v=${clip.youtubeVideoId}&t=${Math.floor(
@@ -3353,8 +3450,8 @@ export default function App() {
               >
                 유튜브에서 보기
               </a>
-            </div>
-          )}
+            )}
+          </div>
           {isActive && (
             <div className="artist-library__clip-editor">
               {isEditingClip ? (
@@ -3508,7 +3605,8 @@ export default function App() {
       handleClipEditSubmit,
       handleClipEditTimePartChange,
       handleClipEditCancel,
-      openClipEditor
+      openClipEditor,
+      handleClipPlaylistToggle
     ]
   );
 
@@ -3541,7 +3639,6 @@ export default function App() {
       .filter((entry): entry is PlaylistEntry => entry !== null);
   }, [playlistItems, playlistVideoMap]);
 
-  const canModifyActivePlaylist = Boolean(isAuthenticated && activePlaylist);
   const isPlaylistEntryRemovalDisabled = !activePlaylist;
 
   const playbackBarItems = useMemo<PlaylistBarItem[]>(() => {
