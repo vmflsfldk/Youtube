@@ -82,12 +82,7 @@ export default function PlaylistBar({
     [items, currentItemKey]
   );
 
-  const hasItems = items.length > 0;
   const hasPlayableItems = items.some((item) => item.isPlayable);
-
-  if (!hasItems) {
-    return null;
-  }
 
   const renderControls = () => {
     const disableTransport = !hasPlayableItems || !currentItem?.isPlayable;
