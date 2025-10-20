@@ -2552,6 +2552,52 @@ export default function App() {
     return map;
   }, [playlistItems]);
 
+  const availablePlaylists = useMemo(
+    () => (isAuthenticated ? userPlaylists : publicPlaylists),
+    [isAuthenticated, publicPlaylists, userPlaylists]
+  );
+
+  const handlePlaylistSelectionChange = useCallback(
+    (event: ChangeEvent<HTMLSelectElement>) => {
+      const { value } = event.target;
+
+      if (value === '') {
+        if (!activePlaylist) {
+          return;
+        }
+        setActivePlaylist(null);
+        setPlaylistSearchQuery('');
+        setExpandedPlaylistEntryId(null);
+        return;
+      }
+
+      const playlistId = Number.parseInt(value, 10);
+      const matchedPlaylist = Number.isFinite(playlistId)
+        ? availablePlaylists.find((playlist) => playlist.id === playlistId) ?? null
+        : null;
+      const resolvedPlaylist = matchedPlaylist ?? availablePlaylists[0] ?? null;
+
+      if (!resolvedPlaylist && !activePlaylist) {
+        return;
+      }
+
+      if (resolvedPlaylist?.id === activePlaylist?.id) {
+        return;
+      }
+
+      setActivePlaylist(resolvedPlaylist);
+      setPlaylistSearchQuery('');
+      setExpandedPlaylistEntryId(null);
+    },
+    [
+      activePlaylist,
+      availablePlaylists,
+      setActivePlaylist,
+      setExpandedPlaylistEntryId,
+      setPlaylistSearchQuery
+    ]
+  );
+
   const handleVideoFavoriteToggle = useCallback((videoId: number) => {
     setFavoriteVideoIds((prev) =>
       prev.includes(videoId) ? prev.filter((id) => id !== videoId) : [...prev, videoId]
@@ -3346,6 +3392,8 @@ export default function App() {
   const playlistSubtitle = isAuthenticated
     ? '저장한 영상과 클립을 검색하고 바로 재생해 보세요.'
     : '회원가입 없이 감상할 수 있는 최신 공개 재생목록입니다.';
+  const playlistSelectorLabel = isAuthenticated ? '내 재생목록' : '공개 재생목록';
+  const playlistSelectionValue = activePlaylist ? String(activePlaylist.id) : '';
   const playlistEmptyMessage = normalizedPlaylistQuery.length > 0
     ? '검색 조건에 맞는 영상이나 클립이 없습니다.'
     : isAuthenticated
@@ -4850,8 +4898,42 @@ export default function App() {
           >
             <div className="panel playlist-panel">
               <div className="playlist-panel__header">
-                <h2>{playlistHeading}</h2>
-                <p className="playlist-subtitle">{playlistSubtitle}</p>
+                <div className="playlist-panel__heading">
+                  <h2>{playlistHeading}</h2>
+                  <p className="playlist-subtitle">{playlistSubtitle}</p>
+                </div>
+                <div className="playlist-panel__selector">
+                  <label className="playlist-selector__label" htmlFor="playlistSelector">
+                    {playlistSelectorLabel}
+                  </label>
+                  {availablePlaylists.length > 0 ? (
+                    <select
+                      id="playlistSelector"
+                      className="playlist-selector__dropdown"
+                      value={playlistSelectionValue}
+                      onChange={handlePlaylistSelectionChange}
+                    >
+                      {!activePlaylist && (
+                        <option value="" disabled>
+                          재생목록을 선택하세요
+                        </option>
+                      )}
+                      {availablePlaylists.map((playlist) => {
+                        const trimmedTitle = playlist.title.trim();
+                        const optionLabel = trimmedTitle.length > 0 ? trimmedTitle : `재생목록 ${playlist.id}`;
+                        return (
+                          <option key={playlist.id} value={playlist.id}>
+                            {optionLabel}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  ) : (
+                    <div className="playlist-selector__empty" role="status" aria-live="polite">
+                      재생목록이 없습니다.
+                    </div>
+                  )}
+                </div>
                 <div className="playlist-search">
                   <input
                     id="playlistSearchInput"
