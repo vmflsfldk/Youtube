@@ -12,6 +12,7 @@ import {
 } from 'react';
 import axios from 'axios';
 import ClipPlayer from './components/ClipPlayer';
+import PlaylistBar, { type PlaylistBarItem } from './components/PlaylistBar';
 import GoogleLoginButton from './components/GoogleLoginButton';
 import utahubLogo from './assets/utahub-logo.svg';
 import ArtistLibraryGrid from './ArtistLibraryGrid';
@@ -1023,6 +1024,9 @@ export default function App() {
   const [clips, setClips] = useState<ClipResponse[]>([]);
   const [playlistSearchQuery, setPlaylistSearchQuery] = useState('');
   const [expandedPlaylistEntryId, setExpandedPlaylistEntryId] = useState<string | null>(null);
+  const [isPlaybackExpanded, setIsPlaybackExpanded] = useState(false);
+  const [isPlaybackActive, setIsPlaybackActive] = useState(false);
+  const [activePlaybackKey, setActivePlaybackKey] = useState<string | null>(null);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [selectedVideo, setSelectedVideo] = useState<number | null>(null);
   const [clipCandidates, setClipCandidates] = useState<ClipCandidateResponse[]>([]);
@@ -2936,6 +2940,221 @@ export default function App() {
       .filter((entry): entry is PlaylistEntry => entry !== null);
   }, [playlistItems, playlistVideoMap]);
 
+  const playbackBarItems = useMemo<PlaylistBarItem[]>(() => {
+    return playlistEntries.map((entry, index) => {
+      const key = resolvePlaylistEntryKey(entry, index);
+
+      if (entry.type === 'video') {
+        const video = entry.video;
+        const youtubeVideoId = (video.youtubeVideoId ?? '').trim();
+        const hasYoutube = youtubeVideoId.length > 0;
+        const artistLabel =
+          video.artistDisplayName || video.artistName || video.artistYoutubeChannelTitle || null;
+        const summary = formatVideoMetaSummary(video, { includeDuration: false });
+        const subtitleParts = [artistLabel, summary].filter((part): part is string => Boolean(part));
+        const durationLabel =
+          typeof video.durationSec === 'number' && Number.isFinite(video.durationSec)
+            ? formatSeconds(video.durationSec)
+            : null;
+        const title =
+          formatSongTitle(video.title, { fallback: video.youtubeVideoId || '제목 없는 영상' }) ||
+          video.title ||
+          video.youtubeVideoId ||
+          '제목 없는 영상';
+
+        return {
+          key,
+          type: 'video' as const,
+          title,
+          subtitle: subtitleParts.length > 0 ? subtitleParts.join(' · ') : null,
+          thumbnailUrl: video.thumbnailUrl ?? null,
+          youtubeVideoId: hasYoutube ? youtubeVideoId : null,
+          startSec: 0,
+          endSec:
+            typeof video.durationSec === 'number' && Number.isFinite(video.durationSec)
+              ? video.durationSec
+              : undefined,
+          durationLabel,
+          isPlayable: hasYoutube,
+          badgeLabel: '영상',
+          rangeLabel: null
+        } satisfies PlaylistBarItem;
+      }
+
+      const clip = entry.clip;
+      const parentVideo = entry.parentVideo;
+      const youtubeVideoId = (clip.youtubeVideoId || parentVideo?.youtubeVideoId || '').trim();
+      const hasYoutube = youtubeVideoId.length > 0;
+      const rawClipTitle =
+        clip.title ||
+        clip.sectionTitle ||
+        clip.youtubeChapterTitle ||
+        clip.videoTitle ||
+        '제목 없는 클립';
+      const clipTitle =
+        formatSongTitle(clip.title, { tags: clip.tags, fallback: rawClipTitle }) || rawClipTitle;
+      const artistLabel =
+        clip.artistDisplayName ||
+        clip.artistName ||
+        clip.artistYoutubeChannelTitle ||
+        parentVideo?.artistDisplayName ||
+        parentVideo?.artistName ||
+        parentVideo?.artistYoutubeChannelTitle ||
+        null;
+      const parentTitle = clip.videoTitle || parentVideo?.title || null;
+      const rangeLabel =
+        Number.isFinite(clip.startSec) && Number.isFinite(clip.endSec)
+          ? `${formatSeconds(clip.startSec)} – ${formatSeconds(clip.endSec)}`
+          : null;
+      const durationLabel =
+        typeof clip.endSec === 'number' && typeof clip.startSec === 'number'
+          ? formatSeconds(Math.max(clip.endSec - clip.startSec, 0))
+          : null;
+      const subtitleParts = [artistLabel, parentTitle].filter(
+        (part): part is string => Boolean(part)
+      );
+
+      return {
+        key,
+        type: 'clip' as const,
+        title: clipTitle,
+        subtitle: subtitleParts.length > 0 ? subtitleParts.join(' · ') : null,
+        thumbnailUrl: clip.thumbnailUrl ?? parentVideo?.thumbnailUrl ?? null,
+        youtubeVideoId: hasYoutube ? youtubeVideoId : null,
+        startSec: clip.startSec,
+        endSec: clip.endSec,
+        durationLabel,
+        isPlayable: hasYoutube,
+        badgeLabel: '클립',
+        rangeLabel
+      } satisfies PlaylistBarItem;
+    });
+  }, [playlistEntries, resolvePlaylistEntryKey]);
+
+  const currentPlaybackIndex = useMemo(() => {
+    if (!activePlaybackKey) {
+      return -1;
+    }
+    return playbackBarItems.findIndex((item) => item.key === activePlaybackKey);
+  }, [activePlaybackKey, playbackBarItems]);
+
+  const currentPlaybackItem = useMemo(() => {
+    if (currentPlaybackIndex < 0) {
+      return null;
+    }
+    return playbackBarItems[currentPlaybackIndex] ?? null;
+  }, [currentPlaybackIndex, playbackBarItems]);
+
+  useEffect(() => {
+    if (playbackBarItems.length === 0) {
+      setActivePlaybackKey(null);
+      setIsPlaybackActive(false);
+      setIsPlaybackExpanded(false);
+      return;
+    }
+
+    setActivePlaybackKey((previous) => {
+      if (previous && playbackBarItems.some((item) => item.key === previous)) {
+        return previous;
+      }
+      const fallback = playbackBarItems.find((item) => item.isPlayable) ?? playbackBarItems[0];
+      return fallback ? fallback.key : previous;
+    });
+  }, [playbackBarItems]);
+
+  useEffect(() => {
+    if (isPlaybackActive && !playbackBarItems.some((item) => item.isPlayable)) {
+      setIsPlaybackActive(false);
+    }
+  }, [isPlaybackActive, playbackBarItems]);
+
+  const handlePlaybackToggle = useCallback(() => {
+    if (playbackBarItems.length === 0) {
+      return;
+    }
+    if (!currentPlaybackItem || !currentPlaybackItem.isPlayable) {
+      const nextPlayable = playbackBarItems.find((item) => item.isPlayable);
+      if (nextPlayable) {
+        setActivePlaybackKey(nextPlayable.key);
+        setIsPlaybackActive(true);
+      }
+      return;
+    }
+
+    setIsPlaybackActive((previous) => !previous);
+  }, [currentPlaybackItem, playbackBarItems]);
+
+  const handlePlaybackNext = useCallback(() => {
+    if (playbackBarItems.length === 0) {
+      return;
+    }
+
+    const startIndex = currentPlaybackIndex >= 0 ? currentPlaybackIndex : -1;
+    for (let index = startIndex + 1; index < playbackBarItems.length; index += 1) {
+      const candidate = playbackBarItems[index];
+      if (candidate.isPlayable) {
+        setActivePlaybackKey(candidate.key);
+        setIsPlaybackActive(true);
+        return;
+      }
+    }
+
+    setIsPlaybackActive(false);
+  }, [currentPlaybackIndex, playbackBarItems]);
+
+  const handlePlaybackPrevious = useCallback(() => {
+    if (playbackBarItems.length === 0) {
+      return;
+    }
+
+    const startIndex =
+      currentPlaybackIndex >= 0 ? currentPlaybackIndex : playbackBarItems.length;
+    for (let index = startIndex - 1; index >= 0; index -= 1) {
+      const candidate = playbackBarItems[index];
+      if (candidate.isPlayable) {
+        setActivePlaybackKey(candidate.key);
+        setIsPlaybackActive(true);
+        return;
+      }
+    }
+  }, [currentPlaybackIndex, playbackBarItems]);
+
+  const handlePlaybackSelect = useCallback(
+    (key: string) => {
+      const target = playbackBarItems.find((item) => item.key === key);
+      if (!target) {
+        return;
+      }
+      setActivePlaybackKey(target.key);
+      if (target.isPlayable) {
+        setIsPlaybackActive(true);
+      }
+    },
+    [playbackBarItems]
+  );
+
+  const handlePlaybackToggleExpanded = useCallback(() => {
+    setIsPlaybackExpanded((previous) => !previous);
+  }, []);
+
+  const handlePlaybackEnded = useCallback(() => {
+    if (playbackBarItems.length === 0) {
+      setIsPlaybackActive(false);
+      return;
+    }
+
+    const startIndex = currentPlaybackIndex >= 0 ? currentPlaybackIndex : -1;
+    for (let index = startIndex + 1; index < playbackBarItems.length; index += 1) {
+      const candidate = playbackBarItems[index];
+      if (candidate.isPlayable) {
+        setActivePlaybackKey(candidate.key);
+        return;
+      }
+    }
+
+    setIsPlaybackActive(false);
+  }, [currentPlaybackIndex, playbackBarItems]);
+
   const normalizedPlaylistQuery = playlistSearchQuery.trim().toLowerCase();
 
   const filteredPlaylistEntries = useMemo<PlaylistEntry[]>(() => {
@@ -3226,14 +3445,14 @@ export default function App() {
     ? `${greetingName} 님, 환영합니다!`
     : '닉네임을 설정해주세요.';
 
-
   return (
-    <div className="app-shell">
-      <aside
-        id="app-sidebar"
-        className="sidebar"
-        aria-label="주요 탐색"
-        aria-hidden={isMobileViewport ? true : undefined}
+    <>
+      <div className="app-shell">
+        <aside
+          id="app-sidebar"
+          className="sidebar"
+          aria-label="주요 탐색"
+          aria-hidden={isMobileViewport ? true : undefined}
       >
         <div className="sidebar__brand">
           <div className="sidebar__logo">
@@ -4742,7 +4961,22 @@ export default function App() {
           );
         })}
       </nav>
-
-    </div>
+      </div>
+      {playbackBarItems.length > 0 && (
+        <PlaylistBar
+          items={playbackBarItems}
+          currentItemKey={activePlaybackKey}
+          currentIndex={currentPlaybackIndex}
+          isPlaying={isPlaybackActive}
+          isExpanded={isPlaybackExpanded}
+          onPlayPause={handlePlaybackToggle}
+          onNext={handlePlaybackNext}
+          onPrevious={handlePlaybackPrevious}
+          onToggleExpanded={handlePlaybackToggleExpanded}
+          onSelectItem={handlePlaybackSelect}
+          onTrackEnded={handlePlaybackEnded}
+        />
+      )}
+    </>
   );
 }
