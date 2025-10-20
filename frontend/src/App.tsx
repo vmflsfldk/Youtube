@@ -1014,7 +1014,7 @@ export default function App() {
   const [hiddenVideoIds, setHiddenVideoIds] = useState<number[]>([]);
   const [favoriteVideoIds, setFavoriteVideoIds] = useState<number[]>([]);
   const [userPlaylists, setUserPlaylists] = useState<PlaylistResponse[]>([]);
-  const [, setPublicPlaylists] = useState<PlaylistResponse[]>([]);
+  const [publicPlaylists, setPublicPlaylists] = useState<PlaylistResponse[]>([]);
   const [activePlaylist, setActivePlaylist] = useState<PlaylistResponse | null>(null);
   const [expandedVideoCategories, setExpandedVideoCategories] = useState<Record<VideoCategoryKey, boolean>>({
     cover: false,
@@ -2552,7 +2552,7 @@ export default function App() {
     return map;
   }, [playlistItems]);
 
-  const availablePlaylists = useMemo(
+  const availablePlaylists = useMemo<PlaylistResponse[]>(
     () => (isAuthenticated ? userPlaylists : publicPlaylists),
     [isAuthenticated, publicPlaylists, userPlaylists]
   );
@@ -2661,7 +2661,7 @@ export default function App() {
 
   const handlePlaylistEntryRemove = useCallback(
     async (itemId: number) => {
-      if (!activePlaylist) {
+      if (!isAuthenticated || !activePlaylist) {
         return;
       }
 
@@ -2680,7 +2680,7 @@ export default function App() {
         console.error('Failed to remove playlist item', error);
       }
     },
-    [activePlaylist, applyUserPlaylistUpdate, authHeaders, http]
+    [activePlaylist, applyUserPlaylistUpdate, authHeaders, http, isAuthenticated]
   );
 
   const handleVideoPlaylistToggle = useCallback(
@@ -3062,6 +3062,8 @@ export default function App() {
       .filter((entry): entry is PlaylistEntry => entry !== null);
   }, [playlistItems, playlistVideoMap]);
 
+  const canModifyActivePlaylist = Boolean(isAuthenticated && activePlaylist);
+
   const playbackBarItems = useMemo<PlaylistBarItem[]>(() => {
     return playlistEntries.map((entry, index) => {
       const key = resolvePlaylistEntryKey(entry, index);
@@ -3085,6 +3087,7 @@ export default function App() {
           '제목 없는 영상';
 
         return {
+          itemId: entry.itemId,
           key,
           type: 'video' as const,
           title,
@@ -3137,6 +3140,7 @@ export default function App() {
       );
 
       return {
+        itemId: entry.itemId,
         key,
         type: 'clip' as const,
         title: clipTitle,
@@ -5149,12 +5153,14 @@ export default function App() {
         isPlaying={isPlaybackActive}
         isExpanded={isPlaybackExpanded}
         canCreatePlaylist={isAuthenticated}
+        canModifyPlaylist={canModifyActivePlaylist}
         onCreatePlaylist={handleCreatePlaylist}
         onPlayPause={handlePlaybackToggle}
         onNext={handlePlaybackNext}
         onPrevious={handlePlaybackPrevious}
         onToggleExpanded={handlePlaybackToggleExpanded}
         onSelectItem={handlePlaybackSelect}
+        onRemoveItem={handlePlaylistEntryRemove}
         onTrackEnded={handlePlaybackEnded}
       />
     </>

@@ -1,7 +1,9 @@
+import type { MouseEvent } from 'react';
 import { useCallback, useMemo, useState } from 'react';
 import ClipPlayer from './ClipPlayer';
 
 export interface PlaylistBarItem {
+  itemId: number;
   key: string;
   type: 'video' | 'clip';
   title: string;
@@ -23,12 +25,14 @@ interface PlaylistBarProps {
   isPlaying: boolean;
   isExpanded: boolean;
   canCreatePlaylist: boolean;
+  canModifyPlaylist: boolean;
   onCreatePlaylist: () => void | Promise<unknown>;
   onPlayPause: () => void;
   onNext: () => void;
   onPrevious: () => void;
   onToggleExpanded: () => void;
   onSelectItem: (key: string) => void;
+  onRemoveItem: (itemId: number) => void | Promise<unknown>;
   onTrackEnded: () => void;
 }
 
@@ -66,6 +70,19 @@ const ChevronIcon = ({ direction }: { direction: 'up' | 'down' }) => (
   </svg>
 );
 
+const RemoveIcon = () => (
+  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+    <path
+      d="M6 6l12 12M18 6 6 18"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      fill="none"
+    />
+  </svg>
+);
+
 export default function PlaylistBar({
   items,
   currentItemKey,
@@ -73,12 +90,14 @@ export default function PlaylistBar({
   isPlaying,
   isExpanded,
   canCreatePlaylist,
+  canModifyPlaylist,
   onCreatePlaylist,
   onPlayPause,
   onNext,
   onPrevious,
   onToggleExpanded,
   onSelectItem,
+  onRemoveItem,
   onTrackEnded
 }: PlaylistBarProps) {
   const [isCreatingPlaylist, setIsCreatingPlaylist] = useState(false);
@@ -157,37 +176,56 @@ export default function PlaylistBar({
     if (!item.isPlayable) {
       itemClasses.push('playback-bar__queue-item--disabled');
     }
+    const handleRemoveClick = (event: MouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      event.preventDefault();
+      if (!canModifyPlaylist) {
+        return;
+      }
+      void onRemoveItem(item.itemId);
+    };
 
     return (
       <li key={item.key} className={itemClasses.join(' ')}>
-        <button
-          type="button"
-          className="playback-bar__queue-button"
-          onClick={() => onSelectItem(item.key)}
-          disabled={!item.isPlayable}
-        >
-          <div className="playback-bar__queue-index" aria-hidden="true">
-            {index + 1}
-          </div>
-          <div className="playback-bar__queue-thumbnail" aria-hidden="true">
-            {item.thumbnailUrl ? (
-              <img src={item.thumbnailUrl} alt="" />
-            ) : (
-              <span className="playback-bar__queue-thumbnail--placeholder">No image</span>
-            )}
-          </div>
-          <div className="playback-bar__queue-meta">
-            <div className="playback-bar__queue-title-row">
-              {item.badgeLabel && <span className="playback-bar__queue-badge">{item.badgeLabel}</span>}
-              <span className="playback-bar__queue-title">{item.title}</span>
+        <div className="playback-bar__queue-row">
+          <button
+            type="button"
+            className="playback-bar__queue-button"
+            onClick={() => onSelectItem(item.key)}
+            disabled={!item.isPlayable}
+          >
+            <div className="playback-bar__queue-index" aria-hidden="true">
+              {index + 1}
             </div>
-            {item.subtitle && <span className="playback-bar__queue-subtitle">{item.subtitle}</span>}
-            {item.rangeLabel && <span className="playback-bar__queue-range">{item.rangeLabel}</span>}
-          </div>
-          {item.durationLabel && (
-            <span className="playback-bar__queue-duration">{item.durationLabel}</span>
-          )}
-        </button>
+            <div className="playback-bar__queue-thumbnail" aria-hidden="true">
+              {item.thumbnailUrl ? (
+                <img src={item.thumbnailUrl} alt="" />
+              ) : (
+                <span className="playback-bar__queue-thumbnail--placeholder">No image</span>
+              )}
+            </div>
+            <div className="playback-bar__queue-meta">
+              <div className="playback-bar__queue-title-row">
+                {item.badgeLabel && <span className="playback-bar__queue-badge">{item.badgeLabel}</span>}
+                <span className="playback-bar__queue-title">{item.title}</span>
+              </div>
+              {item.subtitle && <span className="playback-bar__queue-subtitle">{item.subtitle}</span>}
+              {item.rangeLabel && <span className="playback-bar__queue-range">{item.rangeLabel}</span>}
+            </div>
+            {item.durationLabel && (
+              <span className="playback-bar__queue-duration">{item.durationLabel}</span>
+            )}
+          </button>
+          <button
+            type="button"
+            className="playback-bar__queue-remove"
+            onClick={handleRemoveClick}
+            disabled={!canModifyPlaylist}
+            aria-label="재생목록에서 제거"
+          >
+            <RemoveIcon />
+          </button>
+        </div>
       </li>
     );
   };
