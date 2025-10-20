@@ -20,7 +20,8 @@ public interface ClipRepository extends JpaRepository<Clip, Long> {
     List<Clip> findByVideo(Video video);
 
     @EntityGraph(attributePaths = "tags")
-    List<Clip> findByVideoWithTags(Video video);
+    @Query("SELECT c FROM Clip c WHERE c.video = :video")
+    List<Clip> findByVideoWithTags(@Param("video") Video video);
 
     boolean existsByVideoAndStartSecAndEndSec(Video video, int startSec, int endSec);
 
