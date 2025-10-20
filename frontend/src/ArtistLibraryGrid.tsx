@@ -3,6 +3,7 @@ import {
   ReactNode,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -22,6 +23,7 @@ const getRowGap = (containerWidth: number): number => {
 };
 const DEFAULT_CARD_HEIGHT = 320;
 const MAX_VISIBLE_ROWS = 4;
+const MIN_CARD_HEIGHT = 200;
 
 const getMinCardWidth = (containerWidth: number): number => {
   if (containerWidth <= 480) {
@@ -167,6 +169,7 @@ const ArtistLibraryGrid = <T,>({
 }: ArtistLibraryGridProps<T>) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [containerWidth, setContainerWidth] = useState(0);
+  const [measuredCardHeight, setMeasuredCardHeight] = useState<number | null>(null);
 
   useEffect(() => {
     const element = containerRef.current;
@@ -223,7 +226,11 @@ const ArtistLibraryGrid = <T,>({
 
   const rowCount = rows.length;
   const estimatedCardHeight = getEstimatedCardHeight(containerWidth);
-  const itemSize = estimatedCardHeight + rowGap;
+  const effectiveCardHeight = Math.max(
+    measuredCardHeight ?? estimatedCardHeight,
+    MIN_CARD_HEIGHT
+  );
+  const itemSize = effectiveCardHeight + rowGap;
   const visibleRowCount = Math.min(rowCount, MAX_VISIBLE_ROWS);
   const listHeight = visibleRowCount > 0 ? visibleRowCount * itemSize : 0;
 
@@ -241,6 +248,83 @@ const ArtistLibraryGrid = <T,>({
     (props: ListChildComponentProps<ArtistGridItemData<T>>) => <ArtistGridRow<T> {...props} />,
     []
   );
+
+  useLayoutEffect(() => {
+    if (!containerRef.current) {
+      return;
+    }
+
+    let resizeObserver: ResizeObserver | null = null;
+    let intervalId: number | null = null;
+    let rafId: number | null = null;
+    let resizeListener: (() => void) | null = null;
+    const isWindowAvailable = typeof window !== 'undefined';
+
+    const updateMeasuredHeight = (target?: Element | null) => {
+      const element = (target as HTMLElement | undefined) ??
+        containerRef.current?.querySelector<HTMLElement>('.artist-library__grid-item');
+      if (!element) {
+        return element;
+      }
+      const { height } = element.getBoundingClientRect();
+      if (height > 0) {
+        setMeasuredCardHeight((previous) =>
+          previous !== null && Math.abs(previous - height) < 0.5 ? previous : height
+        );
+      }
+      return element;
+    };
+
+    const ensureMeasurementTarget = () => {
+      const element = updateMeasuredHeight();
+      if (!element) {
+        if (isWindowAvailable) {
+          rafId = window.requestAnimationFrame(ensureMeasurementTarget);
+        }
+        return;
+      }
+
+      if (typeof ResizeObserver !== 'undefined') {
+        resizeObserver = new ResizeObserver((entries) => {
+          if (entries.length > 0) {
+            updateMeasuredHeight(entries[0].target);
+          } else {
+            updateMeasuredHeight();
+          }
+        });
+        resizeObserver.observe(element);
+        return;
+      }
+
+      if (!isWindowAvailable) {
+        return;
+      }
+
+      const handleResize = () => {
+        updateMeasuredHeight(element);
+      };
+      resizeListener = handleResize;
+      window.addEventListener('resize', handleResize);
+      intervalId = window.setInterval(() => updateMeasuredHeight(element), 1000);
+    };
+
+    ensureMeasurementTarget();
+
+    return () => {
+      if (rafId !== null && isWindowAvailable) {
+        window.cancelAnimationFrame(rafId);
+      }
+      if (resizeObserver) {
+        resizeObserver.disconnect();
+      }
+      if (resizeListener && isWindowAvailable) {
+        window.removeEventListener('resize', resizeListener);
+      }
+      if (intervalId !== null && isWindowAvailable) {
+        window.clearInterval(intervalId);
+      }
+    };
+  }, [artists, containerWidth]);
 
   if (rowCount === 0) {
     return (
