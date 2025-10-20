@@ -647,6 +647,9 @@ interface ClipResponse {
   thumbnailUrl?: string | null;
   youtubeVideoId?: string;
   videoTitle?: string | null;
+  sectionTitle?: string | null;
+  youtubeChapterTitle?: string | null;
+  description?: string | null;
   originalComposer?: string | null;
   videoOriginalComposer?: string | null;
   artistId?: number;
@@ -1009,15 +1012,15 @@ export default function App() {
   const [videos, setVideos] = useState<VideoResponse[]>([]);
   const [hiddenVideoIds, setHiddenVideoIds] = useState<number[]>([]);
   const [favoriteVideoIds, setFavoriteVideoIds] = useState<number[]>([]);
-  const [playlistVideoIds, setPlaylistVideoIds] = useState<number[]>([]);
+  const [userPlaylists, setUserPlaylists] = useState<PlaylistResponse[]>([]);
+  const [, setPublicPlaylists] = useState<PlaylistResponse[]>([]);
+  const [activePlaylist, setActivePlaylist] = useState<PlaylistResponse | null>(null);
   const [expandedVideoCategories, setExpandedVideoCategories] = useState<Record<VideoCategoryKey, boolean>>({
     cover: false,
     live: false,
     original: false
   });
   const [clips, setClips] = useState<ClipResponse[]>([]);
-  const [playlistVideos, setPlaylistVideos] = useState<VideoResponse[]>([]);
-  const [playlistClips, setPlaylistClips] = useState<ClipResponse[]>([]);
   const [playlistSearchQuery, setPlaylistSearchQuery] = useState('');
   const [expandedPlaylistEntryId, setExpandedPlaylistEntryId] = useState<string | null>(null);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
@@ -1417,10 +1420,10 @@ export default function App() {
     setVideos([]);
     setHiddenVideoIds([]);
     setFavoriteVideoIds([]);
-    setPlaylistVideoIds([]);
+    setUserPlaylists([]);
+    setPublicPlaylists([]);
+    setActivePlaylist(null);
     setClips([]);
-    setPlaylistVideos([]);
-    setPlaylistClips([]);
     setPlaylistSearchQuery('');
     setClipCandidates([]);
     setSelectedVideo(null);
@@ -1875,16 +1878,12 @@ export default function App() {
         const others = prev.filter((item) => item.id !== video.id);
         return [...others, video];
       });
-      setPlaylistVideos((prev) => {
-        const others = prev.filter((item) => item.id !== video.id);
-        return [...others, video];
-      });
       setSelectedVideo(video.id);
       setClipCandidates(normalizedCandidates);
       autoDetectedVideoIdRef.current = video.id;
       return { existed, candidates: normalizedCandidates };
     },
-    [setVideos, setPlaylistVideos, setSelectedVideo, setClipCandidates]
+    [setVideos, setSelectedVideo, setClipCandidates]
   );
 
   const requestVideoRegistration = useCallback(
@@ -1951,21 +1950,10 @@ export default function App() {
         const others = prev.filter((clip) => clip.id !== normalizedClip.id);
         return [...others, normalizedClip];
       });
-      setPlaylistClips((prev) => {
-        const others = prev.filter((clip) => clip.id !== normalizedClip.id);
-        return [...others, normalizedClip];
-      });
-      setPlaylistVideos((prev) => {
-        if (prev.some((video) => video.id === response.data.videoId)) {
-          return prev;
-        }
-        const matchingVideo = videos.find((video) => video.id === response.data.videoId);
-        return matchingVideo ? [...prev, matchingVideo] : prev;
-      });
       reloadArtistVideos().catch((error) => console.error('Failed to refresh videos after clip creation', error));
       return normalizedClip;
     },
-    [authHeaders, http, reloadArtistVideos, selectedVideo, videos]
+    [authHeaders, http, reloadArtistVideos, selectedVideo]
   );
 
   const applyVideoSectionToClip = useCallback(
@@ -2196,26 +2184,14 @@ export default function App() {
           return;
         }
         const playlists = ensureArray(response.data).map(normalizePlaylist);
-        const aggregatedVideos: VideoResponse[] = [];
-        const aggregatedClips: ClipResponse[] = [];
-        const seenVideoIds = new Set<number>();
-        const seenClipIds = new Set<number>();
-
-        for (const playlist of playlists) {
-          for (const item of playlist.items) {
-            if (item.type === 'video' && item.video && !seenVideoIds.has(item.video.id)) {
-              aggregatedVideos.push(item.video);
-              seenVideoIds.add(item.video.id);
-            }
-            if (item.type === 'clip' && item.clip && !seenClipIds.has(item.clip.id)) {
-              aggregatedClips.push(item.clip);
-              seenClipIds.add(item.clip.id);
-            }
+        setPublicPlaylists(playlists);
+        setActivePlaylist((previous) => {
+          if (!previous) {
+            return playlists[0] ?? null;
           }
-        }
-
-        setPlaylistVideos(aggregatedVideos);
-        setPlaylistClips(aggregatedClips);
+          const matched = playlists.find((playlist) => playlist.id === previous.id);
+          return matched ?? playlists[0] ?? null;
+        });
         setPlaylistSearchQuery('');
       } catch (error) {
         if (controller.signal.aborted) {
@@ -2223,8 +2199,8 @@ export default function App() {
         }
         console.error('Failed to load public playlists', error);
         if (!cancelled) {
-          setPlaylistVideos([]);
-          setPlaylistClips([]);
+          setPublicPlaylists([]);
+          setActivePlaylist(null);
           setPlaylistSearchQuery('');
         }
       }
@@ -2237,6 +2213,56 @@ export default function App() {
       controller.abort();
     };
   }, [http, isAuthenticated]);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setUserPlaylists([]);
+      setActivePlaylist(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    let cancelled = false;
+
+    const loadUserPlaylists = async () => {
+      try {
+        const response = await http.get<MaybeArray<PlaylistLike>>('/playlists', {
+          headers: authHeaders,
+          signal: controller.signal
+        });
+        if (cancelled) {
+          return;
+        }
+        const playlists = ensureArray(response.data).map(normalizePlaylist);
+        setUserPlaylists(playlists);
+        setActivePlaylist((previous) => {
+          if (!previous) {
+            return playlists[0] ?? null;
+          }
+          const matched = playlists.find((playlist) => playlist.id === previous.id);
+          return matched ?? playlists[0] ?? null;
+        });
+        setPlaylistSearchQuery('');
+      } catch (error) {
+        if (controller.signal.aborted) {
+          return;
+        }
+        console.error('Failed to load playlists', error);
+        if (!cancelled) {
+          setUserPlaylists([]);
+          setActivePlaylist(null);
+          setPlaylistSearchQuery('');
+        }
+      }
+    };
+
+    void loadUserPlaylists();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [authHeaders, http, isAuthenticated]);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -2266,11 +2292,6 @@ export default function App() {
         const normalizedClips = ensureArray(response.data?.clips).map(normalizeClip);
         setVideos(fetchedVideos);
         setClips(normalizedClips);
-        const defaultPlaylistVideos = fetchedVideos.filter(
-          (video) => categorizeVideo(video) !== 'live'
-        );
-        setPlaylistVideos(defaultPlaylistVideos);
-        setPlaylistClips(normalizedClips);
         setHiddenVideoIds((previous) =>
           previous.filter((id) => fetchedVideos.some((video) => video.id === id))
         );
@@ -2505,17 +2526,89 @@ export default function App() {
     setSelectedVideo(videoId);
   };
 
+  const playlistItems = useMemo(() => activePlaylist?.items ?? [], [activePlaylist]);
+
+  const playlistVideoItemMap = useMemo(() => {
+    const map = new Map<number, PlaylistItemResponse>();
+    playlistItems.forEach((item) => {
+      if (item.type === 'video' && item.video) {
+        map.set(item.video.id, item);
+      }
+    });
+    return map;
+  }, [playlistItems]);
+
+  const playlistVideoMap = useMemo(() => {
+    const map = new Map<number, VideoResponse>();
+    playlistItems.forEach((item) => {
+      if (item.type === 'video' && item.video) {
+        map.set(item.video.id, item.video);
+      }
+    });
+    return map;
+  }, [playlistItems]);
+
   const handleVideoFavoriteToggle = useCallback((videoId: number) => {
     setFavoriteVideoIds((prev) =>
       prev.includes(videoId) ? prev.filter((id) => id !== videoId) : [...prev, videoId]
     );
   }, []);
 
-  const handleVideoPlaylistToggle = useCallback((videoId: number) => {
-    setPlaylistVideoIds((prev) =>
-      prev.includes(videoId) ? prev.filter((id) => id !== videoId) : [...prev, videoId]
-    );
+  const applyUserPlaylistUpdate = useCallback((playlist: PlaylistResponse) => {
+    setUserPlaylists((previous) => {
+      let found = false;
+      const next = previous.map((existing) => {
+        if (existing.id === playlist.id) {
+          found = true;
+          return playlist;
+        }
+        return existing;
+      });
+      if (!found) {
+        return [playlist, ...next];
+      }
+      return next;
+    });
+    setActivePlaylist(playlist);
   }, []);
+
+  const handleVideoPlaylistToggle = useCallback(
+    async (videoId: number) => {
+      if (!isAuthenticated) {
+        showAlert('재생목록을 사용하려면 로그인해 주세요.');
+        return;
+      }
+
+      if (!activePlaylist) {
+        showAlert('활성화된 재생목록을 찾을 수 없습니다.');
+        return;
+      }
+
+      const existingItem = playlistVideoItemMap.get(videoId) ?? null;
+
+      try {
+        if (existingItem) {
+          const response = await http.delete<PlaylistResponse>(
+            `/playlists/${activePlaylist.id}/items/${existingItem.id}`,
+            { headers: authHeaders }
+          );
+          applyUserPlaylistUpdate(normalizePlaylist(response.data));
+        } else {
+          const response = await http.post<PlaylistResponse>(
+            `/playlists/${activePlaylist.id}/items`,
+            { videoId },
+            { headers: authHeaders }
+          );
+          applyUserPlaylistUpdate(normalizePlaylist(response.data));
+        }
+      } catch (error) {
+        const message = extractAxiosErrorMessage(error, '재생목록을 업데이트하지 못했습니다.');
+        showAlert(message);
+        console.error('Failed to update playlist', error);
+      }
+    },
+    [activePlaylist, applyUserPlaylistUpdate, authHeaders, http, isAuthenticated, playlistVideoItemMap]
+  );
 
   const handleVideoCardKeyDown = (event: KeyboardEvent<HTMLDivElement>, videoId: number) => {
     if (event.key === 'Enter' || event.key === ' ') {
@@ -2719,9 +2812,6 @@ export default function App() {
       setClips((previous) =>
         previous.map((clip) => (clip.id === updatedClip.id ? { ...clip, ...updatedClip } : clip))
       );
-      setPlaylistClips((previous) =>
-        previous.map((clip) => (clip.id === updatedClip.id ? { ...clip, ...updatedClip } : clip))
-      );
       setClipCandidates((previous) =>
         previous.map((candidate) =>
           candidate.startSec === targetClip.startSec && candidate.endSec === targetClip.endSec
@@ -2813,63 +2903,38 @@ export default function App() {
     [clips, selectedVideo]
   );
 
-  const playlistVideoMap = useMemo(() => {
-    const map = new Map<number, VideoResponse>();
-    playlistVideos.forEach((video) => {
-      map.set(video.id, video);
-    });
-    return map;
-  }, [playlistVideos]);
-
   type PlaylistEntry =
-    | { type: 'video'; video: VideoResponse }
-    | { type: 'clip'; clip: ClipResponse; parentVideo: VideoResponse | null };
+    | { type: 'video'; itemId: number; video: VideoResponse }
+    | { type: 'clip'; itemId: number; clip: ClipResponse; parentVideo: VideoResponse | null };
 
   const resolvePlaylistEntryKey = useCallback((entry: PlaylistEntry, index: number): string => {
+    if (Number.isFinite(entry.itemId)) {
+      return `playlist-item-${entry.itemId}`;
+    }
     if (entry.type === 'video') {
-      return `playlist-video-${entry.video.id}`;
+      return `playlist-video-${entry.video.id}-${index}`;
     }
-
-    if (typeof entry.clip.id === 'number') {
-      return `playlist-clip-${entry.clip.id}`;
+    const clipId = typeof entry.clip.id === 'number' ? entry.clip.id : null;
+    if (clipId !== null) {
+      return `playlist-clip-${clipId}`;
     }
-
     return `playlist-clip-${entry.clip.videoId}-${index}`;
   }, []);
 
   const playlistEntries = useMemo<PlaylistEntry[]>(() => {
-    const clipsByVideoId = new Map<number, ClipResponse[]>();
-    playlistClips.forEach((clip) => {
-      const existing = clipsByVideoId.get(clip.videoId);
-      if (existing) {
-        existing.push(clip);
-      } else {
-        clipsByVideoId.set(clip.videoId, [clip]);
-      }
-    });
-
-    const entries: PlaylistEntry[] = [];
-
-    playlistVideos.forEach((video) => {
-      entries.push({ type: 'video', video });
-      const associatedClips = clipsByVideoId.get(video.id);
-      if (associatedClips) {
-        associatedClips.forEach((clip) => {
-          entries.push({ type: 'clip', clip, parentVideo: video });
-        });
-        clipsByVideoId.delete(video.id);
-      }
-    });
-
-    clipsByVideoId.forEach((remainingClips, videoId) => {
-      const parentVideo = playlistVideoMap.get(videoId) ?? null;
-      remainingClips.forEach((clip) => {
-        entries.push({ type: 'clip', clip, parentVideo });
-      });
-    });
-
-    return entries;
-  }, [playlistClips, playlistVideoMap, playlistVideos]);
+    return playlistItems
+      .map<PlaylistEntry | null>((item) => {
+        if (item.type === 'video' && item.video) {
+          return { type: 'video', itemId: item.id, video: item.video };
+        }
+        if (item.type === 'clip' && item.clip) {
+          const parentVideo = playlistVideoMap.get(item.clip.videoId) ?? null;
+          return { type: 'clip', itemId: item.id, clip: item.clip, parentVideo };
+        }
+        return null;
+      })
+      .filter((entry): entry is PlaylistEntry => entry !== null);
+  }, [playlistItems, playlistVideoMap]);
 
   const normalizedPlaylistQuery = playlistSearchQuery.trim().toLowerCase();
 
@@ -3008,7 +3073,9 @@ export default function App() {
   const renderVideoListItem = (video: VideoResponse) => {
     const isVideoSelected = selectedVideo === video.id;
     const isVideoFavorited = favoriteVideoIds.includes(video.id);
-    const isVideoQueued = playlistVideoIds.includes(video.id);
+    const playlistVideoItem = playlistVideoItemMap.get(video.id) ?? null;
+    const isVideoQueued = playlistVideoItem !== null;
+    const canModifyPlaylist = Boolean(isAuthenticated && activePlaylist);
     const videoCategory = categorizeVideo(video);
     const videoThumbnail =
       video.thumbnailUrl ||
@@ -3086,10 +3153,11 @@ export default function App() {
                 }`}
                 aria-pressed={isVideoQueued}
                 aria-label={isVideoQueued ? '재생목록에서 제거' : '재생목록에 추가'}
+                disabled={!canModifyPlaylist}
                 onClick={(event) => {
                   event.preventDefault();
                   event.stopPropagation();
-                  handleVideoPlaylistToggle(video.id);
+                  void handleVideoPlaylistToggle(video.id);
                 }}
               >
                 {isVideoQueued ? '재생목록 추가됨' : '재생목록에 추가'}
