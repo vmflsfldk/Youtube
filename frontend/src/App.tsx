@@ -657,6 +657,31 @@ interface ClipResponse {
   artistProfileImageUrl?: string | null;
 }
 
+type PlaylistVisibility = 'PRIVATE' | 'UNLISTED' | 'PUBLIC';
+
+type PlaylistItemType = 'video' | 'clip';
+
+interface PlaylistItemResponse {
+  id: number;
+  playlistId: number;
+  ordering: number;
+  createdAt: string;
+  updatedAt: string;
+  type: PlaylistItemType;
+  video?: VideoResponse;
+  clip?: ClipResponse;
+}
+
+interface PlaylistResponse {
+  id: number;
+  ownerId: number;
+  title: string;
+  visibility: PlaylistVisibility;
+  createdAt: string;
+  updatedAt: string;
+  items: PlaylistItemResponse[];
+}
+
 interface ClipCandidateResponse {
   startSec: number;
   endSec: number;
@@ -679,6 +704,18 @@ interface VideoClipSuggestionsResponse {
 }
 
 type ClipLike = Omit<ClipResponse, 'tags'> & { tags?: unknown };
+
+type PlaylistItemLike = Omit<PlaylistItemResponse, 'type' | 'ordering' | 'video' | 'clip'> & {
+  type?: string;
+  ordering?: number | string;
+  video?: VideoResponse;
+  clip?: ClipLike;
+};
+
+type PlaylistLike = Omit<PlaylistResponse, 'items' | 'visibility'> & {
+  visibility?: string;
+  items?: MaybeArray<PlaylistItemLike>;
+};
 
 type ClipCreationPayload = {
   title: string;
@@ -779,6 +816,24 @@ interface ArtistDebugLogEntry {
   error?: string;
 }
 
+const normalizeVideo = (video: VideoResponse): VideoResponse => {
+  const duration =
+    typeof video.durationSec === 'number'
+      ? video.durationSec
+      : Number.isFinite(Number(video.durationSec))
+        ? Number(video.durationSec)
+        : null;
+  const hidden =
+    typeof video.hidden === 'boolean' ? video.hidden : video.hidden ? true : undefined;
+
+  return {
+    ...video,
+    durationSec: duration,
+    thumbnailUrl: video.thumbnailUrl ?? null,
+    hidden
+  };
+};
+
 const normalizeClip = (clip: ClipLike): ClipResponse => {
   const rawTags = clip.tags;
   const normalizedTags = Array.isArray(rawTags)
@@ -801,6 +856,62 @@ const normalizeClip = (clip: ClipLike): ClipResponse => {
     videoTitle: clip.videoTitle ?? null,
     originalComposer: clipOriginalComposer.length > 0 ? clipOriginalComposer : null,
     videoOriginalComposer: videoOriginalComposer.length > 0 ? videoOriginalComposer : null
+  };
+};
+
+const normalizePlaylistItem = (item: PlaylistItemLike): PlaylistItemResponse => {
+  const itemId = Number(item.id);
+  const playlistId = Number(item.playlistId);
+  const ordering =
+    typeof item.ordering === 'number'
+      ? item.ordering
+      : Number.isFinite(Number(item.ordering))
+        ? Number(item.ordering)
+        : 0;
+  const type: PlaylistItemType =
+    item.type === 'clip' || item.type === 'video'
+      ? item.type
+      : item.clip
+        ? 'clip'
+        : 'video';
+
+  return {
+    id: Number.isFinite(itemId) ? itemId : item.id,
+    playlistId: Number.isFinite(playlistId) ? playlistId : item.playlistId,
+    ordering,
+    createdAt: item.createdAt ?? '',
+    updatedAt: item.updatedAt ?? '',
+    type,
+    video: item.video ? normalizeVideo(item.video) : undefined,
+    clip: item.clip ? normalizeClip(item.clip) : undefined
+  };
+};
+
+const normalizePlaylist = (playlist: PlaylistLike): PlaylistResponse => {
+  const playlistId = Number(playlist.id);
+  const ownerId = Number(playlist.ownerId);
+  const visibilityRaw = typeof playlist.visibility === 'string' ? playlist.visibility.trim().toUpperCase() : '';
+  const visibility: PlaylistVisibility =
+    visibilityRaw === 'PUBLIC' || visibilityRaw === 'UNLISTED'
+      ? (visibilityRaw as PlaylistVisibility)
+      : 'PRIVATE';
+
+  const items = ensureArray(playlist.items ?? []).map(normalizePlaylistItem);
+  items.sort((a, b) => {
+    if (a.ordering !== b.ordering) {
+      return a.ordering - b.ordering;
+    }
+    return a.id - b.id;
+  });
+
+  return {
+    id: Number.isFinite(playlistId) ? playlistId : playlist.id,
+    ownerId: Number.isFinite(ownerId) ? ownerId : playlist.ownerId,
+    title: playlist.title ?? '',
+    visibility,
+    createdAt: playlist.createdAt ?? '',
+    updatedAt: playlist.updatedAt ?? '',
+    items
   };
 };
 
@@ -2069,26 +2180,48 @@ export default function App() {
   );
 
   useEffect(() => {
+    if (isAuthenticated) {
+      return;
+    }
+
     const controller = new AbortController();
     let cancelled = false;
 
     const loadPublicPlaylist = async () => {
       try {
-        const response = await http.get<ClipResponse[]>('/public/clips', {
+        const response = await http.get<MaybeArray<PlaylistLike>>('/public/clips', {
           signal: controller.signal
         });
         if (cancelled) {
           return;
         }
-        const normalizedClips = ensureArray(response.data).map(normalizeClip);
-        setPlaylistVideos([]);
-        setPlaylistClips(normalizedClips);
+        const playlists = ensureArray(response.data).map(normalizePlaylist);
+        const aggregatedVideos: VideoResponse[] = [];
+        const aggregatedClips: ClipResponse[] = [];
+        const seenVideoIds = new Set<number>();
+        const seenClipIds = new Set<number>();
+
+        for (const playlist of playlists) {
+          for (const item of playlist.items) {
+            if (item.type === 'video' && item.video && !seenVideoIds.has(item.video.id)) {
+              aggregatedVideos.push(item.video);
+              seenVideoIds.add(item.video.id);
+            }
+            if (item.type === 'clip' && item.clip && !seenClipIds.has(item.clip.id)) {
+              aggregatedClips.push(item.clip);
+              seenClipIds.add(item.clip.id);
+            }
+          }
+        }
+
+        setPlaylistVideos(aggregatedVideos);
+        setPlaylistClips(aggregatedClips);
         setPlaylistSearchQuery('');
       } catch (error) {
         if (controller.signal.aborted) {
           return;
         }
-        console.error('Failed to load public clips', error);
+        console.error('Failed to load public playlists', error);
         if (!cancelled) {
           setPlaylistVideos([]);
           setPlaylistClips([]);
@@ -2129,11 +2262,7 @@ export default function App() {
         if (cancelled) {
           return;
         }
-        const fetchedVideos = ensureArray(response.data?.videos).map((video) => ({
-          ...video,
-          durationSec: typeof video.durationSec === 'number' ? video.durationSec : video.durationSec ?? null,
-          thumbnailUrl: video.thumbnailUrl ?? null
-        }));
+        const fetchedVideos = ensureArray(response.data?.videos).map(normalizeVideo);
         const normalizedClips = ensureArray(response.data?.clips).map(normalizeClip);
         setVideos(fetchedVideos);
         setClips(normalizedClips);
@@ -2856,12 +2985,12 @@ export default function App() {
   const playlistHeading = isAuthenticated ? '내 영상·클립 모음' : '공개 영상·클립 모음';
   const playlistSubtitle = isAuthenticated
     ? '저장한 영상과 클립을 검색하고 바로 재생해 보세요.'
-    : '회원가입 없이 감상할 수 있는 최신 공개 클립입니다.';
+    : '회원가입 없이 감상할 수 있는 최신 공개 재생목록입니다.';
   const playlistEmptyMessage = normalizedPlaylistQuery.length > 0
     ? '검색 조건에 맞는 영상이나 클립이 없습니다.'
     : isAuthenticated
       ? '저장된 영상이나 클립이 없습니다. 라이브러리에서 새로운 클립을 추가해 보세요.'
-      : '아직 공개된 클립이 없습니다. 잠시 후 다시 확인해 주세요.';
+      : '아직 공개된 재생목록이 없습니다. 잠시 후 다시 확인해 주세요.';
   const parsedPreviewStartSec = useMemo(
     () => parseClipTimeParts(clipForm.startHours, clipForm.startMinutes, clipForm.startSeconds),
     [clipForm.startHours, clipForm.startMinutes, clipForm.startSeconds]

@@ -49,6 +49,29 @@ type VideoCategory = (typeof VIDEO_CATEGORIES)[number];
 
 const ARTIST_TAG_DELIMITER = "\u001F";
 
+const PLAYLIST_VISIBILITIES = ["PRIVATE", "UNLISTED", "PUBLIC"] as const;
+type PlaylistVisibility = (typeof PLAYLIST_VISIBILITIES)[number];
+
+const DEFAULT_PLAYLIST_VISIBILITY: PlaylistVisibility = "PRIVATE";
+
+const isPlaylistVisibility = (value: unknown): value is PlaylistVisibility => {
+  if (typeof value !== "string") {
+    return false;
+  }
+  return (PLAYLIST_VISIBILITIES as readonly string[]).includes(value.toUpperCase());
+};
+
+const normalizePlaylistVisibility = (
+  value: unknown,
+  fallback: PlaylistVisibility = DEFAULT_PLAYLIST_VISIBILITY
+): PlaylistVisibility => {
+  if (typeof value !== "string") {
+    return fallback;
+  }
+  const normalized = value.trim().toUpperCase();
+  return isPlaylistVisibility(normalized) ? (normalized as PlaylistVisibility) : fallback;
+};
+
 const isVideoContentType = (value: unknown): value is VideoContentType => {
   if (typeof value !== "string") {
     return false;
@@ -153,6 +176,48 @@ interface ClipCandidateResponse {
   endSec: number;
   score: number;
   label: string;
+}
+
+interface PlaylistRow {
+  id: number;
+  owner_id: number;
+  title: string;
+  visibility: string;
+  created_at: string;
+  updated_at: string;
+}
+
+interface PlaylistItemRow {
+  id: number;
+  playlist_id: number;
+  video_id: number | null;
+  clip_id: number | null;
+  ordering: number;
+  created_at: string;
+  updated_at: string;
+}
+
+type PlaylistItemType = "video" | "clip";
+
+interface PlaylistItemResponse {
+  id: number;
+  playlistId: number;
+  ordering: number;
+  createdAt: string;
+  updatedAt: string;
+  type: PlaylistItemType;
+  video?: VideoResponse;
+  clip?: ClipResponse;
+}
+
+interface PlaylistResponse {
+  id: number;
+  ownerId: number;
+  title: string;
+  visibility: PlaylistVisibility;
+  createdAt: string;
+  updatedAt: string;
+  items: PlaylistItemResponse[];
 }
 
 interface ChannelMetadataDebug {
@@ -625,6 +690,65 @@ async function ensureDatabaseSchema(db: D1Database): Promise<void> {
     {
       sql: "CREATE INDEX IF NOT EXISTS idx_favorites_user ON user_favorite_artists(user_id)",
       context: "idx_favorites_user"
+    },
+    {
+      sql: `CREATE TABLE IF NOT EXISTS playlists (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        owner_id INTEGER NOT NULL,
+        title TEXT NOT NULL,
+        visibility TEXT NOT NULL DEFAULT ('PRIVATE'),
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+        updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+        FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE,
+        CHECK (visibility IN ('PRIVATE', 'UNLISTED', 'PUBLIC'))
+      )`,
+      context: "playlists"
+    },
+    {
+      sql: `CREATE TRIGGER IF NOT EXISTS trg_playlists_updated_at
+        AFTER UPDATE ON playlists
+        FOR EACH ROW
+        BEGIN
+          UPDATE playlists SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.id;
+        END`,
+      context: "trg_playlists_updated_at"
+    },
+    {
+      sql: `CREATE TABLE IF NOT EXISTS playlist_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        playlist_id INTEGER NOT NULL,
+        video_id INTEGER,
+        clip_id INTEGER,
+        ordering INTEGER NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+        updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+        FOREIGN KEY (playlist_id) REFERENCES playlists(id) ON DELETE CASCADE,
+        FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE CASCADE,
+        FOREIGN KEY (clip_id) REFERENCES clips(id) ON DELETE CASCADE,
+        CHECK ((video_id IS NOT NULL AND clip_id IS NULL) OR (video_id IS NULL AND clip_id IS NOT NULL))
+      )`,
+      context: "playlist_items"
+    },
+    {
+      sql: `CREATE UNIQUE INDEX IF NOT EXISTS idx_playlist_items_playlist_order ON playlist_items(playlist_id, ordering)`,
+      context: "idx_playlist_items_playlist_order"
+    },
+    {
+      sql: "CREATE INDEX IF NOT EXISTS idx_playlist_items_video ON playlist_items(video_id)",
+      context: "idx_playlist_items_video"
+    },
+    {
+      sql: "CREATE INDEX IF NOT EXISTS idx_playlist_items_clip ON playlist_items(clip_id)",
+      context: "idx_playlist_items_clip"
+    },
+    {
+      sql: `CREATE TRIGGER IF NOT EXISTS trg_playlist_items_updated_at
+        AFTER UPDATE ON playlist_items
+        FOR EACH ROW
+        BEGIN
+          UPDATE playlist_items SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.id;
+        END`,
+      context: "trg_playlist_items_updated_at"
     }
   ];
 
@@ -972,7 +1096,7 @@ const corsHeaders = (config: CorsConfig): Headers => {
   headers.append("Vary", "Access-Control-Request-Headers");
   headers.append("Vary", "Access-Control-Request-Method");
   headers.set("Access-Control-Allow-Headers", collectAllowedHeaders(config.requestHeaders));
-  headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS");
+  headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
   if (allowedOrigin !== "*") {
     headers.set("Access-Control-Allow-Credentials", "true");
   }
@@ -1070,7 +1194,7 @@ async function handleApi(
     }
 
     if (request.method === "GET" && path === "/api/public/clips") {
-      return await listPublicClips(env, cors);
+      return await listPublicPlaylists(env, cors);
     }
 
     const user = await getUserFromHeaders(env, request.headers);
@@ -1094,6 +1218,23 @@ async function handleApi(
     }
     if (request.method === "POST" && path === "/api/users/me/favorites") {
       return await toggleFavorite(request, env, requireUser(user), cors);
+    }
+    if (request.method === "POST" && path === "/api/playlists") {
+      return await createPlaylist(request, env, requireUser(user), cors);
+    }
+    if (request.method === "GET" && path === "/api/playlists") {
+      return await listPlaylists(env, requireUser(user), cors);
+    }
+    const createPlaylistItemMatch = path.match(/^\/api\/playlists\/(\d+)\/items$/);
+    if (request.method === "POST" && createPlaylistItemMatch) {
+      const playlistId = Number(createPlaylistItemMatch[1]);
+      return await addPlaylistItem(request, env, requireUser(user), cors, playlistId);
+    }
+    const deletePlaylistItemMatch = path.match(/^\/api\/playlists\/(\d+)\/items\/(\d+)$/);
+    if (request.method === "DELETE" && deletePlaylistItemMatch) {
+      const playlistId = Number(deletePlaylistItemMatch[1]);
+      const itemId = Number(deletePlaylistItemMatch[2]);
+      return await deletePlaylistItem(env, requireUser(user), cors, playlistId, itemId);
     }
     if (request.method === "GET" && path === "/api/library/media") {
       return await listMediaLibrary(env, user, cors);
@@ -2108,17 +2249,172 @@ async function listClips(
   throw new HttpError(400, "artistId or videoId query parameter is required");
 }
 
-async function listPublicClips(env: Env, cors: CorsConfig): Promise<Response> {
-  await ensureClipOriginalComposerColumn(env.DB);
-  await ensureVideoOriginalComposerColumn(env.DB);
+async function listPlaylists(env: Env, user: UserContext, cors: CorsConfig): Promise<Response> {
+  const { results } = await env.DB
+    .prepare(
+      `SELECT id, owner_id, title, visibility, created_at, updated_at
+         FROM playlists
+        WHERE owner_id = ?
+        ORDER BY updated_at DESC, id DESC`
+    )
+    .bind(user.id)
+    .all<PlaylistRow>();
+
+  const playlists = await hydratePlaylists(env, results ?? [], user);
+  return jsonResponse(playlists, 200, cors);
+}
+
+async function createPlaylist(
+  request: Request,
+  env: Env,
+  user: UserContext,
+  cors: CorsConfig
+): Promise<Response> {
+  const body = await readJson(request);
+  const rawTitle = typeof body.title === "string" ? body.title.trim() : "";
+  if (!rawTitle) {
+    throw new HttpError(400, "title is required");
+  }
+  if (rawTitle.length > 200) {
+    throw new HttpError(400, "title must be 200 characters or fewer");
+  }
+
+  const visibility = normalizePlaylistVisibility(body.visibility);
+
+  const insertResult = await env.DB
+    .prepare("INSERT INTO playlists (owner_id, title, visibility) VALUES (?, ?, ?)")
+    .bind(user.id, rawTitle, visibility)
+    .run();
+
+  if (!insertResult.success) {
+    throw new HttpError(500, insertResult.error ?? "Failed to create playlist");
+  }
+
+  const playlistId = insertResult.meta.last_row_id;
+  if (!playlistId) {
+    throw new HttpError(500, "Failed to resolve playlist identifier");
+  }
+
+  const playlist = await loadPlaylistForUser(env, Number(playlistId), user);
+  return jsonResponse(playlist, 201, cors);
+}
+
+async function addPlaylistItem(
+  request: Request,
+  env: Env,
+  user: UserContext,
+  cors: CorsConfig,
+  playlistIdParam: number
+): Promise<Response> {
+  const playlistId = Number(playlistIdParam);
+  if (!Number.isFinite(playlistId)) {
+    throw new HttpError(400, "playlistId must be a number");
+  }
+
+  await ensurePlaylistOwner(env, playlistId, user);
+
+  const body = await readJson(request);
+  const maybeVideoId = Number(body.videoId);
+  const maybeClipId = Number(body.clipId);
+  const hasVideo = Number.isFinite(maybeVideoId);
+  const hasClip = Number.isFinite(maybeClipId);
+
+  if ((hasVideo && hasClip) || (!hasVideo && !hasClip)) {
+    throw new HttpError(400, "Either videoId or clipId must be provided");
+  }
+
+  let videoId: number | null = null;
+  let clipId: number | null = null;
+
+  if (hasVideo) {
+    videoId = maybeVideoId;
+    await ensureVideoExists(env, videoId);
+  }
+
+  if (hasClip) {
+    clipId = maybeClipId;
+    const clip = await env.DB
+      .prepare("SELECT id, video_id FROM clips WHERE id = ?")
+      .bind(clipId)
+      .first<{ id: number; video_id: number }>();
+    if (!clip) {
+      throw new HttpError(404, `Clip not found: ${clipId}`);
+    }
+  }
+
+  let ordering: number;
+  if (Number.isFinite(Number(body.ordering))) {
+    ordering = Math.max(0, Math.floor(Number(body.ordering)));
+  } else {
+    const nextOrderRow = await env.DB
+      .prepare(
+        `SELECT COALESCE(MAX(ordering), 0) + 1 AS next_order
+           FROM playlist_items
+          WHERE playlist_id = ?`
+      )
+      .bind(playlistId)
+      .first<{ next_order: number | null }>();
+    ordering = Number(nextOrderRow?.next_order ?? 1);
+  }
+
+  const insertResult = await env.DB
+    .prepare(
+      "INSERT INTO playlist_items (playlist_id, video_id, clip_id, ordering) VALUES (?, ?, ?, ?)"
+    )
+    .bind(playlistId, videoId, clipId, ordering)
+    .run();
+
+  if (!insertResult.success) {
+    throw new HttpError(500, insertResult.error ?? "Failed to add playlist item");
+  }
+
+  const playlist = await loadPlaylistForUser(env, playlistId, user);
+  return jsonResponse(playlist, 201, cors);
+}
+
+async function deletePlaylistItem(
+  env: Env,
+  user: UserContext,
+  cors: CorsConfig,
+  playlistIdParam: number,
+  itemIdParam: number
+): Promise<Response> {
+  const playlistId = Number(playlistIdParam);
+  const itemId = Number(itemIdParam);
+
+  if (!Number.isFinite(playlistId) || !Number.isFinite(itemId)) {
+    throw new HttpError(400, "playlistId and itemId must be numbers");
+  }
+
+  await ensurePlaylistOwner(env, playlistId, user);
+
+  const deleteResult = await env.DB
+    .prepare("DELETE FROM playlist_items WHERE id = ? AND playlist_id = ?")
+    .bind(itemId, playlistId)
+    .run();
+
+  if (!deleteResult.success) {
+    throw new HttpError(500, deleteResult.error ?? "Failed to remove playlist item");
+  }
+
+  if (deleteResult.meta.changes === 0) {
+    throw new HttpError(404, `Playlist item not found: ${itemId}`);
+  }
+
+  const playlist = await loadPlaylistForUser(env, playlistId, user);
+  return jsonResponse(playlist, 200, cors);
+}
+
+async function listPublicPlaylists(env: Env, cors: CorsConfig): Promise<Response> {
   const { results } = await env.DB.prepare(
-    `SELECT c.id, c.video_id, c.title, c.start_sec, c.end_sec, c.original_composer
-       FROM clips c
-       JOIN videos v ON v.id = c.video_id
-      ORDER BY c.id DESC`
-  ).all<ClipRow>();
-  const clips = await attachTags(env, results ?? [], { includeVideoMeta: true });
-  return jsonResponse(clips, 200, cors);
+    `SELECT id, owner_id, title, visibility, created_at, updated_at
+       FROM playlists
+      WHERE visibility = 'PUBLIC'
+      ORDER BY updated_at DESC, id DESC`
+  ).all<PlaylistRow>();
+
+  const playlists = await hydratePlaylists(env, results ?? [], null);
+  return jsonResponse(playlists, 200, cors);
 }
 
 type ClipDetectionMode = "chapters" | "captions" | "combined";
@@ -2303,6 +2599,248 @@ async function ensureVideoExists(env: Env, videoId: number): Promise<void> {
   if (!video) {
     throw new HttpError(404, `Video not found: ${videoId}`);
   }
+}
+
+async function ensurePlaylistOwner(env: Env, playlistId: number, user: UserContext): Promise<PlaylistRow> {
+  const playlist = await env.DB
+    .prepare(
+      `SELECT id, owner_id, title, visibility, created_at, updated_at
+         FROM playlists
+        WHERE id = ?`
+    )
+    .bind(playlistId)
+    .first<PlaylistRow>();
+
+  if (!playlist) {
+    throw new HttpError(404, `Playlist not found: ${playlistId}`);
+  }
+
+  if (playlist.owner_id !== user.id) {
+    throw new HttpError(403, "You do not have permission to modify this playlist");
+  }
+
+  return playlist;
+}
+
+const canUserAccessPlaylist = (playlist: PlaylistRow, user: UserContext | null): boolean => {
+  const visibility = normalizePlaylistVisibility(playlist.visibility);
+  if (visibility === "PUBLIC") {
+    return true;
+  }
+  return user?.id === playlist.owner_id;
+};
+
+const assertPlaylistAccess = (playlist: PlaylistRow, user: UserContext | null): void => {
+  if (!canUserAccessPlaylist(playlist, user)) {
+    throw new HttpError(403, "You do not have permission to access this playlist");
+  }
+};
+
+async function loadPlaylistForUser(
+  env: Env,
+  playlistId: number,
+  user: UserContext | null
+): Promise<PlaylistResponse> {
+  const playlist = await env.DB
+    .prepare(
+      `SELECT id, owner_id, title, visibility, created_at, updated_at
+         FROM playlists
+        WHERE id = ?`
+    )
+    .bind(playlistId)
+    .first<PlaylistRow>();
+
+  if (!playlist) {
+    throw new HttpError(404, `Playlist not found: ${playlistId}`);
+  }
+
+  assertPlaylistAccess(playlist, user);
+
+  const [hydrated] = await hydratePlaylists(env, [playlist], user);
+  if (!hydrated) {
+    throw new HttpError(500, "Failed to load playlist");
+  }
+
+  return hydrated;
+}
+
+async function hydratePlaylists(
+  env: Env,
+  playlistRows: PlaylistRow[] | undefined,
+  user: UserContext | null
+): Promise<PlaylistResponse[]> {
+  const rows = playlistRows ?? [];
+  const accessibleRows = rows.filter((row) => canUserAccessPlaylist(row, user));
+  if (accessibleRows.length === 0) {
+    return [];
+  }
+
+  await ensureArtistDisplayNameColumn(env.DB);
+  await ensureArtistProfileImageColumn(env.DB);
+  await ensureArtistChannelTitleColumn(env.DB);
+  await ensureVideoContentTypeColumn(env.DB);
+  await ensureVideoHiddenColumn(env.DB);
+  await ensureVideoCategoryColumn(env.DB);
+  await ensureVideoOriginalComposerColumn(env.DB);
+  await ensureClipOriginalComposerColumn(env.DB);
+
+  const playlistIds = accessibleRows.map((row) => row.id);
+  const placeholders = playlistIds.map(() => "?").join(", ");
+  const { results: itemRows } = await env.DB
+    .prepare(
+      `SELECT id, playlist_id, video_id, clip_id, ordering, created_at, updated_at
+         FROM playlist_items
+        WHERE playlist_id IN (${placeholders})
+        ORDER BY playlist_id, ordering, id`
+    )
+    .bind(...playlistIds)
+    .all<PlaylistItemRow>();
+
+  const playlistItems = itemRows ?? [];
+
+  const clipIds = playlistItems
+    .map((row) => (typeof row.clip_id === "number" ? row.clip_id : null))
+    .filter((value): value is number => value !== null);
+
+  let clipRows: ClipRow[] = [];
+  if (clipIds.length > 0) {
+    const clipPlaceholders = clipIds.map(() => "?").join(", ");
+    const { results: fetchedClipRows } = await env.DB
+      .prepare(
+        `SELECT id, video_id, title, start_sec, end_sec, original_composer
+           FROM clips
+          WHERE id IN (${clipPlaceholders})`
+      )
+      .bind(...clipIds)
+      .all<ClipRow>();
+    clipRows = fetchedClipRows ?? [];
+  }
+
+  const videoIdSet = new Set<number>();
+  for (const row of playlistItems) {
+    if (typeof row.video_id === "number") {
+      videoIdSet.add(row.video_id);
+    }
+  }
+  for (const clipRow of clipRows) {
+    videoIdSet.add(clipRow.video_id);
+  }
+
+  let videoMap = new Map<number, VideoResponse>();
+  if (videoIdSet.size > 0) {
+    const videoIds = Array.from(videoIdSet);
+    const videoPlaceholders = videoIds.map(() => "?").join(", ");
+    const { results: videoRows } = await env.DB
+      .prepare(
+        `SELECT
+            v.id,
+            v.artist_id,
+            v.youtube_video_id,
+            v.title,
+            v.duration_sec,
+            v.thumbnail_url,
+            v.channel_id,
+            v.description,
+            v.captions_json,
+            v.category,
+            v.content_type,
+            v.hidden,
+            v.original_composer,
+            a.name AS artist_name,
+            a.display_name AS artist_display_name,
+            a.youtube_channel_id AS artist_youtube_channel_id,
+            a.youtube_channel_title AS artist_youtube_channel_title,
+            a.profile_image_url AS artist_profile_image_url
+          FROM videos v
+          JOIN artists a ON a.id = v.artist_id
+         WHERE v.id IN (${videoPlaceholders})`
+      )
+      .bind(...videoIds)
+      .all<VideoLibraryRow>();
+
+    videoMap = new Map((videoRows ?? []).map((row) => [row.id, toVideoLibraryResponse(row)]));
+  }
+
+  const clipResponses =
+    clipRows.length > 0 ? await attachTags(env, clipRows, { includeVideoMeta: true }) : [];
+  const clipMap = new Map<number, ClipResponse>();
+  for (const clip of clipResponses) {
+    const video = videoMap.get(clip.videoId);
+    clipMap.set(clip.id, {
+      ...clip,
+      artistId: video?.artistId,
+      artistName: video?.artistName,
+      artistDisplayName: video?.artistDisplayName,
+      artistYoutubeChannelId: video?.artistYoutubeChannelId,
+      artistYoutubeChannelTitle: video?.artistYoutubeChannelTitle ?? null,
+      artistProfileImageUrl: video?.artistProfileImageUrl ?? null
+    });
+  }
+
+  const ownerMap = new Map(accessibleRows.map((row) => [row.id, row.owner_id]));
+  const itemsByPlaylist = new Map<number, PlaylistItemResponse[]>();
+  for (const row of accessibleRows) {
+    itemsByPlaylist.set(row.id, []);
+  }
+
+  for (const item of playlistItems) {
+    const bucket = itemsByPlaylist.get(item.playlist_id);
+    if (!bucket) {
+      continue;
+    }
+    const ownerId = ownerMap.get(item.playlist_id) ?? null;
+    const isOwner = ownerId !== null && user?.id === ownerId;
+
+    if (typeof item.video_id === "number") {
+      const video = videoMap.get(item.video_id);
+      if (!video) {
+        continue;
+      }
+      if (!isOwner && video.hidden) {
+        continue;
+      }
+      bucket.push({
+        id: item.id,
+        playlistId: item.playlist_id,
+        ordering: Number(item.ordering),
+        createdAt: item.created_at,
+        updatedAt: item.updated_at,
+        type: "video",
+        video
+      });
+      continue;
+    }
+
+    if (typeof item.clip_id === "number") {
+      const clip = clipMap.get(item.clip_id);
+      if (!clip) {
+        continue;
+      }
+      const parentVideo = videoMap.get(clip.videoId);
+      if (!isOwner && parentVideo?.hidden) {
+        continue;
+      }
+      bucket.push({
+        id: item.id,
+        playlistId: item.playlist_id,
+        ordering: Number(item.ordering),
+        createdAt: item.created_at,
+        updatedAt: item.updated_at,
+        type: "clip",
+        clip
+      });
+    }
+  }
+
+  return accessibleRows.map((row) => ({
+    id: row.id,
+    ownerId: row.owner_id,
+    title: row.title,
+    visibility: normalizePlaylistVisibility(row.visibility),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    items: itemsByPlaylist.get(row.id) ?? []
+  }));
 }
 
 async function refreshArtistMetadataIfNeeded(env: Env, row: ArtistRow): Promise<ArtistRow> {
