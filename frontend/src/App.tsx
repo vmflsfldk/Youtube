@@ -12,6 +12,7 @@ import {
 import axios from 'axios';
 import ClipPlayer from './components/ClipPlayer';
 import GoogleLoginButton from './components/GoogleLoginButton';
+import MobileDashboard from './components/MobileDashboard';
 import utahubLogo from './assets/utahub-logo.svg';
 
 type MaybeArray<T> =
@@ -391,7 +392,7 @@ const ARTIST_COUNTRY_METADATA: ReadonlyArray<{
 const AUTH_TOKEN_STORAGE_KEY = 'yt-clip.auth-token';
 const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000;
 
-interface ArtistResponse {
+export interface ArtistResponse {
   id: number;
   name: string;
   displayName: string;
@@ -436,7 +437,7 @@ interface VideoSectionResponse {
   source: string;
 }
 
-interface VideoResponse {
+export interface VideoResponse {
   id: number;
   artistId: number;
   youtubeVideoId: string;
@@ -455,7 +456,7 @@ interface VideoResponse {
   artistProfileImageUrl?: string | null;
 }
 
-interface ClipResponse {
+export interface ClipResponse {
   id: number;
   videoId: number;
   title: string;
@@ -722,6 +723,8 @@ export default function App() {
   const [playlistSearchQuery, setPlaylistSearchQuery] = useState('');
   const [expandedPlaylistEntryId, setExpandedPlaylistEntryId] = useState<string | null>(null);
   const [isMobileNavOpen, setMobileNavOpen] = useState(false);
+  const [isMobileViewport, setIsMobileViewport] = useState(false);
+  const [showMobileDetails, setShowMobileDetails] = useState(false);
   const [selectedVideo, setSelectedVideo] = useState<number | null>(null);
   const [clipCandidates, setClipCandidates] = useState<ClipCandidateResponse[]>([]);
   const [videoSubmissionStatus, setVideoSubmissionStatus] = useState<
@@ -773,9 +776,52 @@ export default function App() {
   const autoDetectedVideoIdRef = useRef<number | null>(null);
   const videoListSectionRef = useRef<HTMLElement | null>(null);
   const clipListSectionRef = useRef<HTMLElement | null>(null);
+  const openMobileDetails = useCallback((callback?: () => void) => {
+    setShowMobileDetails(true);
+    if (callback) {
+      callback();
+    }
+  }, []);
   const closeMobileNav = useCallback(() => {
     setMobileNavOpen(false);
   }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+      setIsMobileViewport(false);
+      return;
+    }
+
+    const mediaQuery = window.matchMedia('(max-width: 768px)');
+    const updateViewport = (query: MediaQueryList | MediaQueryListEvent) => {
+      setIsMobileViewport(query.matches);
+    };
+
+    updateViewport(mediaQuery);
+
+    const handleChange = (event: MediaQueryListEvent) => updateViewport(event);
+
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', handleChange);
+    } else {
+      mediaQuery.addListener(handleChange);
+    }
+
+    return () => {
+      if (typeof mediaQuery.removeEventListener === 'function') {
+        mediaQuery.removeEventListener('change', handleChange);
+      } else {
+        mediaQuery.removeListener(handleChange);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isMobileViewport) {
+      setShowMobileDetails(false);
+      setMobileNavOpen(false);
+    }
+  }, [isMobileViewport]);
 
   useEffect(() => {
     if (typeof document === 'undefined') {
@@ -1263,6 +1309,10 @@ export default function App() {
       }
     }
   };
+
+  const handleNicknameInputChange = useCallback((value: string) => {
+    setNicknameInput(value);
+  }, []);
 
   const fetchArtists = useCallback(async () => {
     try {
@@ -2493,10 +2543,18 @@ export default function App() {
       setClipUpdateSaving(false);
     }
   };
-  const selectedVideoData = selectedVideo ? videos.find((video) => video.id === selectedVideo) : null;
+  const selectedVideoData = selectedVideo
+    ? videos.find((video) => video.id === selectedVideo) ?? null
+    : null;
   const selectedVideoSectionsWithCandidates = useMemo(
     () => mergeSections(selectedVideoData?.sections ?? [], autoDetectedSections),
     [selectedVideoData, autoDetectedSections]
+  );
+  const recentClips = useMemo(() => clips.slice(0, 3), [clips]);
+  const recentVideos = useMemo(() => videos.slice(0, 3), [videos]);
+  const activeClip = useMemo(
+    () => (activeClipId ? clips.find((clip) => clip.id === activeClipId) ?? null : null),
+    [activeClipId, clips]
   );
   useEffect(() => {
     if (!isLibraryClipFormOpen || !isClipRegistration) {
@@ -2888,8 +2946,51 @@ export default function App() {
     : '닉네임을 설정해주세요.';
 
 
+  if (isMobileViewport && !showMobileDetails) {
+    return (
+      <div className="app-shell app-shell--mobile">
+        <MobileDashboard
+          greetingMessage={greetingMessage}
+          isAuthenticated={isAuthenticated}
+          isLoadingUser={isLoadingUser}
+          isGoogleReady={isGoogleReady}
+          nicknameInput={nicknameInput}
+          nicknameStatus={nicknameStatus}
+          nicknameError={nicknameError}
+          onNicknameChange={handleNicknameInputChange}
+          onNicknameSubmit={handleNicknameSubmit}
+          onSignOut={handleSignOut}
+          onGoogleCredential={handleGoogleCredential}
+          onOpenDetails={openMobileDetails}
+          onOpenArtistRegistration={openArtistRegistration}
+          onRegisterVideo={handleLibraryVideoRegister}
+          onRegisterClip={handleLibraryClipRegister}
+          selectedArtist={selectedArtist ?? null}
+          selectedVideo={selectedVideoData}
+          activeClip={activeClip}
+          recentVideos={recentVideos}
+          recentClips={recentClips}
+          totalVideos={videos.length}
+          totalClips={clips.length}
+          creationDisabled={creationDisabled}
+        />
+      </div>
+    );
+  }
+
   return (
-    <div className="app-shell">
+    <div className={`app-shell${isMobileViewport ? ' app-shell--mobile-expanded' : ''}`}>
+      {isMobileViewport && (
+        <div className="mobile-dashboard__detail-bar">
+          <button
+            type="button"
+            className="mobile-dashboard__detail-close"
+            onClick={() => setShowMobileDetails(false)}
+          >
+            간단 보기로 돌아가기
+          </button>
+        </div>
+      )}
       <button
         type="button"
         className={`mobile-nav-toggle${isMobileNavOpen ? ' is-active' : ''}`}
