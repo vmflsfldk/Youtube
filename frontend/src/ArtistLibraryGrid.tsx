@@ -13,10 +13,10 @@ import { FixedSizeList, ListChildComponentProps } from 'react-window';
 const DESKTOP_ROW_GAP = 20;
 const getRowGap = (containerWidth: number): number => {
   if (containerWidth > 0 && containerWidth <= 640) {
-    return 14;
+    return 0;
   }
   if (containerWidth <= 0 && typeof window !== 'undefined' && window.innerWidth <= 640) {
-    return 14;
+    return 0;
   }
   return DESKTOP_ROW_GAP;
 };
