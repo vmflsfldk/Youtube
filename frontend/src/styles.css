@@ -1685,6 +1685,13 @@ button:disabled:hover {
   gap: 20px;
 }
 
+@media (max-width: 640px) {
+  .artist-library__grid,
+  .artist-library__grid-row {
+    gap: 14px;
+  }
+}
+
 .artist-library__grid-item {
   min-width: 0;
 }
