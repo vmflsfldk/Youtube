@@ -4498,47 +4498,16 @@ export default function App() {
                     }
 
                     const clip = entry.clip;
-                    const parentVideo = entry.parentVideo ?? playlistVideoMap.get(clip.videoId) ?? null;
-                    const rawYoutubeVideoId = clip.youtubeVideoId ?? parentVideo?.youtubeVideoId;
-                    const youtubeVideoId = (rawYoutubeVideoId ?? '').trim();
-                    const canPreviewClip = youtubeVideoId.length > 0;
-                    const shouldRenderClipPlayer = canPreviewClip && isExpanded;
-                    const clipThumbnail =
-                      clip.thumbnailUrl ||
-                      parentVideo?.thumbnailUrl ||
-                      (youtubeVideoId ? `https://img.youtube.com/vi/${youtubeVideoId}/hqdefault.jpg` : null);
-                    const resolvedVideoTitle =
-                      clip.videoTitle ?? parentVideo?.title ?? parentVideo?.youtubeVideoId ?? '';
-                    const clipArtist =
-                      clip.artistDisplayName ??
-                      clip.artistName ??
-                      parentVideo?.artistDisplayName ??
-                      parentVideo?.artistName ??
-                      null;
-                    const clipCategory = categorizeClip(clip, parentVideo);
                     const rawClipTitle =
                       clip.title ||
-                      resolvedVideoTitle ||
+                      clip.sectionTitle ||
+                      clip.youtubeChapterTitle ||
+                      clip.description ||
                       clip.youtubeVideoId ||
-                      '제목 없는 클립';
+                      clip.videoTitle ||
+                      '';
                     const clipTitle =
-                      clipCategory === 'live'
-                        ? rawClipTitle
-                        : formatSongTitle(clip.title, { tags: clip.tags, fallback: rawClipTitle });
-                    const clipOriginalComposerTag =
-                      typeof clip.originalComposer === 'string'
-                        ? clip.originalComposer.trim()
-                        : '';
-                    const clipArtistName = (clipArtist ?? '').trim();
-                    const clipVocalTag =
-                      clipCategory && clipCategory !== 'live' && clipArtistName
-                        ? `보컬:${clipArtistName}`
-                        : null;
-                    const clipTagValues = buildTagList(
-                      clipOriginalComposerTag ? `원곡:${clipOriginalComposerTag}` : null,
-                      clipVocalTag,
-                      clip.tags
-                    );
+                      formatSongTitle(clip.title, { tags: clip.tags, fallback: rawClipTitle }) || '제목 없는 클립';
 
                     return (
                       <div className="playlist-entry playlist-entry--clip" key={entryKey}>
@@ -4546,84 +4515,6 @@ export default function App() {
                           <div className="playlist-clip__card">
                             <div className="playlist-clip__meta">
                               <h4>{clipTitle}</h4>
-                              <p className="playlist-clip__time">
-                                {formatSeconds(clip.startSec)} → {formatSeconds(clip.endSec)}
-                              </p>
-                              {clipArtist && <p className="playlist-clip__artist">{clipArtist}</p>}
-                              {resolvedVideoTitle && (
-                                <p className="playlist-clip__video-title">{resolvedVideoTitle}</p>
-                              )}
-                              {clipTagValues.length > 0 && (
-                                <div className="tag-row">
-                                  {clipTagValues.map((tag) => (
-                                    <span key={tag} className="tag">
-                                      #{tag}
-                                    </span>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                            <div
-                              className={`playlist-preview${shouldRenderClipPlayer ? ' playlist-preview--expanded' : ''}`}
-                            >
-                              {shouldRenderClipPlayer ? (
-                                <>
-                                  <div className="playlist-preview__player">
-                                    <ClipPlayer
-                                      youtubeVideoId={youtubeVideoId}
-                                      startSec={clip.startSec}
-                                      endSec={clip.endSec}
-                                      autoplay={false}
-                                    />
-                                  </div>
-                                  <div className="playlist-preview__actions">
-                                    <button
-                                      type="button"
-                                      className="playlist-preview-toggle playlist-preview-toggle--close"
-                                      onClick={() => setExpandedPlaylistEntryId(null)}
-                                    >
-                                      미리보기 닫기
-                                    </button>
-                                  </div>
-                                </>
-                              ) : (
-                                <div className="playlist-preview-placeholder">
-                                  {clipThumbnail ? (
-                                    <img
-                                      className="playlist-preview-placeholder__image playlist-video-card__thumbnail"
-                                      src={clipThumbnail}
-                                      alt={`${clipTitle} 미리보기 썸네일`}
-                                      loading="lazy"
-                                      decoding="async"
-                                    />
-                                  ) : (
-                                    <div
-                                      className="playlist-preview-placeholder__fallback playlist-video-card__thumbnail playlist-video-card__thumbnail--placeholder"
-                                      aria-hidden="true"
-                                    >
-                                      <span>썸네일 없음</span>
-                                    </div>
-                                  )}
-                                  <div className="playlist-preview-placeholder__overlay">
-                                    <span className="playlist-preview-placeholder__label">
-                                      {formatSeconds(clip.startSec)} → {formatSeconds(clip.endSec)}
-                                    </span>
-                                    {canPreviewClip ? (
-                                      <button
-                                        type="button"
-                                        className="playlist-preview-toggle"
-                                        onClick={() => setExpandedPlaylistEntryId(entryKey)}
-                                      >
-                                        미리보기
-                                      </button>
-                                    ) : (
-                                      <span className="playlist-preview-placeholder__label playlist-preview-placeholder__label--muted">
-                                        재생할 수 있는 영상이 없습니다
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                              )}
                             </div>
                           </div>
                         </div>
