@@ -4,6 +4,7 @@ import {
   KeyboardEvent,
   RefObject,
   useCallback,
+  useDeferredValue,
   useEffect,
   useMemo,
   useRef,
@@ -517,6 +518,45 @@ interface ArtistResponse {
   tags: string[];
 }
 
+type PreparedArtist = ArtistResponse & {
+  searchableFields: string[];
+  normalizedTags: string[];
+  normalizedAgency: string | null;
+};
+
+const prepareArtist = (artist: ArtistResponse): PreparedArtist => {
+  const searchableFields = [
+    artist.name,
+    artist.displayName,
+    artist.youtubeChannelId,
+    artist.youtubeChannelTitle ?? undefined,
+    typeof artist.agency === 'string' ? artist.agency : undefined
+  ]
+    .map((value) => (typeof value === 'string' ? value.trim() : ''))
+    .filter((value): value is string => value.length > 0)
+    .map((value) => value.toLowerCase());
+
+  const normalizedTags = Array.isArray(artist.tags)
+    ? artist.tags
+        .map((tag) => (typeof tag === 'string' ? tag.trim().toLowerCase() : ''))
+        .filter((tag): tag is string => tag.length > 0)
+    : [];
+
+  const normalizedAgency =
+    typeof artist.agency === 'string' && artist.agency.trim().length > 0
+      ? artist.agency.trim().toLowerCase()
+      : null;
+
+  return {
+    ...artist,
+    searchableFields,
+    normalizedTags,
+    normalizedAgency
+  };
+};
+
+const prepareArtists = (values: ArtistResponse[]): PreparedArtist[] => values.map(prepareArtist);
+
 type ArtistProfileFormState = {
   agency: string;
   tags: string;
@@ -829,7 +869,7 @@ export default function App() {
   const [authToken, setAuthToken] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<UserResponse | null>(null);
   const [isLoadingUser, setIsLoadingUser] = useState(false);
-  const [artists, setArtists] = useState<ArtistResponse[]>([]);
+  const [artists, setArtists] = useState<PreparedArtist[]>([]);
   const [videos, setVideos] = useState<VideoResponse[]>([]);
   const [hiddenVideoIds, setHiddenVideoIds] = useState<number[]>([]);
   const [favoriteVideoIds, setFavoriteVideoIds] = useState<number[]>([]);
@@ -875,6 +915,8 @@ export default function App() {
   const [artistTagQuery, setArtistTagQuery] = useState('');
   const [artistCountryFilter, setArtistCountryFilter] = useState<'all' | ArtistCountryKey>('all');
   const [artistAgencyFilter, setArtistAgencyFilter] = useState('all');
+  const deferredArtistSearchQuery = useDeferredValue(artistSearchQuery);
+  const deferredArtistTagQuery = useDeferredValue(artistTagQuery);
   const [artistProfileForm, setArtistProfileForm] = useState<ArtistProfileFormState>(() =>
     createArtistProfileFormState(null)
   );
@@ -1062,9 +1104,9 @@ export default function App() {
     }
   }, [artistAgencyFilter, artistAgencies]);
 
-  const filteredArtists = useMemo((): ArtistResponse[] => {
-    const nameQuery = artistSearchQuery.trim().toLowerCase();
-    const tagQuery = artistTagQuery.trim().toLowerCase();
+  const filteredArtists = useMemo((): PreparedArtist[] => {
+    const nameQuery = deferredArtistSearchQuery.trim().toLowerCase();
+    const tagQuery = deferredArtistTagQuery.trim().toLowerCase();
     const normalizedAgencyFilter =
       artistAgencyFilter === 'all' ? null : artistAgencyFilter.trim().toLowerCase();
 
@@ -1078,34 +1120,20 @@ export default function App() {
     }
 
     return artists.filter((artist) => {
-      const searchableFields = [
-        artist.name,
-        artist.displayName,
-        artist.youtubeChannelId,
-        artist.youtubeChannelTitle ?? undefined,
-        typeof artist.agency === 'string' ? artist.agency : undefined
-      ]
-        .filter((value): value is string => Boolean(value && value.trim()))
-        .map((value) => value.toLowerCase());
-      const tags = Array.isArray(artist.tags)
-        ? artist.tags.map((tag) => tag.toLowerCase())
-        : [];
-
-      const matchesName = !nameQuery || searchableFields.some((value) => value.includes(nameQuery));
-      const matchesTag = !tagQuery || tags.some((tag) => tag.includes(tagQuery));
+      const matchesName =
+        !nameQuery || artist.searchableFields.some((value) => value.includes(nameQuery));
+      const matchesTag = !tagQuery || artist.normalizedTags.some((tag) => tag.includes(tagQuery));
       const matchesCountry = artistCountryFilter === 'all' || Boolean(artist[artistCountryFilter]);
-      const agencyValue =
-        typeof artist.agency === 'string' ? artist.agency.trim().toLowerCase() : '';
-      const matchesAgency = !normalizedAgencyFilter || agencyValue === normalizedAgencyFilter;
+      const matchesAgency = !normalizedAgencyFilter || artist.normalizedAgency === normalizedAgencyFilter;
 
       return matchesName && matchesTag && matchesCountry && matchesAgency;
     });
   }, [
-    artistSearchQuery,
-    artistTagQuery,
+    artists,
     artistCountryFilter,
     artistAgencyFilter,
-    artists
+    deferredArtistSearchQuery,
+    deferredArtistTagQuery
   ]);
 
   const previewVideoKeywords = useMemo(() => {
@@ -1389,7 +1417,8 @@ export default function App() {
       const response = await http.get<ArtistResponse[]>('/artists', {
         headers: authHeaders
       });
-      setArtists(ensureArray(response.data));
+      const prepared = prepareArtists(ensureArray(response.data));
+      setArtists(prepared);
     } catch (error) {
       console.error('Failed to load artists', error);
       setArtists([]);
@@ -2458,7 +2487,7 @@ export default function App() {
   const selectedArtist = artists.find((artist) => artist.id === Number(videoForm.artistId));
   const noArtistsRegistered = artists.length === 0;
   const noFilteredArtists = !noArtistsRegistered && filteredArtists.length === 0 && !selectedArtist;
-  const artistList: ArtistResponse[] = filteredArtists as ArtistResponse[];
+  const artistList = filteredArtists;
   const selectedArtistId = selectedArtist?.id ?? null;
 
   useEffect(() => {
@@ -2535,7 +2564,7 @@ export default function App() {
         { headers: authHeaders }
       );
       setArtists((previous) =>
-        previous.map((artist) => (artist.id === response.data.id ? response.data : artist))
+        previous.map((artist) => (artist.id === response.data.id ? prepareArtist(response.data) : artist))
       );
       setArtistProfileForm(createArtistProfileFormState(response.data));
       setArtistProfileStatus({ type: 'success', message: '아티스트 정보가 저장되었습니다.' });
@@ -4403,7 +4432,7 @@ export default function App() {
                 ) : (
                   <ArtistLibraryGrid
                     artists={artistList}
-                    getArtistId={(artist) => Number((artist as any).id ?? 0)}
+                    getArtistId={(artist) => artist.id}
                     selectedArtistId={selectedArtistId}
                     onArtistClick={handleArtistClick}
                     ariaLabelledby="artist-library-heading"
