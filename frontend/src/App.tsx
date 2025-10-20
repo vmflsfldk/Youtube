@@ -13,6 +13,7 @@ import axios from 'axios';
 import ClipPlayer from './components/ClipPlayer';
 import GoogleLoginButton from './components/GoogleLoginButton';
 import utahubLogo from './assets/utahub-logo.svg';
+import ArtistLibraryGrid from './ArtistLibraryGrid';
 
 type MaybeArray<T> =
   | T[]
@@ -3184,7 +3185,7 @@ export default function App() {
               <div className="artist-library">
                 <div className="artist-library__header">
                   <div>
-                    <h3>아티스트 디렉토리</h3>
+                    <h3 id="artist-library-heading">아티스트 디렉토리</h3>
                     <p className="artist-directory__subtitle">전체 이용자가 확인할 수 있는 공개 목록입니다.</p>
                   </div>
                   <button
@@ -4400,20 +4401,16 @@ export default function App() {
                 ) : noFilteredArtists ? (
                   <div className="artist-empty">검색 결과가 없습니다.</div>
                 ) : (
-                  <div className="artist-library__grid" role="list">
-                    {artistList.map((artist) => {
-                      const rawArtist = artist as any;
-                      const artistId = Number(rawArtist.id ?? 0);
-                      return (
-                        <ArtistLibraryCard
-                          key={artistId}
-                          artist={artist}
-                          isActive={selectedArtistId === artistId}
-                          onSelect={() => handleArtistClick(artistId)}
-                        />
-                      );
-                    })}
-                  </div>
+                  <ArtistLibraryGrid
+                    artists={artistList}
+                    getArtistId={(artist) => Number((artist as any).id ?? 0)}
+                    selectedArtistId={selectedArtistId}
+                    onArtistClick={handleArtistClick}
+                    ariaLabelledby="artist-library-heading"
+                    renderCard={(artist, { isActive, onSelect }) => (
+                      <ArtistLibraryCard artist={artist} isActive={isActive} onSelect={onSelect} />
+                    )}
+                  />
                 )}
               </div>
 

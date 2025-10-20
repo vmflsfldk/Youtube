@@ -1671,6 +1671,24 @@ button:disabled:hover {
   gap: 20px;
 }
 
+.artist-library__grid-wrapper {
+  width: 100%;
+}
+
+.artist-library__grid--virtualized {
+  display: block;
+}
+
+.artist-library__grid-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 20px;
+}
+
+.artist-library__grid-item {
+  min-width: 0;
+}
+
 .artist-library__card {
   background: rgba(15, 23, 42, 0.6);
   border: 1px solid rgba(148, 163, 184, 0.2);
