@@ -2576,6 +2576,40 @@ export default function App() {
     setActivePlaylist(playlist);
   }, []);
 
+  const handleCreatePlaylist = useCallback(async () => {
+    if (!isAuthenticated) {
+      showAlert('재생목록을 사용하려면 로그인해 주세요.');
+      return;
+    }
+
+    const visibility = activePlaylist?.visibility ?? 'PRIVATE';
+    const titleInput = window.prompt('새 재생목록 제목을 입력해 주세요.');
+
+    if (titleInput === null) {
+      return;
+    }
+
+    const trimmedTitle = titleInput.trim();
+
+    if (trimmedTitle.length === 0) {
+      showAlert('재생목록 제목을 입력해 주세요.');
+      return;
+    }
+
+    try {
+      const response = await http.post<PlaylistResponse>(
+        '/playlists',
+        { title: trimmedTitle, visibility },
+        { headers: authHeaders }
+      );
+      applyUserPlaylistUpdate(normalizePlaylist(response.data));
+    } catch (error) {
+      const message = extractAxiosErrorMessage(error, '재생목록을 생성하지 못했습니다.');
+      showAlert(message);
+      console.error('Failed to create playlist', error);
+    }
+  }, [activePlaylist, applyUserPlaylistUpdate, authHeaders, http, isAuthenticated]);
+
   const handleVideoPlaylistToggle = useCallback(
     async (videoId: number) => {
       if (!isAuthenticated) {
@@ -4969,6 +5003,8 @@ export default function App() {
           currentIndex={currentPlaybackIndex}
           isPlaying={isPlaybackActive}
           isExpanded={isPlaybackExpanded}
+          canCreatePlaylist={isAuthenticated}
+          onCreatePlaylist={handleCreatePlaylist}
           onPlayPause={handlePlaybackToggle}
           onNext={handlePlaybackNext}
           onPrevious={handlePlaybackPrevious}
