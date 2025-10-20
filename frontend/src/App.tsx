@@ -15,6 +15,7 @@ import ClipPlayer from './components/ClipPlayer';
 import GoogleLoginButton from './components/GoogleLoginButton';
 import utahubLogo from './assets/utahub-logo.svg';
 import ArtistLibraryGrid from './ArtistLibraryGrid';
+import ArtistLibraryCard, { type ArtistLibraryCardData } from './components/ArtistLibraryCard';
 
 type MaybeArray<T> =
   | T[]
@@ -522,6 +523,7 @@ type PreparedArtist = ArtistResponse & {
   searchableFields: string[];
   normalizedTags: string[];
   normalizedAgency: string | null;
+  cardData: ArtistLibraryCardData;
 };
 
 const prepareArtist = (artist: ArtistResponse): PreparedArtist => {
@@ -547,11 +549,35 @@ const prepareArtist = (artist: ArtistResponse): PreparedArtist => {
       ? artist.agency.trim().toLowerCase()
       : null;
 
+  const displayName = artist.displayName || artist.name;
+  const fallbackAvatarUrl = `https://ui-avatars.com/api/?background=111827&color=e2e8f0&name=${encodeURIComponent(
+    displayName
+  )}`;
+  const countryBadges = ARTIST_COUNTRY_METADATA.filter((country) => artist[country.key])
+    .map((country) => ({ code: country.code, label: country.label }));
+  const agency = typeof artist.agency === 'string' ? artist.agency.trim() : '';
+  const tags = Array.isArray(artist.tags)
+    ? Array.from(
+        new Set(
+          artist.tags
+            .map((tag) => (typeof tag === 'string' ? tag.trim() : ''))
+            .filter((tag): tag is string => tag.length > 0)
+        )
+      )
+    : [];
+
   return {
     ...artist,
     searchableFields,
     normalizedTags,
-    normalizedAgency
+    normalizedAgency,
+    cardData: {
+      fallbackAvatarUrl,
+      countryBadges,
+      agency,
+      tags,
+      displayName
+    }
   };
 };
 
@@ -674,10 +700,6 @@ type ArtistFormState = {
     jp: boolean;
   };
 };
-
-const resolveArtistCountryBadges = (artist: ArtistResponse) =>
-  ARTIST_COUNTRY_METADATA.filter((country) => artist[country.key])
-    .map((country) => ({ code: country.code, label: country.label }));
 
 const createInitialArtistFormState = (): ArtistFormState => ({
   name: '',
@@ -2330,139 +2352,6 @@ export default function App() {
     }
   };
 
-  const ArtistLibraryCard = ({
-    artist,
-    isActive = false,
-    interactive = true,
-    focusMode = false,
-    onSelect
-  }: {
-    artist: ArtistResponse;
-    isActive?: boolean;
-    interactive?: boolean;
-    focusMode?: boolean;
-    onSelect?: () => void;
-  }) => {
-    const fallbackAvatarUrl = `https://ui-avatars.com/api/?background=111827&color=e2e8f0&name=${encodeURIComponent(
-      artist.displayName || artist.name
-    )}`;
-    const countryBadges = resolveArtistCountryBadges(artist);
-    const agency = typeof artist.agency === 'string' ? artist.agency.trim() : '';
-    const tags = Array.isArray(artist.tags)
-      ? Array.from(
-          new Set(
-            artist.tags
-              .map((tag) => (typeof tag === 'string' ? tag.trim() : ''))
-              .filter((tag): tag is string => tag.length > 0)
-          )
-        )
-      : [];
-    const classNames = ['artist-library__card'];
-    if (isActive) {
-      classNames.push('selected');
-    }
-    if (focusMode) {
-      classNames.push('artist-library__card--focused');
-    }
-
-    return (
-      <div
-        className={classNames.join(' ')}
-        role={interactive ? 'button' : undefined}
-        tabIndex={interactive ? 0 : undefined}
-        aria-pressed={interactive ? isActive : undefined}
-        onClick={
-          interactive
-            ? () => {
-                onSelect?.();
-              }
-            : undefined
-        }
-        onKeyDown={
-          interactive
-            ? (event) => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                  event.preventDefault();
-                  onSelect?.();
-                }
-              }
-            : undefined
-        }
-      >
-        <div className="artist-library__avatar">
-          {artist.profileImageUrl ? (
-            <img
-              src={artist.profileImageUrl}
-              alt={`${artist.displayName || artist.name} 채널 프로필 이미지`}
-              loading="lazy"
-              decoding="async"
-              referrerPolicy="no-referrer"
-              onError={(event) => {
-                if (event.currentTarget.src !== fallbackAvatarUrl) {
-                  event.currentTarget.src = fallbackAvatarUrl;
-                }
-              }}
-            />
-          ) : (
-            <img
-              src={fallbackAvatarUrl}
-              alt={`${artist.displayName || artist.name} 기본 프로필 이미지`}
-              loading="lazy"
-              decoding="async"
-            />
-          )}
-        </div>
-        <div className="artist-library__info">
-          <span className="artist-library__name">{artist.displayName || artist.name}</span>
-          <span className="artist-library__channel">
-            {artist.youtubeChannelTitle || artist.youtubeChannelId}
-          </span>
-        </div>
-        {(agency || tags.length > 0) && (
-          <div className="artist-library__meta">
-            {agency && <span className="artist-library__agency">{agency}</span>}
-            {tags.length > 0 && (
-              <div className="artist-library__tags">
-                {tags.map((tag) => (
-                  <span key={tag} className="artist-tag">
-                    #{tag}
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-        {countryBadges.length > 0 && (
-          <div className="artist-library__countries">
-            {countryBadges.map((badge) => (
-              <span key={badge.code} className="artist-country-badge">
-                <span className="artist-country-badge__code">{badge.code}</span>
-                {badge.label}
-              </span>
-            ))}
-          </div>
-        )}
-        {artist.youtubeChannelId && (
-          <a
-            className="artist-library__link"
-            href={artist.youtubeChannelId.startsWith('@')
-              ? `https://www.youtube.com/${artist.youtubeChannelId}`
-              : `https://www.youtube.com/channel/${artist.youtubeChannelId}`}
-            target="_blank"
-            rel="noreferrer"
-            onClick={(event) => {
-              if (interactive) {
-                event.stopPropagation();
-              }
-            }}
-          >
-            유튜브 채널 보기
-          </a>
-        )}
-      </div>
-    );
-  };
-
   const openArtistRegistration = useCallback(() => {
     setActiveSection('library');
     setArtistRegistrationOpen((prev) => !prev);
@@ -3613,7 +3502,13 @@ export default function App() {
                       <button type="button" className="artist-library__back-button" onClick={handleArtistClear}>
                         아티스트 목록으로 돌아가기
                       </button>
-                      <ArtistLibraryCard artist={selectedArtist} isActive focusMode interactive={false} />
+                      <ArtistLibraryCard
+                        artist={selectedArtist}
+                        isActive
+                        focusMode
+                        interactive={false}
+                        cardData={selectedArtist.cardData}
+                      />
                     </div>
                     <div className="artist-library__detail-panel">
                       <div className="artist-library__actions">
@@ -4437,7 +4332,12 @@ export default function App() {
                     onArtistClick={handleArtistClick}
                     ariaLabelledby="artist-library-heading"
                     renderCard={(artist, { isActive, onSelect }) => (
-                      <ArtistLibraryCard artist={artist} isActive={isActive} onSelect={onSelect} />
+                      <ArtistLibraryCard
+                        artist={artist}
+                        isActive={isActive}
+                        onSelect={onSelect}
+                        cardData={artist.cardData}
+                      />
                     )}
                   />
                 )}
