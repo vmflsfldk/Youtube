@@ -462,6 +462,7 @@ interface ClipResponse {
   startSec: number;
   endSec: number;
   tags: string[];
+  thumbnailUrl?: string | null;
   youtubeVideoId?: string;
   videoTitle?: string | null;
   artistId?: number;
