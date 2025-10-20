@@ -10,7 +10,16 @@ import {
 } from 'react';
 import { FixedSizeList, ListChildComponentProps } from 'react-window';
 
-const ROW_GAP = 20;
+const DESKTOP_ROW_GAP = 20;
+const getRowGap = (containerWidth: number): number => {
+  if (containerWidth > 0 && containerWidth <= 640) {
+    return 14;
+  }
+  if (containerWidth <= 0 && typeof window !== 'undefined' && window.innerWidth <= 640) {
+    return 14;
+  }
+  return DESKTOP_ROW_GAP;
+};
 const DEFAULT_CARD_HEIGHT = 320;
 const MAX_VISIBLE_ROWS = 4;
 
@@ -52,6 +61,7 @@ interface ArtistLibraryGridProps<T> {
 interface ArtistGridItemData<T> {
   rows: T[][];
   columns: number;
+  rowGap: number;
   getArtistId: (artist: T) => number;
   selectedArtistId: number | null;
   onArtistClick: (artistId: number) => void;
@@ -78,12 +88,12 @@ const createRows = <T,>(artists: readonly T[], columns: number): T[][] => {
 };
 
 const ArtistGridRow = <T,>({ data, index, style }: ListChildComponentProps<ArtistGridItemData<T>>) => {
-  const { rows, columns, getArtistId, selectedArtistId, onArtistClick, renderCard } = data;
+  const { rows, columns, rowGap, getArtistId, selectedArtistId, onArtistClick, renderCard } = data;
   const rowArtists = rows[index] ?? ([] as T[]);
   const adjustedStyle: CSSProperties = {
     ...style,
-    height: Math.max((style.height as number) - ROW_GAP, 0),
-    paddingBottom: ROW_GAP
+    height: Math.max((style.height as number) - rowGap, 0),
+    paddingBottom: rowGap
   };
 
   return (
@@ -93,7 +103,7 @@ const ArtistGridRow = <T,>({ data, index, style }: ListChildComponentProps<Artis
         style={{
           display: 'grid',
           gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
-          gap: `${ROW_GAP}px`
+          gap: `${rowGap}px`
         }}
       >
         {rowArtists.map((artist: T, columnIndex: number) => {
@@ -198,26 +208,28 @@ const ArtistLibraryGrid = <T,>({
     };
   });
 
+  const rowGap = useMemo(() => getRowGap(containerWidth), [containerWidth]);
+
   const columns = useMemo(() => {
     if (containerWidth <= 0) {
       return 1;
     }
     const minCardWidth = getMinCardWidth(containerWidth);
-    const calculated = Math.floor((containerWidth + ROW_GAP) / (minCardWidth + ROW_GAP));
+    const calculated = Math.floor((containerWidth + rowGap) / (minCardWidth + rowGap));
     return Math.max(calculated, 1);
-  }, [containerWidth]);
+  }, [containerWidth, rowGap]);
 
   const rows = useMemo(() => createRows(artists, columns), [artists, columns]);
 
   const rowCount = rows.length;
   const estimatedCardHeight = getEstimatedCardHeight(containerWidth);
-  const itemSize = estimatedCardHeight + ROW_GAP;
+  const itemSize = estimatedCardHeight + rowGap;
   const visibleRowCount = Math.min(rowCount, MAX_VISIBLE_ROWS);
   const listHeight = visibleRowCount > 0 ? visibleRowCount * itemSize : 0;
 
   const itemData = useMemo<ArtistGridItemData<T>>(
-    () => ({ rows, columns, getArtistId, selectedArtistId, onArtistClick, renderCard }),
-    [rows, columns, getArtistId, selectedArtistId, onArtistClick, renderCard]
+    () => ({ rows, columns, rowGap, getArtistId, selectedArtistId, onArtistClick, renderCard }),
+    [rows, columns, rowGap, getArtistId, selectedArtistId, onArtistClick, renderCard]
   );
 
   const outerElementType = useMemo(
@@ -247,6 +259,7 @@ const ArtistLibraryGrid = <T,>({
       <div
         ref={containerRef}
         className="artist-library__grid"
+        style={{ gap: `${rowGap}px` }}
         role={role}
         aria-label={ariaLabel}
         aria-labelledby={ariaLabelledby}
