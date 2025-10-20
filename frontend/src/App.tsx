@@ -3157,7 +3157,15 @@ export default function App() {
 
       <main className="content-area">
         <header className="content-header">
-          <div>
+          <div className="mobile-appbar" aria-hidden="true">
+            <div className="mobile-appbar__action-slot mobile-appbar__action-slot--leading" />
+            <div className="mobile-appbar__title">
+              <span className="mobile-appbar__brand">UtaHub</span>
+              <span className="mobile-appbar__section">{activeSidebarTab.label}</span>
+            </div>
+            <div className="mobile-appbar__action-slot mobile-appbar__action-slot--trailing" />
+          </div>
+          <div className="content-header__body">
             <p className="content-header__eyebrow">UtaHub</p>
             <h2>{activeSidebarTab.label}</h2>
             <p className="content-header__description">{activeSidebarTab.description}</p>
