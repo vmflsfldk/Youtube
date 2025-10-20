@@ -719,6 +719,7 @@ export default function App() {
   const [playlistVideos, setPlaylistVideos] = useState<VideoResponse[]>([]);
   const [playlistClips, setPlaylistClips] = useState<ClipResponse[]>([]);
   const [playlistSearchQuery, setPlaylistSearchQuery] = useState('');
+  const [expandedPlaylistEntryId, setExpandedPlaylistEntryId] = useState<string | null>(null);
   const [isMobileNavOpen, setMobileNavOpen] = useState(false);
   const [selectedVideo, setSelectedVideo] = useState<number | null>(null);
   const [clipCandidates, setClipCandidates] = useState<ClipCandidateResponse[]>([]);
@@ -2573,6 +2574,18 @@ export default function App() {
     | { type: 'video'; video: VideoResponse }
     | { type: 'clip'; clip: ClipResponse; parentVideo: VideoResponse | null };
 
+  const resolvePlaylistEntryKey = useCallback((entry: PlaylistEntry, index: number): string => {
+    if (entry.type === 'video') {
+      return `playlist-video-${entry.video.id}`;
+    }
+
+    if (typeof entry.clip.id === 'number') {
+      return `playlist-clip-${entry.clip.id}`;
+    }
+
+    return `playlist-clip-${entry.clip.videoId}-${index}`;
+  }, []);
+
   const playlistEntries = useMemo<PlaylistEntry[]>(() => {
     const clipsByVideoId = new Map<number, ClipResponse[]>();
     playlistClips.forEach((clip) => {
@@ -2695,6 +2708,20 @@ export default function App() {
   }, [normalizedPlaylistQuery, playlistEntries]);
 
   const playlistHasResults = filteredPlaylistEntries.length > 0;
+
+  useEffect(() => {
+    if (!expandedPlaylistEntryId) {
+      return;
+    }
+
+    const entryExists = filteredPlaylistEntries.some(
+      (entry, index) => resolvePlaylistEntryKey(entry, index) === expandedPlaylistEntryId
+    );
+
+    if (!entryExists) {
+      setExpandedPlaylistEntryId(null);
+    }
+  }, [expandedPlaylistEntryId, filteredPlaylistEntries, resolvePlaylistEntryKey]);
   useEffect(() => {
     setActiveClipId((previous) =>
       previous && selectedVideoClips.some((clip) => clip.id === previous) ? previous : null
@@ -4201,10 +4228,15 @@ export default function App() {
               ) : (
                 <div className="playlist-entries">
                   {filteredPlaylistEntries.map((entry, index) => {
+                    const entryKey = resolvePlaylistEntryKey(entry, index);
+                    const isExpanded = expandedPlaylistEntryId === entryKey;
+
                     if (entry.type === 'video') {
                       const video = entry.video;
                       const youtubeVideoId = (video.youtubeVideoId ?? '').trim();
                       const hasPlayableVideo = youtubeVideoId.length > 0;
+                      const canPreviewVideo = hasPlayableVideo;
+                      const shouldRenderPlayer = canPreviewVideo && isExpanded;
                       const videoThumbnail =
                         video.thumbnailUrl ||
                         (hasPlayableVideo ? `https://img.youtube.com/vi/${youtubeVideoId}/hqdefault.jpg` : null);
@@ -4215,27 +4247,66 @@ export default function App() {
                         video.artistYoutubeChannelTitle ||
                         null;
                       return (
-                        <div className="playlist-entry playlist-entry--video" key={`playlist-video-${video.id}`}>
+                        <div className="playlist-entry playlist-entry--video" key={entryKey}>
                           <div className="playlist-video-card">
                             <div className="playlist-video-card__media">
-                              {hasPlayableVideo ? (
-                                <ClipPlayer youtubeVideoId={youtubeVideoId} startSec={0} autoplay={false} />
-                              ) : videoThumbnail ? (
-                                <img
-                                  className="playlist-video-card__thumbnail"
-                                  src={videoThumbnail}
-                                  alt={`${videoTitle} 썸네일`}
-                                  loading="lazy"
-                                  decoding="async"
-                                />
-                              ) : (
-                                <div
-                                  className="playlist-video-card__thumbnail playlist-video-card__thumbnail--placeholder"
-                                  aria-hidden="true"
-                                >
-                                  <span>썸네일 없음</span>
-                                </div>
-                              )}
+                              <div
+                                className={`playlist-preview${shouldRenderPlayer ? ' playlist-preview--expanded' : ''}`}
+                              >
+                                {shouldRenderPlayer ? (
+                                  <>
+                                    <div className="playlist-preview__player">
+                                      <ClipPlayer youtubeVideoId={youtubeVideoId} startSec={0} autoplay={false} />
+                                    </div>
+                                    <div className="playlist-preview__actions">
+                                      <button
+                                        type="button"
+                                        className="playlist-preview-toggle playlist-preview-toggle--close"
+                                        onClick={() => setExpandedPlaylistEntryId(null)}
+                                      >
+                                        미리보기 닫기
+                                      </button>
+                                    </div>
+                                  </>
+                                ) : (
+                                  <div className="playlist-preview-placeholder">
+                                    {videoThumbnail ? (
+                                      <img
+                                        className="playlist-preview-placeholder__image playlist-video-card__thumbnail"
+                                        src={videoThumbnail}
+                                        alt={`${videoTitle} 썸네일`}
+                                        loading="lazy"
+                                        decoding="async"
+                                      />
+                                    ) : (
+                                      <div
+                                        className="playlist-preview-placeholder__fallback playlist-video-card__thumbnail playlist-video-card__thumbnail--placeholder"
+                                        aria-hidden="true"
+                                      >
+                                        <span>썸네일 없음</span>
+                                      </div>
+                                    )}
+                                    <div className="playlist-preview-placeholder__overlay">
+                                      <span className="playlist-preview-placeholder__label">
+                                        {formatSeconds(video.durationSec ?? 0)}
+                                      </span>
+                                      {canPreviewVideo ? (
+                                        <button
+                                          type="button"
+                                          className="playlist-preview-toggle"
+                                          onClick={() => setExpandedPlaylistEntryId(entryKey)}
+                                        >
+                                          미리보기
+                                        </button>
+                                      ) : (
+                                        <span className="playlist-preview-placeholder__label playlist-preview-placeholder__label--muted">
+                                          재생할 수 있는 영상이 없습니다
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
                             </div>
                             <div className="playlist-video-card__meta">
                               <h3 className="playlist-video-card__title">{videoTitle}</h3>
@@ -4255,7 +4326,14 @@ export default function App() {
 
                     const clip = entry.clip;
                     const parentVideo = entry.parentVideo ?? playlistVideoMap.get(clip.videoId) ?? null;
-                    const youtubeVideoId = clip.youtubeVideoId ?? parentVideo?.youtubeVideoId;
+                    const rawYoutubeVideoId = clip.youtubeVideoId ?? parentVideo?.youtubeVideoId;
+                    const youtubeVideoId = (rawYoutubeVideoId ?? '').trim();
+                    const canPreviewClip = youtubeVideoId.length > 0;
+                    const shouldRenderClipPlayer = canPreviewClip && isExpanded;
+                    const clipThumbnail =
+                      clip.thumbnailUrl ||
+                      parentVideo?.thumbnailUrl ||
+                      (youtubeVideoId ? `https://img.youtube.com/vi/${youtubeVideoId}/hqdefault.jpg` : null);
                     const resolvedVideoTitle =
                       clip.videoTitle ?? parentVideo?.title ?? parentVideo?.youtubeVideoId ?? '';
                     const clipArtist =
@@ -4266,7 +4344,7 @@ export default function App() {
                       null;
 
                     return (
-                      <div className="playlist-entry playlist-entry--clip" key={`playlist-clip-${clip.id}-${index}`}>
+                      <div className="playlist-entry playlist-entry--clip" key={entryKey}>
                         <div className="playlist-clip">
                           <div className="playlist-clip__card">
                             <div className="playlist-clip__meta">
@@ -4288,16 +4366,68 @@ export default function App() {
                                 </div>
                               )}
                             </div>
-                            {youtubeVideoId && (
-                              <div className="playlist-clip__player">
-                                <ClipPlayer
-                                  youtubeVideoId={youtubeVideoId}
-                                  startSec={clip.startSec}
-                                  endSec={clip.endSec}
-                                  autoplay={false}
-                                />
-                              </div>
-                            )}
+                            <div
+                              className={`playlist-preview${shouldRenderClipPlayer ? ' playlist-preview--expanded' : ''}`}
+                            >
+                              {shouldRenderClipPlayer ? (
+                                <>
+                                  <div className="playlist-preview__player">
+                                    <ClipPlayer
+                                      youtubeVideoId={youtubeVideoId}
+                                      startSec={clip.startSec}
+                                      endSec={clip.endSec}
+                                      autoplay={false}
+                                    />
+                                  </div>
+                                  <div className="playlist-preview__actions">
+                                    <button
+                                      type="button"
+                                      className="playlist-preview-toggle playlist-preview-toggle--close"
+                                      onClick={() => setExpandedPlaylistEntryId(null)}
+                                    >
+                                      미리보기 닫기
+                                    </button>
+                                  </div>
+                                </>
+                              ) : (
+                                <div className="playlist-preview-placeholder">
+                                  {clipThumbnail ? (
+                                    <img
+                                      className="playlist-preview-placeholder__image playlist-video-card__thumbnail"
+                                      src={clipThumbnail}
+                                      alt={`${clip.title} 미리보기 썸네일`}
+                                      loading="lazy"
+                                      decoding="async"
+                                    />
+                                  ) : (
+                                    <div
+                                      className="playlist-preview-placeholder__fallback playlist-video-card__thumbnail playlist-video-card__thumbnail--placeholder"
+                                      aria-hidden="true"
+                                    >
+                                      <span>썸네일 없음</span>
+                                    </div>
+                                  )}
+                                  <div className="playlist-preview-placeholder__overlay">
+                                    <span className="playlist-preview-placeholder__label">
+                                      {formatSeconds(clip.startSec)} → {formatSeconds(clip.endSec)}
+                                    </span>
+                                    {canPreviewClip ? (
+                                      <button
+                                        type="button"
+                                        className="playlist-preview-toggle"
+                                        onClick={() => setExpandedPlaylistEntryId(entryKey)}
+                                      >
+                                        미리보기
+                                      </button>
+                                    ) : (
+                                      <span className="playlist-preview-placeholder__label playlist-preview-placeholder__label--muted">
+                                        재생할 수 있는 영상이 없습니다
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </div>
