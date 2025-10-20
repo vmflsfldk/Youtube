@@ -1,6 +1,13 @@
-import type { MouseEvent } from 'react';
-import { useCallback, useMemo, useState } from 'react';
-import ClipPlayer from './ClipPlayer';
+import {
+  Suspense,
+  lazy,
+  type MouseEvent,
+  useCallback,
+  useMemo,
+  useState
+} from 'react';
+
+const ClipPlayer = lazy(() => import('./ClipPlayer'));
 
 export interface PlaylistBarItem {
   itemId: number;
@@ -235,15 +242,23 @@ export default function PlaylistBar({
       <div className="playback-bar__body">
         <div className="playback-bar__player">
           {currentItem && currentItem.youtubeVideoId && currentItem.isPlayable ? (
-            <ClipPlayer
-              youtubeVideoId={currentItem.youtubeVideoId}
-              startSec={currentItem.startSec}
-              endSec={typeof currentItem.endSec === 'number' ? currentItem.endSec : undefined}
-              autoplay={isPlaying}
-              playing={isPlaying}
-              shouldLoop={false}
-              onEnded={onTrackEnded}
-            />
+            <Suspense
+              fallback={
+                <div className="playback-bar__player-loading" role="status" aria-live="polite">
+                  플레이어 준비 중…
+                </div>
+              }
+            >
+              <ClipPlayer
+                youtubeVideoId={currentItem.youtubeVideoId}
+                startSec={currentItem.startSec}
+                endSec={typeof currentItem.endSec === 'number' ? currentItem.endSec : undefined}
+                autoplay={isPlaying}
+                playing={isPlaying}
+                shouldLoop={false}
+                onEnded={onTrackEnded}
+              />
+            </Suspense>
           ) : (
             <div className="playback-bar__player-placeholder" aria-live="polite">
               {hasPlayableItems

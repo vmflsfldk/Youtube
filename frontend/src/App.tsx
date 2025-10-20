@@ -4,6 +4,8 @@ import {
   KeyboardEvent,
   RefObject,
   type CSSProperties,
+  Suspense,
+  lazy,
   useCallback,
   useDeferredValue,
   useEffect,
@@ -17,7 +19,6 @@ import {
   type ListChildComponentProps,
   type ListOnItemsRenderedProps
 } from 'react-window';
-import ClipPlayer from './components/ClipPlayer';
 import ClipList, { type ClipListRenderContext, type ClipListRenderResult } from './components/ClipList';
 import PlaylistBar, { type PlaylistBarItem } from './components/PlaylistBar';
 import GoogleLoginButton from './components/GoogleLoginButton';
@@ -25,6 +26,8 @@ import utahubLogo from './assets/utahub-logo.svg';
 import ArtistLibraryGrid from './ArtistLibraryGrid';
 import ArtistLibraryCard, { type ArtistLibraryCardData } from './components/ArtistLibraryCard';
 import ArtistSearchControls from './components/ArtistSearchControls';
+
+const ClipPlayer = lazy(() => import('./components/ClipPlayer'));
 
 type MaybeArray<T> =
   | T[]
@@ -1155,7 +1158,19 @@ function PlaylistEntriesList({
                     {shouldRenderPlayer ? (
                       <>
                         <div className="playlist-preview__player">
-                          <ClipPlayer youtubeVideoId={youtubeVideoId} startSec={0} autoplay={false} />
+                          <Suspense
+                            fallback={
+                              <div
+                                className="playlist-preview__loading"
+                                role="status"
+                                aria-live="polite"
+                              >
+                                플레이어 불러오는 중…
+                              </div>
+                            }
+                          >
+                            <ClipPlayer youtubeVideoId={youtubeVideoId} startSec={0} autoplay={false} />
+                          </Suspense>
                         </div>
                         <div className="playlist-preview__actions">
                           <button
@@ -3566,12 +3581,20 @@ export default function App() {
           )}
           {currentActiveSection === 'library' && isActive && clip.youtubeVideoId && isVisible && (
             <div className="artist-library__clip-player">
-              <ClipPlayer
-                youtubeVideoId={clip.youtubeVideoId}
-                startSec={previewStartSec}
-                endSec={previewEndSec}
-                autoplay
-              />
+              <Suspense
+                fallback={
+                  <div className="artist-library__clip-player-loading" role="status" aria-live="polite">
+                    플레이어 준비 중…
+                  </div>
+                }
+              >
+                <ClipPlayer
+                  youtubeVideoId={clip.youtubeVideoId}
+                  startSec={previewStartSec}
+                  endSec={previewEndSec}
+                  autoplay
+                />
+              </Suspense>
             </div>
           )}
         </>
@@ -5017,12 +5040,20 @@ export default function App() {
                                       {selectedVideoData.title || selectedVideoData.youtubeVideoId}
                                     </p>
                                     <div className="clip-preview__player">
-                                      <ClipPlayer
-                                        youtubeVideoId={selectedVideoData.youtubeVideoId}
-                                        startSec={previewStartSec}
-                                        endSec={previewEndSec}
-                                        autoplay={false}
-                                      />
+                                      <Suspense
+                                        fallback={
+                                          <div className="clip-preview__player-loading" role="status" aria-live="polite">
+                                            프리뷰를 준비하는 중…
+                                          </div>
+                                        }
+                                      >
+                                        <ClipPlayer
+                                          youtubeVideoId={selectedVideoData.youtubeVideoId}
+                                          startSec={previewStartSec}
+                                          endSec={previewEndSec}
+                                          autoplay={false}
+                                        />
+                                      </Suspense>
                                     </div>
                                   </>
                                 ) : (
@@ -5116,15 +5147,27 @@ export default function App() {
                                 </div>
                                 {selectedVideoData.youtubeVideoId ? (
                                   <div className="artist-library__video-preview-player">
-                                    <ClipPlayer
-                                      youtubeVideoId={selectedVideoData.youtubeVideoId}
-                                      startSec={0}
-                                      endSec={
-                                        selectedVideoData.durationSec && selectedVideoData.durationSec > 0
-                                          ? selectedVideoData.durationSec
-                                          : undefined
+                                    <Suspense
+                                      fallback={
+                                        <div
+                                          className="artist-library__video-preview-loading"
+                                          role="status"
+                                          aria-live="polite"
+                                        >
+                                          미리보기를 불러오는 중…
+                                        </div>
                                       }
-                                    />
+                                    >
+                                      <ClipPlayer
+                                        youtubeVideoId={selectedVideoData.youtubeVideoId}
+                                        startSec={0}
+                                        endSec={
+                                          selectedVideoData.durationSec && selectedVideoData.durationSec > 0
+                                            ? selectedVideoData.durationSec
+                                            : undefined
+                                        }
+                                      />
+                                    </Suspense>
                                   </div>
                                 ) : (
                                   <p className="artist-library__video-preview-empty">
