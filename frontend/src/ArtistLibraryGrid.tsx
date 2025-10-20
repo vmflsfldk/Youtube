@@ -10,10 +10,26 @@ import {
 } from 'react';
 import { FixedSizeList, ListChildComponentProps } from 'react-window';
 
-const MIN_CARD_WIDTH = 240;
 const ROW_GAP = 20;
-const ESTIMATED_CARD_HEIGHT = 320;
+const DEFAULT_CARD_HEIGHT = 320;
 const MAX_VISIBLE_ROWS = 4;
+
+const getMinCardWidth = (containerWidth: number): number => {
+  if (containerWidth <= 480) {
+    return 160;
+  }
+  if (containerWidth <= 768) {
+    return 200;
+  }
+  return 240;
+};
+
+const getEstimatedCardHeight = (containerWidth: number): number => {
+  if (containerWidth <= 480) {
+    return 280;
+  }
+  return DEFAULT_CARD_HEIGHT;
+};
 
 export interface ArtistLibraryGridRenderContext<T> {
   index: number;
@@ -186,14 +202,16 @@ const ArtistLibraryGrid = <T,>({
     if (containerWidth <= 0) {
       return 1;
     }
-    const calculated = Math.floor((containerWidth + ROW_GAP) / (MIN_CARD_WIDTH + ROW_GAP));
+    const minCardWidth = getMinCardWidth(containerWidth);
+    const calculated = Math.floor((containerWidth + ROW_GAP) / (minCardWidth + ROW_GAP));
     return Math.max(calculated, 1);
   }, [containerWidth]);
 
   const rows = useMemo(() => createRows(artists, columns), [artists, columns]);
 
   const rowCount = rows.length;
-  const itemSize = ESTIMATED_CARD_HEIGHT + ROW_GAP;
+  const estimatedCardHeight = getEstimatedCardHeight(containerWidth);
+  const itemSize = estimatedCardHeight + ROW_GAP;
   const visibleRowCount = Math.min(rowCount, MAX_VISIBLE_ROWS);
   const listHeight = visibleRowCount > 0 ? visibleRowCount * itemSize : 0;
 
