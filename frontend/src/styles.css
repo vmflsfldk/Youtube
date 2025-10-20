@@ -2260,6 +2260,19 @@ button:disabled:hover {
   width: auto;
 }
 
+.artist-library__video-action.is-disabled,
+.artist-library__video-action[aria-disabled='true'] {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.artist-library__video-action.is-disabled:hover,
+.artist-library__video-action[aria-disabled='true']:hover {
+  transform: none;
+  background: rgba(15, 23, 42, 0.52);
+  border-color: rgba(148, 163, 184, 0.32);
+}
+
 .artist-library__video-action:hover {
   background: rgba(30, 41, 59, 0.72);
   border-color: rgba(99, 102, 241, 0.5);

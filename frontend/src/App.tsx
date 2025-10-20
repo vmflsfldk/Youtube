@@ -3369,10 +3369,10 @@ export default function App() {
                 type="button"
                 className={`artist-library__video-action artist-library__video-action--playlist${
                   isVideoQueued ? ' active' : ''
-                }`}
+                }${!canModifyPlaylist ? ' is-disabled' : ''}`}
                 aria-pressed={isVideoQueued}
                 aria-label={isVideoQueued ? '재생목록에서 제거' : '재생목록에 추가'}
-                disabled={!canModifyPlaylist}
+                aria-disabled={!canModifyPlaylist}
                 onClick={(event) => {
                   event.preventDefault();
                   event.stopPropagation();
