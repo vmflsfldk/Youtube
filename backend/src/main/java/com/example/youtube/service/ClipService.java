@@ -55,7 +55,7 @@ public class ClipService {
     public List<ClipResponse> listByArtist(Long artistId) {
         Artist artist = artistRepository.findById(artistId)
                 .orElseThrow(() -> new EntityNotFoundException("Artist not found: " + artistId));
-        return clipRepository.findByArtist(artist).stream()
+        return clipRepository.findByArtistWithTags(artist).stream()
                 .map(this::map)
                 .collect(Collectors.toList());
     }
@@ -64,7 +64,7 @@ public class ClipService {
     public List<ClipResponse> listByVideo(Long videoId) {
         Video video = videoRepository.findById(videoId)
                 .orElseThrow(() -> new EntityNotFoundException("Video not found: " + videoId));
-        return clipRepository.findByVideo(video).stream()
+        return clipRepository.findByVideoWithTags(video).stream()
                 .map(this::map)
                 .collect(Collectors.toList());
     }
