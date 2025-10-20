@@ -23,7 +23,7 @@ interface PlaylistBarProps {
   isPlaying: boolean;
   isExpanded: boolean;
   canCreatePlaylist: boolean;
-  onCreatePlaylist: () => void | Promise<void>;
+  onCreatePlaylist: () => void | Promise<unknown>;
   onPlayPause: () => void;
   onNext: () => void;
   onPrevious: () => void;

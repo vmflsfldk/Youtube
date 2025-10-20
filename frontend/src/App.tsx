@@ -2576,24 +2576,24 @@ export default function App() {
     setActivePlaylist(playlist);
   }, []);
 
-  const handleCreatePlaylist = useCallback(async () => {
+  const handleCreatePlaylist = useCallback(async (): Promise<PlaylistResponse | null> => {
     if (!isAuthenticated) {
       showAlert('재생목록을 사용하려면 로그인해 주세요.');
-      return;
+      return null;
     }
 
     const visibility = activePlaylist?.visibility ?? 'PRIVATE';
     const titleInput = window.prompt('새 재생목록 제목을 입력해 주세요.');
 
     if (titleInput === null) {
-      return;
+      return null;
     }
 
     const trimmedTitle = titleInput.trim();
 
     if (trimmedTitle.length === 0) {
       showAlert('재생목록 제목을 입력해 주세요.');
-      return;
+      return null;
     }
 
     try {
@@ -2602,11 +2602,14 @@ export default function App() {
         { title: trimmedTitle, visibility },
         { headers: authHeaders }
       );
-      applyUserPlaylistUpdate(normalizePlaylist(response.data));
+      const normalized = normalizePlaylist(response.data);
+      applyUserPlaylistUpdate(normalized);
+      return normalized;
     } catch (error) {
       const message = extractAxiosErrorMessage(error, '재생목록을 생성하지 못했습니다.');
       showAlert(message);
       console.error('Failed to create playlist', error);
+      return null;
     }
   }, [activePlaylist, applyUserPlaylistUpdate, authHeaders, http, isAuthenticated]);
 
@@ -2617,23 +2620,30 @@ export default function App() {
         return;
       }
 
-      if (!activePlaylist) {
-        showAlert('활성화된 재생목록을 찾을 수 없습니다.');
-        return;
+      let targetPlaylist = activePlaylist;
+
+      if (!targetPlaylist) {
+        const createdPlaylist = await handleCreatePlaylist();
+        if (!createdPlaylist) {
+          return;
+        }
+        targetPlaylist = createdPlaylist;
       }
 
-      const existingItem = playlistVideoItemMap.get(videoId) ?? null;
+      const playlistId = targetPlaylist.id;
+      const existingItem =
+        targetPlaylist.id === activePlaylist?.id ? playlistVideoItemMap.get(videoId) ?? null : null;
 
       try {
         if (existingItem) {
           const response = await http.delete<PlaylistResponse>(
-            `/playlists/${activePlaylist.id}/items/${existingItem.id}`,
+            `/playlists/${playlistId}/items/${existingItem.id}`,
             { headers: authHeaders }
           );
           applyUserPlaylistUpdate(normalizePlaylist(response.data));
         } else {
           const response = await http.post<PlaylistResponse>(
-            `/playlists/${activePlaylist.id}/items`,
+            `/playlists/${playlistId}/items`,
             { videoId },
             { headers: authHeaders }
           );
@@ -2645,7 +2655,15 @@ export default function App() {
         console.error('Failed to update playlist', error);
       }
     },
-    [activePlaylist, applyUserPlaylistUpdate, authHeaders, http, isAuthenticated, playlistVideoItemMap]
+    [
+      activePlaylist,
+      applyUserPlaylistUpdate,
+      authHeaders,
+      handleCreatePlaylist,
+      http,
+      isAuthenticated,
+      playlistVideoItemMap
+    ]
   );
 
   const handleVideoCardKeyDown = (event: KeyboardEvent<HTMLDivElement>, videoId: number) => {
@@ -4996,23 +5014,21 @@ export default function App() {
         })}
       </nav>
       </div>
-      {playbackBarItems.length > 0 && (
-        <PlaylistBar
-          items={playbackBarItems}
-          currentItemKey={activePlaybackKey}
-          currentIndex={currentPlaybackIndex}
-          isPlaying={isPlaybackActive}
-          isExpanded={isPlaybackExpanded}
-          canCreatePlaylist={isAuthenticated}
-          onCreatePlaylist={handleCreatePlaylist}
-          onPlayPause={handlePlaybackToggle}
-          onNext={handlePlaybackNext}
-          onPrevious={handlePlaybackPrevious}
-          onToggleExpanded={handlePlaybackToggleExpanded}
-          onSelectItem={handlePlaybackSelect}
-          onTrackEnded={handlePlaybackEnded}
-        />
-      )}
+      <PlaylistBar
+        items={playbackBarItems}
+        currentItemKey={activePlaybackKey}
+        currentIndex={currentPlaybackIndex}
+        isPlaying={isPlaybackActive}
+        isExpanded={isPlaybackExpanded}
+        canCreatePlaylist={isAuthenticated}
+        onCreatePlaylist={handleCreatePlaylist}
+        onPlayPause={handlePlaybackToggle}
+        onNext={handlePlaybackNext}
+        onPrevious={handlePlaybackPrevious}
+        onToggleExpanded={handlePlaybackToggleExpanded}
+        onSelectItem={handlePlaybackSelect}
+        onTrackEnded={handlePlaybackEnded}
+      />
     </>
   );
 }
