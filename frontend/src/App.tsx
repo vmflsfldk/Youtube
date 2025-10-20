@@ -322,6 +322,115 @@ const categorizeVideo = (video: VideoResponse): VideoCategoryKey => {
   return 'original';
 };
 
+const matchCategoryKeyword = (value: string, key: VideoCategoryKey): boolean =>
+  VIDEO_CATEGORY_KEYWORDS[key].some((keyword) => keyword && value.includes(keyword));
+
+const extractSongTitleFromTags = (tags?: string[]): string | null => {
+  if (!Array.isArray(tags)) {
+    return null;
+  }
+  for (const tag of tags) {
+    if (typeof tag !== 'string') {
+      continue;
+    }
+    const trimmed = tag.trim();
+    if (!trimmed) {
+      continue;
+    }
+    const lower = trimmed.toLowerCase();
+    if (lower.startsWith('곡:')) {
+      return trimmed.slice(2).trim();
+    }
+    if (lower.startsWith('song:')) {
+      return trimmed.slice(5).trim();
+    }
+    if (lower.startsWith('title:')) {
+      return trimmed.slice(6).trim();
+    }
+  }
+  return null;
+};
+
+const formatSongTitle = (
+  title: string | null | undefined,
+  options: { tags?: string[]; fallback?: string } = {}
+): string => {
+  const fallback = typeof options.fallback === 'string' ? options.fallback : '';
+  const tagTitle = extractSongTitleFromTags(options.tags);
+  const baseTitle = tagTitle || (typeof title === 'string' ? title : '') || fallback;
+
+  let sanitized = baseTitle
+    .replace(/\[[^\]]*]/g, ' ')
+    .replace(/\([^)]*\)/g, ' ')
+    .replace(/【[^】]*】/g, ' ')
+    .replace(/（[^）]*）/g, ' ')
+    .replace(/\{[^}]*}/g, ' ')
+    .replace(/(?:\s*[-–—|]\s*).*$/g, ' ');
+
+  sanitized = sanitized
+    .replace(/\b(?:cover|커버|original|오리지널)\b/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (sanitized.length === 0) {
+    const fallbackTitle = (tagTitle || (typeof title === 'string' ? title : '') || fallback).trim();
+    return fallbackTitle || '제목 없음';
+  }
+
+  return sanitized;
+};
+
+const categorizeClip = (
+  clip: ClipResponse,
+  parentVideo?: VideoResponse | null
+): VideoCategoryKey | null => {
+  if (parentVideo) {
+    return categorizeVideo(parentVideo);
+  }
+
+  const normalizedTags = Array.isArray(clip.tags)
+    ? clip.tags
+        .map((tag) => (typeof tag === 'string' ? tag.trim().toLowerCase() : ''))
+        .filter(Boolean)
+    : [];
+
+  if (normalizedTags.some((tag) => matchCategoryKeyword(tag, 'live'))) {
+    return 'live';
+  }
+  if (normalizedTags.some((tag) => matchCategoryKeyword(tag, 'cover'))) {
+    return 'cover';
+  }
+  if (normalizedTags.some((tag) => matchCategoryKeyword(tag, 'original'))) {
+    return 'original';
+  }
+
+  return null;
+};
+
+const buildTagList = (...sources: Array<string | null | undefined | string[]>): string[] => {
+  const values: string[] = [];
+  const append = (tag: string | null | undefined) => {
+    const normalized = typeof tag === 'string' ? tag.trim() : '';
+    if (!normalized || values.includes(normalized)) {
+      return;
+    }
+    values.push(normalized);
+  };
+
+  sources.forEach((source) => {
+    if (!source) {
+      return;
+    }
+    if (Array.isArray(source)) {
+      source.forEach(append);
+    } else {
+      append(source);
+    }
+  });
+
+  return values;
+};
+
 const formatVideoMetaSummary = (
   video: VideoResponse,
   options: { includeDuration?: boolean; includeContentType?: boolean } = {}
@@ -2818,12 +2927,22 @@ export default function App() {
     const isVideoSelected = selectedVideo === video.id;
     const isVideoFavorited = favoriteVideoIds.includes(video.id);
     const isVideoQueued = playlistVideoIds.includes(video.id);
+    const videoCategory = categorizeVideo(video);
     const videoThumbnail =
       video.thumbnailUrl ||
       (video.youtubeVideoId ? `https://img.youtube.com/vi/${video.youtubeVideoId}/hqdefault.jpg` : null);
-    const videoTitle = video.title || video.youtubeVideoId || '제목 없는 영상';
+    const rawVideoTitle = video.title || video.youtubeVideoId || '제목 없는 영상';
+    const videoTitle =
+      videoCategory === 'live'
+        ? rawVideoTitle
+        : formatSongTitle(video.title, { fallback: rawVideoTitle });
     const videoOriginalComposer =
       typeof video.originalComposer === 'string' ? video.originalComposer.trim() : '';
+    const videoArtistName = (video.artistDisplayName ?? video.artistName ?? '').trim();
+    const videoTagValues = buildTagList(
+      videoOriginalComposer ? `원곡:${videoOriginalComposer}` : null,
+      videoCategory !== 'live' && videoArtistName ? `보컬:${videoArtistName}` : null
+    );
 
     return (
       <li key={video.id} className="artist-library__video-item">
@@ -2853,9 +2972,13 @@ export default function App() {
             <span className="artist-library__video-subtitle">
               {formatVideoMetaSummary(video)}
             </span>
-            {videoOriginalComposer && (
+            {videoTagValues.length > 0 && (
               <div className="artist-library__clip-tags">
-                <span className="tag">#원곡:{videoOriginalComposer}</span>
+                {videoTagValues.map((tag) => (
+                  <span key={tag} className="tag">
+                    #{tag}
+                  </span>
+                ))}
               </div>
             )}
             <div className="artist-library__video-actions">
@@ -4095,9 +4218,23 @@ export default function App() {
                                   typeof clip.originalComposer === 'string'
                                     ? clip.originalComposer.trim()
                                     : '';
-                                const clipTagValues = clipOriginalComposerTag
-                                  ? [`원곡:${clipOriginalComposerTag}`, ...clip.tags]
-                                  : clip.tags;
+                                const clipArtistName = (
+                                  clip.artistDisplayName ??
+                                  clip.artistName ??
+                                  selectedVideoData?.artistDisplayName ??
+                                  selectedVideoData?.artistName ??
+                                  ''
+                                ).trim();
+                                const clipCategory = categorizeClip(clip, selectedVideoData ?? null);
+                                const clipVocalTag =
+                                  clipCategory && clipCategory !== 'live' && clipArtistName
+                                    ? `보컬:${clipArtistName}`
+                                    : null;
+                                const clipTagValues = buildTagList(
+                                  clipOriginalComposerTag ? `원곡:${clipOriginalComposerTag}` : null,
+                                  clipVocalTag,
+                                  clip.tags
+                                );
                                 return (
                                   <li
                                     key={clip.id}
@@ -4345,7 +4482,12 @@ export default function App() {
                       const videoThumbnail =
                         video.thumbnailUrl ||
                         (hasPlayableVideo ? `https://img.youtube.com/vi/${youtubeVideoId}/hqdefault.jpg` : null);
-                      const videoTitle = video.title || video.youtubeVideoId || '제목 없는 영상';
+                      const rawVideoTitle = video.title || video.youtubeVideoId || '제목 없는 영상';
+                      const videoCategory = categorizeVideo(video);
+                      const videoTitle =
+                        videoCategory === 'live'
+                          ? rawVideoTitle
+                          : formatSongTitle(video.title, { fallback: rawVideoTitle });
                       const videoArtist =
                         video.artistDisplayName ||
                         video.artistName ||
@@ -4355,6 +4497,13 @@ export default function App() {
                         typeof video.originalComposer === 'string'
                           ? video.originalComposer.trim()
                           : '';
+                      const videoArtistName = (video.artistDisplayName ?? video.artistName ?? '').trim();
+                      const playlistVideoTags = buildTagList(
+                        playlistVideoOriginalComposer
+                          ? `원곡:${playlistVideoOriginalComposer}`
+                          : null,
+                        videoCategory !== 'live' && videoArtistName ? `보컬:${videoArtistName}` : null
+                      );
                       return (
                         <div className="playlist-entry playlist-entry--video" key={entryKey}>
                           <div className="playlist-video-card">
@@ -4427,9 +4576,13 @@ export default function App() {
                                   {formatVideoMetaSummary(video)}
                                 </span>
                               </div>
-                              {playlistVideoOriginalComposer && (
+                              {playlistVideoTags.length > 0 && (
                                 <div className="tag-row">
-                                  <span className="tag">#원곡:{playlistVideoOriginalComposer}</span>
+                                  {playlistVideoTags.map((tag) => (
+                                    <span key={tag} className="tag">
+                                      #{tag}
+                                    </span>
+                                  ))}
                                 </div>
                               )}
                             </div>
@@ -4456,20 +4609,37 @@ export default function App() {
                       parentVideo?.artistDisplayName ??
                       parentVideo?.artistName ??
                       null;
+                    const clipCategory = categorizeClip(clip, parentVideo);
+                    const rawClipTitle =
+                      clip.title ||
+                      resolvedVideoTitle ||
+                      clip.youtubeVideoId ||
+                      '제목 없는 클립';
+                    const clipTitle =
+                      clipCategory === 'live'
+                        ? rawClipTitle
+                        : formatSongTitle(clip.title, { tags: clip.tags, fallback: rawClipTitle });
                     const clipOriginalComposerTag =
                       typeof clip.originalComposer === 'string'
                         ? clip.originalComposer.trim()
                         : '';
-                    const clipTagValues = clipOriginalComposerTag
-                      ? [`원곡:${clipOriginalComposerTag}`, ...clip.tags]
-                      : clip.tags;
+                    const clipArtistName = (clipArtist ?? '').trim();
+                    const clipVocalTag =
+                      clipCategory && clipCategory !== 'live' && clipArtistName
+                        ? `보컬:${clipArtistName}`
+                        : null;
+                    const clipTagValues = buildTagList(
+                      clipOriginalComposerTag ? `원곡:${clipOriginalComposerTag}` : null,
+                      clipVocalTag,
+                      clip.tags
+                    );
 
                     return (
                       <div className="playlist-entry playlist-entry--clip" key={entryKey}>
                         <div className="playlist-clip">
                           <div className="playlist-clip__card">
                             <div className="playlist-clip__meta">
-                              <h4>{clip.title}</h4>
+                              <h4>{clipTitle}</h4>
                               <p className="playlist-clip__time">
                                 {formatSeconds(clip.startSec)} → {formatSeconds(clip.endSec)}
                               </p>
@@ -4516,7 +4686,7 @@ export default function App() {
                                     <img
                                       className="playlist-preview-placeholder__image playlist-video-card__thumbnail"
                                       src={clipThumbnail}
-                                      alt={`${clip.title} 미리보기 썸네일`}
+                                      alt={`${clipTitle} 미리보기 썸네일`}
                                       loading="lazy"
                                       decoding="async"
                                     />
