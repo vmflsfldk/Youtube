@@ -3,6 +3,7 @@ import {
   FormEvent,
   KeyboardEvent,
   RefObject,
+  type CSSProperties,
   useCallback,
   useDeferredValue,
   useEffect,
@@ -11,6 +12,11 @@ import {
   useState
 } from 'react';
 import axios from 'axios';
+import {
+  FixedSizeList,
+  type ListChildComponentProps,
+  type ListOnItemsRenderedProps
+} from 'react-window';
 import ClipPlayer from './components/ClipPlayer';
 import ClipList, { type ClipListRenderContext, type ClipListRenderResult } from './components/ClipList';
 import PlaylistBar, { type PlaylistBarItem } from './components/PlaylistBar';
@@ -662,6 +668,10 @@ interface ClipResponse {
   artistProfileImageUrl?: string | null;
 }
 
+type PlaylistEntry =
+  | { type: 'video'; itemId: number; video: VideoResponse }
+  | { type: 'clip'; itemId: number; clip: ClipResponse; parentVideo: VideoResponse | null };
+
 type PlaylistVisibility = 'PRIVATE' | 'UNLISTED' | 'PUBLIC';
 
 type PlaylistItemType = 'video' | 'clip';
@@ -1015,6 +1025,279 @@ const decodeGoogleToken = (token: string): GoogleIdTokenPayload | null => {
     return null;
   }
 };
+
+const PLAYLIST_ITEM_GAP = 24;
+const PLAYLIST_ITEM_HEIGHT = 540;
+const PLAYLIST_ITEM_SIZE = PLAYLIST_ITEM_HEIGHT + PLAYLIST_ITEM_GAP;
+const PLAYLIST_LIST_MAX_HEIGHT = 720;
+
+type PlaylistEntriesListItemData = {
+  entry: PlaylistEntry;
+  index: number;
+  entryKey: string;
+  expandedPlaylistEntryId: string | null;
+  handlePlaylistEntryRemove: (itemId: number) => Promise<void> | void;
+  setExpandedPlaylistEntryId: (entryId: string | null) => void;
+  isRemovalDisabled: boolean;
+};
+
+type PlaylistEntriesListProps = {
+  entries: PlaylistEntry[];
+  expandedPlaylistEntryId: string | null;
+  handlePlaylistEntryRemove: (itemId: number) => Promise<void> | void;
+  setExpandedPlaylistEntryId: (entryId: string | null) => void;
+  resolvePlaylistEntryKey: (entry: PlaylistEntry, index: number) => string;
+  isRemovalDisabled: boolean;
+};
+
+function PlaylistEntriesList({
+  entries,
+  expandedPlaylistEntryId,
+  handlePlaylistEntryRemove,
+  setExpandedPlaylistEntryId,
+  resolvePlaylistEntryKey,
+  isRemovalDisabled
+}: PlaylistEntriesListProps) {
+  const [visibleRange, setVisibleRange] = useState({ start: 0, stop: 0 });
+
+  const itemData = useMemo<PlaylistEntriesListItemData[]>(
+    () =>
+      entries.map((entry, index) => ({
+        entry,
+        index,
+        entryKey: resolvePlaylistEntryKey(entry, index),
+        expandedPlaylistEntryId,
+        handlePlaylistEntryRemove,
+        setExpandedPlaylistEntryId,
+        isRemovalDisabled
+      })),
+    [
+      entries,
+      expandedPlaylistEntryId,
+      handlePlaylistEntryRemove,
+      resolvePlaylistEntryKey,
+      setExpandedPlaylistEntryId,
+      isRemovalDisabled
+    ]
+  );
+
+  const itemCount = itemData.length;
+  const constrainedHeight = Math.min(itemCount * PLAYLIST_ITEM_SIZE, PLAYLIST_LIST_MAX_HEIGHT);
+  const listHeight = Math.max(constrainedHeight, Math.min(PLAYLIST_ITEM_SIZE, PLAYLIST_LIST_MAX_HEIGHT));
+
+  const handleItemsRendered = useCallback(
+    ({ visibleStartIndex, visibleStopIndex }: ListOnItemsRenderedProps) => {
+      setVisibleRange({ start: visibleStartIndex, stop: visibleStopIndex });
+    },
+    []
+  );
+
+  const renderRow = useCallback(
+    ({ index, style, data }: ListChildComponentProps<PlaylistEntriesListItemData[]>) => {
+      const item = data[index];
+      if (!item) {
+        return null;
+      }
+
+      const {
+        entry,
+        entryKey,
+        expandedPlaylistEntryId: expandedId,
+        handlePlaylistEntryRemove: removeEntry,
+        setExpandedPlaylistEntryId: setExpandedEntry,
+        isRemovalDisabled: removalDisabled
+      } = item;
+
+      const isExpanded = expandedId === entryKey;
+      const isVisible = index >= visibleRange.start && index <= visibleRange.stop;
+
+      const rowStyle: CSSProperties = {
+        ...style,
+        width: '100%',
+        boxSizing: 'border-box',
+        paddingBottom: PLAYLIST_ITEM_GAP
+      };
+
+      if (entry.type === 'video') {
+        const video = entry.video;
+        const youtubeVideoId = (video.youtubeVideoId ?? '').trim();
+        const hasPlayableVideo = youtubeVideoId.length > 0;
+        const canPreviewVideo = hasPlayableVideo;
+        const shouldRenderPlayer = canPreviewVideo && isExpanded && isVisible;
+        const videoThumbnail =
+          video.thumbnailUrl ||
+          (hasPlayableVideo ? `https://img.youtube.com/vi/${youtubeVideoId}/hqdefault.jpg` : null);
+        const rawVideoTitle = video.title || video.youtubeVideoId || '제목 없는 영상';
+        const videoCategory = categorizeVideo(video);
+        const videoTitle =
+          videoCategory === 'live'
+            ? rawVideoTitle
+            : formatSongTitle(video.title, { fallback: rawVideoTitle });
+        const videoArtist =
+          video.artistDisplayName ||
+          video.artistName ||
+          video.artistYoutubeChannelTitle ||
+          null;
+        const playlistVideoOriginalComposer =
+          typeof video.originalComposer === 'string' ? video.originalComposer.trim() : '';
+        const videoArtistName = (video.artistDisplayName ?? video.artistName ?? '').trim();
+        const playlistVideoTags = buildTagList(
+          playlistVideoOriginalComposer ? `원곡:${playlistVideoOriginalComposer}` : null,
+          videoCategory !== 'live' && videoArtistName ? `보컬:${videoArtistName}` : null
+        );
+
+        return (
+          <div style={rowStyle}>
+            <div className="playlist-entry playlist-entry--video" key={entryKey}>
+              <div className="playlist-video-card">
+                <div className="playlist-video-card__media">
+                  <div className={`playlist-preview${shouldRenderPlayer ? ' playlist-preview--expanded' : ''}`}>
+                    {shouldRenderPlayer ? (
+                      <>
+                        <div className="playlist-preview__player">
+                          <ClipPlayer youtubeVideoId={youtubeVideoId} startSec={0} autoplay={false} />
+                        </div>
+                        <div className="playlist-preview__actions">
+                          <button
+                            type="button"
+                            className="playlist-preview-toggle playlist-preview-toggle--close"
+                            onClick={() => setExpandedEntry(null)}
+                          >
+                            미리보기 닫기
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="playlist-preview-placeholder">
+                        {videoThumbnail ? (
+                          <img
+                            className="playlist-preview-placeholder__image playlist-video-card__thumbnail"
+                            src={videoThumbnail}
+                            alt={`${videoTitle} 썸네일`}
+                            loading="lazy"
+                            decoding="async"
+                          />
+                        ) : (
+                          <div
+                            className="playlist-preview-placeholder__fallback playlist-video-card__thumbnail playlist-video-card__thumbnail--placeholder"
+                            aria-hidden="true"
+                          >
+                            <span>썸네일 없음</span>
+                          </div>
+                        )}
+                        <div className="playlist-preview-placeholder__overlay">
+                          <span className="playlist-preview-placeholder__label">
+                            {formatSeconds(video.durationSec ?? 0)}
+                          </span>
+                          {canPreviewVideo ? (
+                            <button
+                              type="button"
+                              className="playlist-preview-toggle"
+                              onClick={() => setExpandedEntry(entryKey)}
+                            >
+                              미리보기
+                            </button>
+                          ) : (
+                            <span className="playlist-preview-placeholder__label playlist-preview-placeholder__label--muted">
+                              재생할 수 있는 영상이 없습니다
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div className="playlist-video-card__meta">
+                  <div className="playlist-entry__actions">
+                    <button
+                      type="button"
+                      className="playlist-entry__action"
+                      onClick={() => void removeEntry(entry.itemId)}
+                      disabled={removalDisabled}
+                    >
+                      재생목록에서 제거
+                    </button>
+                  </div>
+                  <h3 className="playlist-video-card__title">{videoTitle}</h3>
+                  <div className="playlist-video-card__details">
+                    {videoArtist && <span className="playlist-video-card__artist">{videoArtist}</span>}
+                    <span className="playlist-video-card__info">{formatVideoMetaSummary(video)}</span>
+                  </div>
+                  {playlistVideoTags.length > 0 && (
+                    <div className="tag-row">
+                      {playlistVideoTags.map((tag) => (
+                        <span key={tag} className="tag">
+                          #{tag}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      const clip = entry.clip;
+      const rawClipTitle =
+        clip.title ||
+        clip.sectionTitle ||
+        clip.youtubeChapterTitle ||
+        clip.description ||
+        clip.youtubeVideoId ||
+        clip.videoTitle ||
+        '';
+      const clipTitle =
+        formatSongTitle(clip.title, { tags: clip.tags, fallback: rawClipTitle }) || '제목 없는 클립';
+
+      return (
+        <div style={rowStyle}>
+          <div className="playlist-entry playlist-entry--clip" key={entryKey}>
+            <div className="playlist-clip">
+              <div className="playlist-clip__card">
+                <div className="playlist-entry__actions">
+                  <button
+                    type="button"
+                    className="playlist-entry__action"
+                    onClick={() => void removeEntry(entry.itemId)}
+                    disabled={removalDisabled}
+                  >
+                    재생목록에서 제거
+                  </button>
+                </div>
+                <div className="playlist-clip__meta">
+                  <h4>{clipTitle}</h4>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    },
+    [visibleRange]
+  );
+
+  if (itemCount === 0) {
+    return null;
+  }
+
+  return (
+    <div className="playlist-entries">
+      <FixedSizeList
+        height={listHeight}
+        itemCount={itemCount}
+        itemSize={PLAYLIST_ITEM_SIZE}
+        width="100%"
+        onItemsRendered={handleItemsRendered}
+        itemData={itemData}
+        itemKey={(index, data) => data[index]?.entryKey ?? index}
+      >
+        {renderRow}
+      </FixedSizeList>
+    </div>
+  );
+}
 
 export default function App() {
   const [authToken, setAuthToken] = useState<string | null>(null);
@@ -3305,10 +3588,6 @@ export default function App() {
     ]
   );
 
-  type PlaylistEntry =
-    | { type: 'video'; itemId: number; video: VideoResponse }
-    | { type: 'clip'; itemId: number; clip: ClipResponse; parentVideo: VideoResponse | null };
-
   const resolvePlaylistEntryKey = useCallback((entry: PlaylistEntry, index: number): string => {
     if (Number.isFinite(entry.itemId)) {
       return `playlist-item-${entry.itemId}`;
@@ -3339,6 +3618,7 @@ export default function App() {
   }, [playlistItems, playlistVideoMap]);
 
   const canModifyActivePlaylist = Boolean(isAuthenticated && activePlaylist);
+  const isPlaylistEntryRemovalDisabled = !activePlaylist;
 
   const playbackBarItems = useMemo<PlaylistBarItem[]>(() => {
     return playlistEntries.map((entry, index) => {
@@ -5010,176 +5290,14 @@ export default function App() {
               {!playlistHasResults ? (
                 <p className="empty-state">{playlistEmptyMessage}</p>
               ) : (
-                <div className="playlist-entries">
-                  {filteredPlaylistEntries.map((entry, index) => {
-                    const entryKey = resolvePlaylistEntryKey(entry, index);
-                    const isExpanded = expandedPlaylistEntryId === entryKey;
-
-                    const isRemovalDisabled = !activePlaylist;
-
-                    if (entry.type === 'video') {
-                      const video = entry.video;
-                      const youtubeVideoId = (video.youtubeVideoId ?? '').trim();
-                      const hasPlayableVideo = youtubeVideoId.length > 0;
-                      const canPreviewVideo = hasPlayableVideo;
-                      const shouldRenderPlayer = canPreviewVideo && isExpanded;
-                      const videoThumbnail =
-                        video.thumbnailUrl ||
-                        (hasPlayableVideo ? `https://img.youtube.com/vi/${youtubeVideoId}/hqdefault.jpg` : null);
-                      const rawVideoTitle = video.title || video.youtubeVideoId || '제목 없는 영상';
-                      const videoCategory = categorizeVideo(video);
-                      const videoTitle =
-                        videoCategory === 'live'
-                          ? rawVideoTitle
-                          : formatSongTitle(video.title, { fallback: rawVideoTitle });
-                      const videoArtist =
-                        video.artistDisplayName ||
-                        video.artistName ||
-                        video.artistYoutubeChannelTitle ||
-                        null;
-                      const playlistVideoOriginalComposer =
-                        typeof video.originalComposer === 'string'
-                          ? video.originalComposer.trim()
-                          : '';
-                      const videoArtistName = (video.artistDisplayName ?? video.artistName ?? '').trim();
-                      const playlistVideoTags = buildTagList(
-                        playlistVideoOriginalComposer
-                          ? `원곡:${playlistVideoOriginalComposer}`
-                          : null,
-                        videoCategory !== 'live' && videoArtistName ? `보컬:${videoArtistName}` : null
-                      );
-                      return (
-                        <div className="playlist-entry playlist-entry--video" key={entryKey}>
-                          <div className="playlist-video-card">
-                            <div className="playlist-video-card__media">
-                              <div
-                                className={`playlist-preview${shouldRenderPlayer ? ' playlist-preview--expanded' : ''}`}
-                              >
-                                {shouldRenderPlayer ? (
-                                  <>
-                                    <div className="playlist-preview__player">
-                                      <ClipPlayer youtubeVideoId={youtubeVideoId} startSec={0} autoplay={false} />
-                                    </div>
-                                    <div className="playlist-preview__actions">
-                                      <button
-                                        type="button"
-                                        className="playlist-preview-toggle playlist-preview-toggle--close"
-                                        onClick={() => setExpandedPlaylistEntryId(null)}
-                                      >
-                                        미리보기 닫기
-                                      </button>
-                                    </div>
-                                  </>
-                                ) : (
-                                  <div className="playlist-preview-placeholder">
-                                    {videoThumbnail ? (
-                                      <img
-                                        className="playlist-preview-placeholder__image playlist-video-card__thumbnail"
-                                        src={videoThumbnail}
-                                        alt={`${videoTitle} 썸네일`}
-                                        loading="lazy"
-                                        decoding="async"
-                                      />
-                                    ) : (
-                                      <div
-                                        className="playlist-preview-placeholder__fallback playlist-video-card__thumbnail playlist-video-card__thumbnail--placeholder"
-                                        aria-hidden="true"
-                                      >
-                                        <span>썸네일 없음</span>
-                                      </div>
-                                    )}
-                                    <div className="playlist-preview-placeholder__overlay">
-                                      <span className="playlist-preview-placeholder__label">
-                                        {formatSeconds(video.durationSec ?? 0)}
-                                      </span>
-                                      {canPreviewVideo ? (
-                                        <button
-                                          type="button"
-                                          className="playlist-preview-toggle"
-                                          onClick={() => setExpandedPlaylistEntryId(entryKey)}
-                                        >
-                                          미리보기
-                                        </button>
-                                      ) : (
-                                        <span className="playlist-preview-placeholder__label playlist-preview-placeholder__label--muted">
-                                          재생할 수 있는 영상이 없습니다
-                                        </span>
-                                      )}
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                            <div className="playlist-video-card__meta">
-                              <div className="playlist-entry__actions">
-                                <button
-                                  type="button"
-                                  className="playlist-entry__action"
-                                  onClick={() => void handlePlaylistEntryRemove(entry.itemId)}
-                                  disabled={isRemovalDisabled}
-                                >
-                                  재생목록에서 제거
-                                </button>
-                              </div>
-                              <h3 className="playlist-video-card__title">{videoTitle}</h3>
-                              <div className="playlist-video-card__details">
-                                {videoArtist && (
-                                  <span className="playlist-video-card__artist">{videoArtist}</span>
-                                )}
-                                <span className="playlist-video-card__info">
-                                  {formatVideoMetaSummary(video)}
-                                </span>
-                              </div>
-                              {playlistVideoTags.length > 0 && (
-                                <div className="tag-row">
-                                  {playlistVideoTags.map((tag) => (
-                                    <span key={tag} className="tag">
-                                      #{tag}
-                                    </span>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    }
-
-                    const clip = entry.clip;
-                    const rawClipTitle =
-                      clip.title ||
-                      clip.sectionTitle ||
-                      clip.youtubeChapterTitle ||
-                      clip.description ||
-                      clip.youtubeVideoId ||
-                      clip.videoTitle ||
-                      '';
-                    const clipTitle =
-                      formatSongTitle(clip.title, { tags: clip.tags, fallback: rawClipTitle }) || '제목 없는 클립';
-
-                    return (
-                      <div className="playlist-entry playlist-entry--clip" key={entryKey}>
-                        <div className="playlist-clip">
-                          <div className="playlist-clip__card">
-                            <div className="playlist-entry__actions">
-                              <button
-                                type="button"
-                                className="playlist-entry__action"
-                                onClick={() => void handlePlaylistEntryRemove(entry.itemId)}
-                                disabled={isRemovalDisabled}
-                              >
-                                재생목록에서 제거
-                              </button>
-                            </div>
-                            <div className="playlist-clip__meta">
-                              <h4>{clipTitle}</h4>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                <PlaylistEntriesList
+                  entries={filteredPlaylistEntries}
+                  expandedPlaylistEntryId={expandedPlaylistEntryId}
+                  handlePlaylistEntryRemove={handlePlaylistEntryRemove}
+                  setExpandedPlaylistEntryId={setExpandedPlaylistEntryId}
+                  resolvePlaylistEntryKey={resolvePlaylistEntryKey}
+                  isRemovalDisabled={isPlaylistEntryRemovalDisabled}
+                />
               )}
             </div>
           </section>
