@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import ClipPlayer from './ClipPlayer';
 
 export interface PlaylistBarItem {
@@ -22,6 +22,8 @@ interface PlaylistBarProps {
   currentIndex: number;
   isPlaying: boolean;
   isExpanded: boolean;
+  canCreatePlaylist: boolean;
+  onCreatePlaylist: () => void | Promise<void>;
   onPlayPause: () => void;
   onNext: () => void;
   onPrevious: () => void;
@@ -70,6 +72,8 @@ export default function PlaylistBar({
   currentIndex,
   isPlaying,
   isExpanded,
+  canCreatePlaylist,
+  onCreatePlaylist,
   onPlayPause,
   onNext,
   onPrevious,
@@ -77,6 +81,7 @@ export default function PlaylistBar({
   onSelectItem,
   onTrackEnded
 }: PlaylistBarProps) {
+  const [isCreatingPlaylist, setIsCreatingPlaylist] = useState(false);
   const currentItem = useMemo(
     () => items.find((item) => item.key === currentItemKey) ?? null,
     [items, currentItemKey]
@@ -84,36 +89,60 @@ export default function PlaylistBar({
 
   const hasPlayableItems = items.some((item) => item.isPlayable);
 
+  const handleCreatePlaylistClick = useCallback(async () => {
+    if (!canCreatePlaylist || isCreatingPlaylist) {
+      return;
+    }
+    try {
+      setIsCreatingPlaylist(true);
+      await Promise.resolve(onCreatePlaylist());
+    } catch (error) {
+      console.error('Failed to create playlist from playback bar', error);
+    } finally {
+      setIsCreatingPlaylist(false);
+    }
+  }, [canCreatePlaylist, isCreatingPlaylist, onCreatePlaylist]);
+
   const renderControls = () => {
     const disableTransport = !hasPlayableItems || !currentItem?.isPlayable;
     return (
-      <div className="playback-bar__controls" role="group" aria-label="재생 제어">
+      <div className="playback-bar__controls">
+        <div className="playback-bar__transport" role="group" aria-label="재생 제어">
+          <button
+            type="button"
+            className="playback-bar__button"
+            onClick={onPrevious}
+            disabled={!hasPlayableItems}
+            aria-label="이전 항목"
+          >
+            <PreviousIcon />
+          </button>
+          <button
+            type="button"
+            className="playback-bar__button playback-bar__button--primary"
+            onClick={onPlayPause}
+            disabled={!hasPlayableItems}
+            aria-label={isPlaying ? '일시 정지' : '재생'}
+          >
+            {isPlaying && currentItem?.isPlayable && !disableTransport ? <PauseIcon /> : <PlayIcon />}
+          </button>
+          <button
+            type="button"
+            className="playback-bar__button"
+            onClick={onNext}
+            disabled={!hasPlayableItems}
+            aria-label="다음 항목"
+          >
+            <NextIcon />
+          </button>
+        </div>
         <button
           type="button"
-          className="playback-bar__button"
-          onClick={onPrevious}
-          disabled={!hasPlayableItems}
-          aria-label="이전 항목"
+          className="playback-bar__create-playlist-button"
+          onClick={handleCreatePlaylistClick}
+          disabled={!canCreatePlaylist || isCreatingPlaylist}
         >
-          <PreviousIcon />
-        </button>
-        <button
-          type="button"
-          className="playback-bar__button playback-bar__button--primary"
-          onClick={onPlayPause}
-          disabled={!hasPlayableItems}
-          aria-label={isPlaying ? '일시 정지' : '재생'}
-        >
-          {isPlaying && currentItem?.isPlayable && !disableTransport ? <PauseIcon /> : <PlayIcon />}
-        </button>
-        <button
-          type="button"
-          className="playback-bar__button"
-          onClick={onNext}
-          disabled={!hasPlayableItems}
-          aria-label="다음 항목"
-        >
-          <NextIcon />
+          {isCreatingPlaylist ? '만드는 중…' : '새 재생목록 만들기'}
         </button>
       </div>
     );
