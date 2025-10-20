@@ -3294,9 +3294,11 @@ button:disabled:hover {
 }
 
 .playlist-clip__card {
-  grid-template-columns: minmax(0, 1fr);
-  align-content: start;
-  align-items: stretch;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  align-content: flex-start;
+  gap: 6px;
 }
 
 .playlist-video-card__media {
@@ -3315,7 +3317,7 @@ button:disabled:hover {
 .playlist-clip__meta {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 0;
 }
 
 .playlist-video-card__title {
@@ -3505,35 +3507,9 @@ button:disabled:hover {
   transform: translateY(0);
 }
 
-.playlist-clip__player {
-  display: flex;
-  width: 100%;
-  align-items: flex-start;
-  justify-content: center;
-}
-
 .playlist-clip__meta h4 {
-  margin: 0 0 6px 0;
+  margin: 0;
   color: var(--color-text-primary);
-}
-
-.playlist-clip__meta p {
-  margin: 4px 0;
-  color: var(--color-text-muted);
-}
-
-.playlist-clip__time {
-  font-weight: 600;
-  color: var(--color-text-primary);
-}
-
-.playlist-clip__artist {
-  font-weight: 500;
-  color: var(--color-text-primary);
-}
-
-.playlist-clip__video-title {
-  font-size: 0.9rem;
 }
 
 .tag-row {
@@ -3563,7 +3539,6 @@ button:disabled:hover {
   color: var(--color-text-muted);
 }
 
-.playlist-clip__card .clip-player,
 .media-card .clip-player {
   border-radius: 18px;
 }
@@ -3578,12 +3553,6 @@ button:disabled:hover {
 @media (min-width: 768px) {
   .playlist-panel__header {
     grid-template-columns: minmax(0, 1fr) minmax(220px, 280px);
-  }
-
-  .playlist-clip__card {
-    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
-    align-items: stretch;
-    gap: 22px;
   }
 
   .playlist-video-card {
