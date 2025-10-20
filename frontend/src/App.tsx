@@ -2613,6 +2613,30 @@ export default function App() {
     }
   }, [activePlaylist, applyUserPlaylistUpdate, authHeaders, http, isAuthenticated]);
 
+  const handlePlaylistEntryRemove = useCallback(
+    async (itemId: number) => {
+      if (!activePlaylist) {
+        return;
+      }
+
+      try {
+        const response = await http.delete<PlaylistResponse>(
+          `/playlists/${activePlaylist.id}/items/${itemId}`,
+          { headers: authHeaders }
+        );
+        applyUserPlaylistUpdate(normalizePlaylist(response.data));
+      } catch (error) {
+        const message = extractAxiosErrorMessage(
+          error,
+          '재생목록에서 항목을 제거하지 못했습니다.'
+        );
+        showAlert(message);
+        console.error('Failed to remove playlist item', error);
+      }
+    },
+    [activePlaylist, applyUserPlaylistUpdate, authHeaders, http]
+  );
+
   const handleVideoPlaylistToggle = useCallback(
     async (videoId: number) => {
       if (!isAuthenticated) {
@@ -4847,6 +4871,8 @@ export default function App() {
                     const entryKey = resolvePlaylistEntryKey(entry, index);
                     const isExpanded = expandedPlaylistEntryId === entryKey;
 
+                    const isRemovalDisabled = !activePlaylist;
+
                     if (entry.type === 'video') {
                       const video = entry.video;
                       const youtubeVideoId = (video.youtubeVideoId ?? '').trim();
@@ -4941,6 +4967,16 @@ export default function App() {
                               </div>
                             </div>
                             <div className="playlist-video-card__meta">
+                              <div className="playlist-entry__actions">
+                                <button
+                                  type="button"
+                                  className="playlist-entry__action"
+                                  onClick={() => void handlePlaylistEntryRemove(entry.itemId)}
+                                  disabled={isRemovalDisabled}
+                                >
+                                  재생목록에서 제거
+                                </button>
+                              </div>
                               <h3 className="playlist-video-card__title">{videoTitle}</h3>
                               <div className="playlist-video-card__details">
                                 {videoArtist && (
@@ -4981,6 +5017,16 @@ export default function App() {
                       <div className="playlist-entry playlist-entry--clip" key={entryKey}>
                         <div className="playlist-clip">
                           <div className="playlist-clip__card">
+                            <div className="playlist-entry__actions">
+                              <button
+                                type="button"
+                                className="playlist-entry__action"
+                                onClick={() => void handlePlaylistEntryRemove(entry.itemId)}
+                                disabled={isRemovalDisabled}
+                              >
+                                재생목록에서 제거
+                              </button>
+                            </div>
                             <div className="playlist-clip__meta">
                               <h4>{clipTitle}</h4>
                             </div>
