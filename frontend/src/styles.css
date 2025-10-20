@@ -1668,7 +1668,7 @@ button:disabled:hover {
 .artist-library__grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 20px;
+  gap: 12px;
 }
 
 .artist-library__grid-wrapper {
@@ -1682,7 +1682,7 @@ button:disabled:hover {
 .artist-library__grid-row {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 20px;
+  gap: 12px;
 }
 
 @media (max-width: 640px) {

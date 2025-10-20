@@ -11,7 +11,7 @@ import {
 } from 'react';
 import { FixedSizeList, ListChildComponentProps } from 'react-window';
 
-const DESKTOP_ROW_GAP = 20;
+const DESKTOP_ROW_GAP = 12;
 const MOBILE_ROW_GAP = 12;
 const getRowGap = (containerWidth: number): number => {
   if (containerWidth > 0 && containerWidth <= 640) {
