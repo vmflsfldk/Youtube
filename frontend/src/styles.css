@@ -4590,7 +4590,7 @@ button:disabled:hover {
     justify-content: center;
     align-items: center;
     padding: 6px 0 2px;
-    touch-action: pan-y;
+    touch-action: none;
   }
 
   .playback-bar__drag-grip {
