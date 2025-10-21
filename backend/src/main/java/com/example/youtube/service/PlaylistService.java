@@ -12,15 +12,19 @@ import com.example.youtube.model.Playlist.PlaylistVisibility;
 import com.example.youtube.model.PlaylistItem;
 import com.example.youtube.model.UserAccount;
 import com.example.youtube.model.Video;
+import com.example.youtube.model.VideoSection;
 import com.example.youtube.repository.ClipRepository;
 import com.example.youtube.repository.PlaylistItemRepository;
 import com.example.youtube.repository.PlaylistRepository;
 import com.example.youtube.repository.VideoRepository;
+import com.example.youtube.repository.VideoSectionRepository;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
+import java.util.Comparator;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,15 +37,18 @@ public class PlaylistService {
     private final PlaylistItemRepository playlistItemRepository;
     private final VideoRepository videoRepository;
     private final ClipRepository clipRepository;
+    private final VideoSectionRepository videoSectionRepository;
 
     public PlaylistService(PlaylistRepository playlistRepository,
                            PlaylistItemRepository playlistItemRepository,
                            VideoRepository videoRepository,
-                           ClipRepository clipRepository) {
+                           ClipRepository clipRepository,
+                           VideoSectionRepository videoSectionRepository) {
         this.playlistRepository = playlistRepository;
         this.playlistItemRepository = playlistItemRepository;
         this.videoRepository = videoRepository;
         this.clipRepository = clipRepository;
+        this.videoSectionRepository = videoSectionRepository;
     }
 
     @Transactional(readOnly = true)
@@ -157,7 +164,16 @@ public class PlaylistService {
         if (video == null) {
             return null;
         }
-        List<VideoSectionResponse> sections = video.getId() == null ? List.of() : List.of();
+        List<VideoSectionResponse> sections = Collections.emptyList();
+        if (video.getId() != null) {
+            sections = videoSectionRepository.findByVideo(video).stream()
+                    .sorted(Comparator.comparingInt(VideoSection::getStartSec))
+                    .map(section -> new VideoSectionResponse(section.getTitle(),
+                            section.getStartSec(),
+                            section.getEndSec(),
+                            section.getSource().name()))
+                    .collect(Collectors.toList());
+        }
         return new VideoResponse(
                 video.getId(),
                 video.getArtist() != null ? video.getArtist().getId() : null,
