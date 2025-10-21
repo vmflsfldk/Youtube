@@ -16,6 +16,7 @@
   --focus-ring: rgba(99, 102, 241, 0.35);
   --gradient-primary: linear-gradient(135deg, #6366f1 0%, #22d3ee 100%);
   --playback-bar-translate-y: 0px;
+  --mobile-bottom-nav-height: 64px;
   font-family: 'Pretendard', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   color: var(--color-text-primary);
   background-color: var(--color-background);
@@ -622,6 +623,10 @@ body {
 }
 
 @media (max-width: 640px) {
+  :root {
+    --mobile-bottom-nav-height: 54px;
+  }
+
   .app-shell {
     padding: 28px 18px 108px;
   }
@@ -3800,6 +3805,12 @@ button:disabled:hover {
   border-radius: 20px 20px 0 0;
   gap: 0;
   box-shadow: 0 -12px 32px rgba(2, 6, 23, 0.55);
+  margin-bottom: var(--mobile-bottom-nav-offset, 0px);
+  z-index: 1100;
+}
+
+.playback-bar--mobile-collapsed--with-offset {
+  --mobile-bottom-nav-offset: calc(var(--mobile-bottom-nav-height, 64px) + env(safe-area-inset-bottom, 0px));
 }
 
 .playback-bar--mobile-collapsed .playback-bar__body,
