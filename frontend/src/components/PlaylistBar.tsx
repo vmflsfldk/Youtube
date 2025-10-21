@@ -13,6 +13,8 @@ import {
 
 const ClipPlayer = lazy(() => import('./ClipPlayer'));
 
+export type PlaybackRepeatMode = 'off' | 'one' | 'all';
+
 export interface PlaylistBarItem {
   itemId: number;
   key: string;
@@ -42,6 +44,8 @@ interface PlaylistBarProps {
   onPlayPause: () => void;
   onNext: () => void;
   onPrevious: () => void;
+  repeatMode: PlaybackRepeatMode;
+  onRepeatModeChange: (mode: PlaybackRepeatMode) => void;
   onToggleExpanded: () => void;
   onSelectItem: (key: string) => void;
   onRemoveItem: (itemId: number) => void | Promise<unknown>;
@@ -95,6 +99,24 @@ const RemoveIcon = () => (
   </svg>
 );
 
+const RepeatAllIcon = () => (
+  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+    <path
+      fill="currentColor"
+      d="M17 5H7a4 4 0 0 0-4 4v3h2V9a2 2 0 0 1 2-2h10v3l4-4-4-4v3zm0 14H7v-3l-4 4 4 4v-3h10a4 4 0 0 0 4-4v-3h-2v3a2 2 0 0 1-2 2z"
+    />
+  </svg>
+);
+
+const RepeatOneIcon = () => (
+  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+    <path
+      fill="currentColor"
+      d="M17 5H7a4 4 0 0 0-4 4v3h2V9a2 2 0 0 1 2-2h10v3l4-4-4-4v3zm-4 12h2V11h-3v1h1v5zm4 2H7v-3l-4 4 4 4v-3h10a4 4 0 0 0 4-4v-3h-2v3a2 2 0 0 1-2 2z"
+    />
+  </svg>
+);
+
 export default function PlaylistBar({
   items,
   currentItemKey,
@@ -108,6 +130,8 @@ export default function PlaylistBar({
   onPlayPause,
   onNext,
   onPrevious,
+  repeatMode,
+  onRepeatModeChange,
   onToggleExpanded,
   onSelectItem,
   onRemoveItem,
@@ -144,6 +168,20 @@ export default function PlaylistBar({
     ? '재생할 항목을 선택하세요.'
     : '재생 가능한 항목이 없습니다.';
 
+  const handleRepeatButtonClick = useCallback(
+    (mode: PlaybackRepeatMode) => {
+      if (!hasPlayableItems) {
+        return;
+      }
+      if (repeatMode === mode) {
+        onRepeatModeChange('off');
+        return;
+      }
+      onRepeatModeChange(mode);
+    },
+    [hasPlayableItems, onRepeatModeChange, repeatMode]
+  );
+
   const handleCreatePlaylistClick = useCallback(async () => {
     if (!canCreatePlaylist || isCreatingPlaylist) {
       return;
@@ -160,35 +198,74 @@ export default function PlaylistBar({
 
   const renderTransport = (className?: string) => {
     const disableTransport = !hasPlayableItems || !currentItem?.isPlayable;
+    const repeatAllActive = repeatMode === 'all';
+    const repeatOneActive = repeatMode === 'one';
+    const repeatAllLabel = repeatAllActive ? '전체 반복 끄기' : '전체 반복 켜기';
+    const repeatOneLabel = repeatOneActive ? '한 곡 반복 끄기' : '한 곡 반복 켜기';
+    const repeatAllClasses = ['playback-bar__button', 'playback-bar__button--toggle'];
+    const repeatOneClasses = ['playback-bar__button', 'playback-bar__button--toggle'];
+    if (repeatAllActive) {
+      repeatAllClasses.push('playback-bar__button--active');
+    }
+    if (repeatOneActive) {
+      repeatOneClasses.push('playback-bar__button--active');
+    }
+
     return (
       <div className={className ?? 'playback-bar__transport'} role="group" aria-label="재생 제어">
-        <button
-          type="button"
-          className="playback-bar__button"
-          onClick={onPrevious}
-          disabled={!hasPlayableItems}
-          aria-label="이전 항목"
-        >
-          <PreviousIcon />
-        </button>
-        <button
-          type="button"
-          className="playback-bar__button playback-bar__button--primary"
-          onClick={onPlayPause}
-          disabled={!hasPlayableItems}
-          aria-label={isPlaying ? '일시 정지' : '재생'}
-        >
-          {isPlaying && currentItem?.isPlayable && !disableTransport ? <PauseIcon /> : <PlayIcon />}
-        </button>
-        <button
-          type="button"
-          className="playback-bar__button"
-          onClick={onNext}
-          disabled={!hasPlayableItems}
-          aria-label="다음 항목"
-        >
-          <NextIcon />
-        </button>
+        <div className="playback-bar__transport-main" role="group" aria-label="기본 재생 제어">
+          <button
+            type="button"
+            className="playback-bar__button"
+            onClick={onPrevious}
+            disabled={!hasPlayableItems}
+            aria-label="이전 항목"
+          >
+            <PreviousIcon />
+          </button>
+          <button
+            type="button"
+            className="playback-bar__button playback-bar__button--primary"
+            onClick={onPlayPause}
+            disabled={!hasPlayableItems}
+            aria-label={isPlaying ? '일시 정지' : '재생'}
+          >
+            {isPlaying && currentItem?.isPlayable && !disableTransport ? <PauseIcon /> : <PlayIcon />}
+          </button>
+          <button
+            type="button"
+            className="playback-bar__button"
+            onClick={onNext}
+            disabled={!hasPlayableItems}
+            aria-label="다음 항목"
+          >
+            <NextIcon />
+          </button>
+        </div>
+        <div className="playback-bar__repeat-group" role="group" aria-label="반복 모드">
+          <button
+            type="button"
+            className={repeatAllClasses.join(' ')}
+            onClick={() => handleRepeatButtonClick('all')}
+            disabled={!hasPlayableItems}
+            aria-pressed={repeatAllActive}
+            aria-label={repeatAllLabel}
+            title={repeatAllLabel}
+          >
+            <RepeatAllIcon />
+          </button>
+          <button
+            type="button"
+            className={repeatOneClasses.join(' ')}
+            onClick={() => handleRepeatButtonClick('one')}
+            disabled={!hasPlayableItems}
+            aria-pressed={repeatOneActive}
+            aria-label={repeatOneLabel}
+            title={repeatOneLabel}
+          >
+            <RepeatOneIcon />
+          </button>
+        </div>
       </div>
     );
   };
@@ -395,7 +472,7 @@ export default function PlaylistBar({
           endSec={typeof currentItem.endSec === 'number' ? currentItem.endSec : undefined}
           autoplay={isPlaying}
           playing={isPlaying}
-          shouldLoop={false}
+          shouldLoop={repeatMode === 'one'}
           onEnded={onTrackEnded}
         />
       </Suspense>
