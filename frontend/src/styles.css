@@ -115,6 +115,10 @@ body {
   box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.08);
 }
 
+.auth-panel {
+  outline: none;
+}
+
 .sidebar__auth-header h2 {
   margin: 0;
   font-size: 1.2rem;
@@ -170,6 +174,31 @@ body {
 .google-login-button [role='button'] {
   min-height: 52px;
   border-radius: 16px !important;
+}
+
+@media (max-width: 960px) {
+  .auth-panel {
+    width: 100%;
+  }
+
+  .auth-panel--mobile {
+    margin: 0 0 32px;
+    box-shadow: var(--shadow-soft);
+  }
+
+  .auth-panel--mobile .sidebar__auth-content--guest {
+    align-items: stretch;
+  }
+
+  .auth-panel--mobile .sidebar__auth-content--guest .sidebar__auth-social,
+  .auth-panel--mobile .sidebar__auth-content--guest .stacked-form,
+  .auth-panel--mobile .sidebar__auth-content--guest .sidebar__auth-footer {
+    max-width: none;
+  }
+
+  .auth-panel--mobile .sidebar__auth-content--guest .sidebar__auth-social {
+    align-self: stretch;
+  }
 }
 
 .clip-player {
