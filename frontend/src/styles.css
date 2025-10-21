@@ -15,7 +15,6 @@
   --accent-warm: #f59e0b;
   --focus-ring: rgba(99, 102, 241, 0.35);
   --gradient-primary: linear-gradient(135deg, #6366f1 0%, #22d3ee 100%);
-  --playback-bar-translate-y: 0px;
   --mobile-bottom-nav-height: 64px;
   font-family: 'Pretendard', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   color: var(--color-text-primary);
@@ -3936,7 +3935,6 @@ button:disabled:hover {
   left: 0;
   right: 0;
   bottom: 0;
-  transform: translateY(var(--playback-bar-translate-y));
   transition: transform 220ms ease-out;
   width: auto;
   padding: 10px 16px;
@@ -4577,7 +4575,6 @@ button:disabled:hover {
     left: 16px;
     right: 16px;
     bottom: 16px;
-    transform: translateY(var(--playback-bar-translate-y));
     transition: transform 220ms ease-out;
     width: auto;
     padding: 14px;
