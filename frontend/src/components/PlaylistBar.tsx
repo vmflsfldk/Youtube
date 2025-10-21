@@ -424,6 +424,44 @@ export default function PlaylistBar({
     );
   };
 
+  const clipPlayerContent = useMemo(() => {
+    if (!currentItem || !currentItem.isPlayable || !currentItem.youtubeVideoId) {
+      return null;
+    }
+
+    return (
+      <Suspense
+        fallback={
+          <div className="playback-bar__player-loading" role="status" aria-live="polite">
+            플레이어 준비 중…
+          </div>
+        }
+      >
+        <ClipPlayer
+          youtubeVideoId={currentItem.youtubeVideoId}
+          startSec={currentItem.startSec}
+          endSec={typeof currentItem.endSec === 'number' ? currentItem.endSec : undefined}
+          autoplay={isPlaying}
+          playing={isPlaying}
+          shouldLoop={repeatMode === 'one'}
+          onEnded={onTrackEnded}
+        />
+      </Suspense>
+    );
+  }, [currentItem, isPlaying, onTrackEnded, repeatMode]);
+
+  const hiddenPlayerContent = useMemo(() => {
+    if (!isMobileViewport || !clipPlayerContent) {
+      return null;
+    }
+
+    return (
+      <div className="playback-bar__player-hidden" aria-hidden="true">
+        {clipPlayerContent}
+      </div>
+    );
+  }, [clipPlayerContent, isMobileViewport]);
+
   const renderPlayerContent = () => {
     if (!currentItem || !currentItem.isPlayable) {
       const placeholderClassName = isMobileViewport
@@ -436,57 +474,25 @@ export default function PlaylistBar({
       );
     }
 
-    const clipPlayerElement = currentItem.youtubeVideoId ? (
-        <Suspense
-          fallback={
-            <div className="playback-bar__player-loading" role="status" aria-live="polite">
-              플레이어 준비 중…
-            </div>
-          }
-        >
-          <ClipPlayer
-            youtubeVideoId={currentItem.youtubeVideoId}
-            startSec={currentItem.startSec}
-            endSec={typeof currentItem.endSec === 'number' ? currentItem.endSec : undefined}
-            autoplay={isPlaying}
-            playing={isPlaying}
-            shouldLoop={repeatMode === 'one'}
-            onEnded={onTrackEnded}
-          />
-        </Suspense>
-      ) : null;
-
     if (isMobileViewport) {
-      const hiddenPlayer = clipPlayerElement ? (
-        <div className="playback-bar__player-hidden" aria-hidden="true">
-          {clipPlayerElement}
-        </div>
-      ) : null;
-
       if (currentItem.thumbnailUrl) {
         return (
-          <>
-            <img
-              className="playback-bar__player-compact-thumbnail"
-              src={currentItem.thumbnailUrl}
-              alt={currentItem.title}
-            />
-            {hiddenPlayer}
-          </>
+          <img
+            className="playback-bar__player-compact-thumbnail"
+            src={currentItem.thumbnailUrl}
+            alt={currentItem.title}
+          />
         );
       }
 
       return (
-        <>
-          <div className="playback-bar__player-compact-placeholder" aria-live="polite">
-            {placeholderMessage}
-          </div>
-          {hiddenPlayer}
-        </>
+        <div className="playback-bar__player-compact-placeholder" aria-live="polite">
+          {placeholderMessage}
+        </div>
       );
     }
 
-    if (!clipPlayerElement) {
+    if (!clipPlayerContent) {
       return (
         <div className="playback-bar__player-placeholder" aria-live="polite">
           {placeholderMessage}
@@ -494,128 +500,134 @@ export default function PlaylistBar({
       );
     }
 
-    return clipPlayerElement;
+    return clipPlayerContent;
   };
 
   if (isMobileCollapsed) {
     const collapsedTitle = currentItem?.title ?? placeholderMessage;
     const collapsedIndexLabel = currentIndex >= 0 ? `${currentIndex + 1}/${items.length}` : `0/${items.length}`;
     return (
-      <div
-        className="playback-bar playback-bar--mobile-collapsed"
-        aria-label="재생 상태"
-        style={playbackBarStyle}
-      >
+      <>
+        {hiddenPlayerContent}
         <div
-          className="playback-bar__drag-handle"
-          onTouchStart={handleMobileDragStart}
-          onTouchMove={handleMobileDragMove}
-          onTouchEnd={handleMobileDragEnd}
-          onTouchCancel={handleMobileDragCancel}
+          className="playback-bar playback-bar--mobile-collapsed"
+          aria-label="재생 상태"
+          style={playbackBarStyle}
         >
-          <div className="playback-bar__drag-grip" />
-        </div>
-        <div className="playback-bar__collapsed-body">
-          <button
-            type="button"
-            className="playback-bar__collapsed-toggle"
-            onClick={onToggleExpanded}
-            aria-expanded={false}
-            aria-label="재생 목록 펼치기"
+          <div
+            className="playback-bar__drag-handle"
+            onTouchStart={handleMobileDragStart}
+            onTouchMove={handleMobileDragMove}
+            onTouchEnd={handleMobileDragEnd}
+            onTouchCancel={handleMobileDragCancel}
           >
-            {currentItem?.thumbnailUrl ? (
-              <img
-                className="playback-bar__collapsed-thumbnail"
-                src={currentItem.thumbnailUrl}
-                alt={currentItem.title}
-              />
-            ) : (
-              <div className="playback-bar__collapsed-placeholder" aria-live="polite">
-                {placeholderMessage}
-              </div>
-            )}
-            <div className="playback-bar__collapsed-meta" aria-live="polite">
-              <div className="playback-bar__collapsed-label-row">
-                <span className="playback-bar__collapsed-label">Now Playing</span>
-                <span className="playback-bar__collapsed-index">{collapsedIndexLabel}</span>
-              </div>
-              <span className="playback-bar__collapsed-title">{collapsedTitle}</span>
-              {currentItem?.subtitle && (
-                <span className="playback-bar__collapsed-subtitle">{currentItem.subtitle}</span>
+            <div className="playback-bar__drag-grip" />
+          </div>
+          <div className="playback-bar__collapsed-body">
+            <button
+              type="button"
+              className="playback-bar__collapsed-toggle"
+              onClick={onToggleExpanded}
+              aria-expanded={false}
+              aria-label="재생 목록 펼치기"
+            >
+              {currentItem?.thumbnailUrl ? (
+                <img
+                  className="playback-bar__collapsed-thumbnail"
+                  src={currentItem.thumbnailUrl}
+                  alt={currentItem.title}
+                />
+              ) : (
+                <div className="playback-bar__collapsed-placeholder" aria-live="polite">
+                  {placeholderMessage}
+                </div>
               )}
+              <div className="playback-bar__collapsed-meta" aria-live="polite">
+                <div className="playback-bar__collapsed-label-row">
+                  <span className="playback-bar__collapsed-label">Now Playing</span>
+                  <span className="playback-bar__collapsed-index">{collapsedIndexLabel}</span>
+                </div>
+                <span className="playback-bar__collapsed-title">{collapsedTitle}</span>
+                {currentItem?.subtitle && (
+                  <span className="playback-bar__collapsed-subtitle">{currentItem.subtitle}</span>
+                )}
+              </div>
+            </button>
+            <div className="playback-bar__collapsed-controls">
+              {renderTransport('playback-bar__transport playback-bar__transport--compact')}
             </div>
-          </button>
-          <div className="playback-bar__collapsed-controls">
-            {renderTransport('playback-bar__transport playback-bar__transport--compact')}
           </div>
         </div>
-      </div>
+      </>
     );
   }
 
   return (
-    <div
-      className="playback-bar"
-      aria-label="재생 상태"
-      style={playbackBarStyle}
-    >
-      {isMobileViewport && (
-        <div
-          className="playback-bar__drag-handle"
-          onTouchStart={handleMobileDragStart}
-          onTouchMove={handleMobileDragMove}
-          onTouchEnd={handleMobileDragEnd}
-          onTouchCancel={handleMobileDragCancel}
-        >
-          <div className="playback-bar__drag-grip" />
-        </div>
-      )}
-      <div className="playback-bar__body">
-        <div
-          className={`playback-bar__player${isMobileViewport ? ' playback-bar__player--compact' : ''}`}
-        >
-          {renderPlayerContent()}
-        </div>
-        <div className="playback-bar__info">
-          <div className="playback-bar__info-row">
-            <div className="playback-bar__now-playing">
-              <span className="playback-bar__now-playing-label">Now Playing</span>
-              <span className="playback-bar__now-playing-index">
-                {currentIndex >= 0 ? `${currentIndex + 1}/${items.length}` : `0/${items.length}`}
-              </span>
-            </div>
-            <button
-              type="button"
-              className="playback-bar__toggle"
-              onClick={onToggleExpanded}
-              aria-expanded={isExpanded}
-              aria-controls="playbackBarQueue"
-            >
-              <span>{isExpanded ? '목록 접기' : '목록 펼치기'}</span>
-              <ChevronIcon direction={isExpanded ? 'down' : 'up'} />
-            </button>
-          </div>
-          <div className="playback-bar__track-meta" aria-live="polite">
-            <h2 className="playback-bar__title">{currentItem?.title ?? '대기 중'}</h2>
-            {currentItem?.subtitle && (
-              <p className="playback-bar__subtitle">{currentItem.subtitle}</p>
-            )}
-          </div>
-          {renderControls()}
-        </div>
-      </div>
+    <>
+      {hiddenPlayerContent}
       <div
-        id="playbackBarQueue"
-        className={`playback-bar__queue${isExpanded ? ' playback-bar__queue--visible' : ''}`}
+        className="playback-bar"
+        aria-label="재생 상태"
+        style={playbackBarStyle}
       >
-        {items.length === 0 ? (
-          <p className="playback-bar__queue-empty">재생 목록이 비어 있습니다.</p>
-        ) : (
-          <ul className="playback-bar__queue-list">
-            {items.map((item, index) => renderQueueItem(item, index))}
-          </ul>
+        {isMobileViewport && (
+          <div
+            className="playback-bar__drag-handle"
+            onTouchStart={handleMobileDragStart}
+            onTouchMove={handleMobileDragMove}
+            onTouchEnd={handleMobileDragEnd}
+            onTouchCancel={handleMobileDragCancel}
+          >
+            <div className="playback-bar__drag-grip" />
+          </div>
         )}
+        <div className="playback-bar__body">
+          <div
+            className={`playback-bar__player${isMobileViewport ? ' playback-bar__player--compact' : ''}`}
+          >
+            {renderPlayerContent()}
+          </div>
+          <div className="playback-bar__info">
+            <div className="playback-bar__info-row">
+              <div className="playback-bar__now-playing">
+                <span className="playback-bar__now-playing-label">Now Playing</span>
+                <span className="playback-bar__now-playing-index">
+                  {currentIndex >= 0 ? `${currentIndex + 1}/${items.length}` : `0/${items.length}`}
+                </span>
+              </div>
+              <button
+                type="button"
+                className="playback-bar__toggle"
+                onClick={onToggleExpanded}
+                aria-expanded={isExpanded}
+                aria-controls="playbackBarQueue"
+              >
+                <span>{isExpanded ? '목록 접기' : '목록 펼치기'}</span>
+                <ChevronIcon direction={isExpanded ? 'down' : 'up'} />
+              </button>
+            </div>
+            <div className="playback-bar__track-meta" aria-live="polite">
+              <h2 className="playback-bar__title">{currentItem?.title ?? '대기 중'}</h2>
+              {currentItem?.subtitle && (
+                <p className="playback-bar__subtitle">{currentItem.subtitle}</p>
+              )}
+            </div>
+            {renderControls()}
+          </div>
+        </div>
+        <div
+          id="playbackBarQueue"
+          className={`playback-bar__queue${isExpanded ? ' playback-bar__queue--visible' : ''}`}
+        >
+          {items.length === 0 ? (
+            <p className="playback-bar__queue-empty">재생 목록이 비어 있습니다.</p>
+          ) : (
+            <ul className="playback-bar__queue-list">
+              {items.map((item, index) => renderQueueItem(item, index))}
+            </ul>
+          )}
+        </div>
       </div>
-    </div>
+    </>
   );
 }
