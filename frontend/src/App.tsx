@@ -15,7 +15,7 @@ import {
 import axios from 'axios';
 import ClipList, { type ClipListRenderContext, type ClipListRenderResult } from './components/ClipList';
 import PlaylistBar, { type PlaylistBarItem } from './components/PlaylistBar';
-import GoogleLoginButton from './components/GoogleLoginButton';
+import AuthPanel from './components/AuthPanel';
 import utahubLogo from './assets/utahub-logo.svg';
 import ArtistLibraryGrid from './ArtistLibraryGrid';
 import ArtistLibraryCard, { type ArtistLibraryCardData } from './components/ArtistLibraryCard';
@@ -4236,53 +4236,19 @@ export default function App() {
             <h1>UtaHub Studio</h1>
           </div>
         </div>
-        <div className="sidebar__auth-card">
-          <div className="sidebar__auth-header">
-            <h2>{isAuthenticated ? '내 계정' : '로그인'}</h2>
-            <p>
-              {isAuthenticated
-                ? '닉네임을 바로 수정하고 계정을 관리하세요.'
-                : '아티스트 관리를 위해 Google 계정으로 로그인하세요.'}
-            </p>
-          </div>
-          {isAuthenticated ? (
-            <div className="sidebar__auth-content">
-              <p className="login-status__message">{greetingMessage}</p>
-              {isLoadingUser && <p className="sidebar__auth-muted">사용자 정보를 불러오는 중...</p>}
-              <form className="stacked-form sidebar__nickname-form" onSubmit={handleNicknameSubmit}>
-                <label htmlFor="nicknameInput">닉네임</label>
-                <input
-                  id="nicknameInput"
-                  placeholder="닉네임"
-                  value={nicknameInput}
-                  onChange={(event) => setNicknameInput(event.target.value)}
-                />
-                <button type="submit">닉네임 저장</button>
-              </form>
-              {nicknameStatus && <p className="login-status__message">{nicknameStatus}</p>}
-              {nicknameError && <p className="login-status__message error">{nicknameError}</p>}
-              <div className="sidebar__auth-actions">
-                <button type="button" onClick={handleSignOut} className="sidebar__auth-button">
-                  로그아웃
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="sidebar__auth-content sidebar__auth-content--guest">
-              <div className="sidebar__auth-social">
-                {isGoogleReady ? (
-                  <GoogleLoginButton
-                    clientId="245943329145-os94mkp21415hadulir67v1i0lqjrcnq.apps.googleusercontent.com"
-                    onCredential={handleGoogleCredential}
-                  />
-                ) : (
-                  <span className="sidebar__auth-muted">구글 로그인 준비 중...</span>
-                )}
-              </div>
-              <p className="sidebar__auth-muted">Google 계정으로 로그인 후 전체 기능을 이용할 수 있습니다.</p>
-            </div>
-          )}
-        </div>
+        <AuthPanel
+          isAuthenticated={isAuthenticated}
+          greetingMessage={greetingMessage}
+          isLoadingUser={isLoadingUser}
+          nicknameInput={nicknameInput}
+          onNicknameInputChange={(value) => setNicknameInput(value)}
+          onNicknameSubmit={handleNicknameSubmit}
+          nicknameStatus={nicknameStatus}
+          nicknameError={nicknameError}
+          onSignOut={handleSignOut}
+          isGoogleReady={isGoogleReady}
+          onGoogleCredential={handleGoogleCredential}
+        />
         <nav className="sidebar__nav">
           {sidebarTabs.map((tab) => {
             const isActive = activeSection === tab.id;
@@ -4322,6 +4288,23 @@ export default function App() {
             <p className="content-header__description">{activeSidebarTab.description}</p>
           </div>
         </header>
+
+        {isMobileViewport && (
+          <AuthPanel
+            className="auth-panel--mobile"
+            isAuthenticated={isAuthenticated}
+            greetingMessage={greetingMessage}
+            isLoadingUser={isLoadingUser}
+            nicknameInput={nicknameInput}
+            onNicknameInputChange={(value) => setNicknameInput(value)}
+            onNicknameSubmit={handleNicknameSubmit}
+            nicknameStatus={nicknameStatus}
+            nicknameError={nicknameError}
+            onSignOut={handleSignOut}
+            isGoogleReady={isGoogleReady}
+            onGoogleCredential={handleGoogleCredential}
+          />
+        )}
 
         <div className="content-panels">
 
