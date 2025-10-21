@@ -1256,6 +1256,7 @@ export default function App() {
   const [isPlaybackActive, setIsPlaybackActive] = useState(false);
   const [playbackRepeatMode, setPlaybackRepeatMode] = useState<PlaybackRepeatMode>('off');
   const [activePlaybackKey, setActivePlaybackKey] = useState<string | null>(null);
+  const [playbackActivationNonce, setPlaybackActivationNonce] = useState(0);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [selectedVideo, setSelectedVideo] = useState<number | null>(null);
   const [clipCandidates, setClipCandidates] = useState<ClipCandidateResponse[]>([]);
@@ -3848,6 +3849,7 @@ export default function App() {
       if (!item || !item.isPlayable) {
         return false;
       }
+      setPlaybackActivationNonce((previous) => previous + 1);
       setActivePlaybackKey(item.key);
       setIsPlaybackActive(true);
       return true;
@@ -3888,14 +3890,13 @@ export default function App() {
     if (!currentPlaybackItem || !currentPlaybackItem.isPlayable) {
       const nextPlayable = playbackBarItems.find((item) => item.isPlayable);
       if (nextPlayable) {
-        setActivePlaybackKey(nextPlayable.key);
-        setIsPlaybackActive(true);
+        activatePlaybackItem(nextPlayable);
       }
       return;
     }
 
     setIsPlaybackActive((previous) => !previous);
-  }, [currentPlaybackItem, playbackBarItems]);
+  }, [activatePlaybackItem, currentPlaybackItem, playbackBarItems]);
 
   const handlePlaybackNext = useCallback(() => {
     if (playbackBarItems.length === 0) {
@@ -3968,12 +3969,13 @@ export default function App() {
       if (!target) {
         return;
       }
-      setActivePlaybackKey(target.key);
       if (target.isPlayable) {
-        setIsPlaybackActive(true);
+        activatePlaybackItem(target);
+        return;
       }
+      setActivePlaybackKey(target.key);
     },
-    [playbackBarItems]
+    [activatePlaybackItem, playbackBarItems]
   );
 
   const handlePlaybackToggleExpanded = useCallback(() => {
@@ -5535,6 +5537,7 @@ export default function App() {
         items={playbackBarItems}
         currentItemKey={activePlaybackKey}
         currentIndex={currentPlaybackIndex}
+        playbackActivationNonce={playbackActivationNonce}
         isPlaying={isPlaybackActive}
         isExpanded={isPlaybackExpanded}
         isMobileViewport={isMobileViewport}

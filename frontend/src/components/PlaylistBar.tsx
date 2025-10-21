@@ -35,6 +35,7 @@ interface PlaylistBarProps {
   items: PlaylistBarItem[];
   currentItemKey: string | null;
   currentIndex: number;
+  playbackActivationNonce: number;
   isPlaying: boolean;
   isExpanded: boolean;
   isMobileViewport: boolean;
@@ -121,6 +122,7 @@ export default function PlaylistBar({
   items,
   currentItemKey,
   currentIndex,
+  playbackActivationNonce,
   isPlaying,
   isExpanded,
   isMobileViewport,
@@ -445,6 +447,7 @@ export default function PlaylistBar({
         }
       >
         <ClipPlayer
+          key={playbackActivationNonce}
           youtubeVideoId={currentItem.youtubeVideoId}
           startSec={currentItem.startSec}
           endSec={typeof currentItem.endSec === 'number' ? currentItem.endSec : undefined}
@@ -452,10 +455,11 @@ export default function PlaylistBar({
           playing={isPlaying}
           shouldLoop={repeatMode === 'one'}
           onEnded={onTrackEnded}
+          activationNonce={playbackActivationNonce}
         />
       </Suspense>
     );
-  }, [currentItem, isPlaying, onTrackEnded, repeatMode]);
+  }, [currentItem, isPlaying, onTrackEnded, playbackActivationNonce, repeatMode]);
 
   const hiddenPlayerContent = useMemo(() => {
     if (!isMobileViewport || !clipPlayerContent) {
