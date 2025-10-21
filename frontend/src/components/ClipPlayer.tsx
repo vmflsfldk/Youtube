@@ -120,10 +120,11 @@ export default function ClipPlayer({
 
     if (playing) {
       playerRef.current.playVideo();
-    } else {
-      playerRef.current.pauseVideo();
+      return;
     }
-  }, [playing]);
+
+    playerRef.current.pauseVideo();
+  }, [playing, youtubeVideoId, startSec, endSec]);
 
   return (
     <div className="clip-player">
