@@ -9,6 +9,7 @@ import com.example.youtube.service.ClipAutoDetectionService;
 import com.example.youtube.service.ClipService;
 import jakarta.validation.Valid;
 import java.util.List;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -17,6 +18,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/api")
@@ -44,7 +46,7 @@ public class ClipController {
         if (videoId != null) {
             return clipService.listByVideo(videoId);
         }
-        throw new IllegalArgumentException("artistId or videoId must be provided");
+        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "artistId or videoId must be provided");
     }
 
     @PostMapping("/clips/auto-detect")
