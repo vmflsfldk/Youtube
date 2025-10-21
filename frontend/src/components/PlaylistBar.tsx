@@ -170,6 +170,12 @@ export default function PlaylistBar({
     '--playback-bar-translate-y': string;
   };
 
+  const resetDragState = useCallback(() => {
+    dragStateRef.current = null;
+    setDragOffset(0);
+    setIsDragActive(false);
+  }, []);
+
   const playbackBarStyle = useMemo<PlaybackBarStyle>(
     () => ({
       '--playback-bar-translate-y': `${dragOffset}px`,
@@ -312,6 +318,10 @@ export default function PlaylistBar({
       if (!isMobileViewport) {
         return;
       }
+      if (event.touches.length !== 1) {
+        resetDragState();
+        return;
+      }
       const touch = event.touches[0];
       if (!touch) {
         return;
@@ -325,7 +335,7 @@ export default function PlaylistBar({
       setDragOffset(0);
       setIsDragActive(true);
     },
-    [isMobileViewport, isExpanded]
+    [isExpanded, isMobileViewport, resetDragState]
   );
 
   const handleMobileDragMove = useCallback(
@@ -333,6 +343,13 @@ export default function PlaylistBar({
       const state = dragStateRef.current;
       if (!state?.isDragging) {
         return;
+      }
+      if (event.touches.length !== 1) {
+        resetDragState();
+        return;
+      }
+      if (event.cancelable) {
+        event.preventDefault();
       }
       const touch = event.touches[0];
       if (!touch) {
@@ -356,14 +373,8 @@ export default function PlaylistBar({
         onToggleExpanded();
       }
     },
-    [onToggleExpanded]
+    [onToggleExpanded, resetDragState]
   );
-
-  const resetDragState = useCallback(() => {
-    dragStateRef.current = null;
-    setDragOffset(0);
-    setIsDragActive(false);
-  }, []);
 
   const handleMobileDragEnd = useCallback(
     (event: TouchEvent<HTMLDivElement>) => {
@@ -380,10 +391,14 @@ export default function PlaylistBar({
   }, [resetDragState]);
 
   useEffect(() => {
-    dragStateRef.current = null;
-    setDragOffset(0);
-    setIsDragActive(false);
-  }, [isExpanded]);
+    resetDragState();
+  }, [isExpanded, resetDragState]);
+
+  useEffect(() => {
+    if (!isMobileViewport) {
+      resetDragState();
+    }
+  }, [isMobileViewport, resetDragState]);
 
   const renderQueueItem = (item: PlaylistBarItem, index: number) => {
     const isActive = item.key === currentItem?.key;
