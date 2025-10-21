@@ -13,11 +13,14 @@ import com.example.youtube.model.Clip;
 import com.example.youtube.model.Playlist;
 import com.example.youtube.model.UserAccount;
 import com.example.youtube.model.Video;
+import com.example.youtube.model.VideoSection;
+import com.example.youtube.model.VideoSectionSource;
 import com.example.youtube.repository.ArtistRepository;
 import com.example.youtube.repository.ClipRepository;
 import com.example.youtube.repository.PlaylistRepository;
 import com.example.youtube.repository.UserAccountRepository;
 import com.example.youtube.repository.VideoRepository;
+import com.example.youtube.repository.VideoSectionRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
@@ -58,6 +61,9 @@ class PlaylistControllerIntegrationTest {
     @Autowired
     private PlaylistRepository playlistRepository;
 
+    @Autowired
+    private VideoSectionRepository videoSectionRepository;
+
     private UserAccount user;
     private Playlist playlist;
     private Video video;
@@ -76,6 +82,10 @@ class PlaylistControllerIntegrationTest {
         video.setThumbnailUrl("https://example.com/thumb.jpg");
         video.setChannelId("channel-123");
         videoRepository.save(video);
+
+        VideoSection laterSection = new VideoSection(video, "Later", 90, 120, VideoSectionSource.COMMENT);
+        VideoSection earlySection = new VideoSection(video, "Early", 0, 60, VideoSectionSource.YOUTUBE_CHAPTER);
+        videoSectionRepository.saveAll(List.of(laterSection, earlySection));
 
         clip = new Clip(video, "Test Clip", 10, 30);
         clip.setTags(List.of("tag1", "tag2"));
@@ -105,6 +115,9 @@ class PlaylistControllerIntegrationTest {
                 .andExpect(jsonPath("$.items", hasSize(1)))
                 .andExpect(jsonPath("$.items[0].type").value("video"))
                 .andExpect(jsonPath("$.items[0].video.id").value(video.getId()))
+                .andExpect(jsonPath("$.items[0].video.sections", hasSize(2)))
+                .andExpect(jsonPath("$.items[0].video.sections[0].title").value("Early"))
+                .andExpect(jsonPath("$.items[0].video.sections[1].title").value("Later"))
                 .andReturn();
 
         JsonNode playlistAfterVideo = objectMapper.readTree(addVideoResult.getResponse().getContentAsString());
@@ -121,6 +134,7 @@ class PlaylistControllerIntegrationTest {
                 .andExpect(jsonPath("$.items[1].type").value("clip"))
                 .andExpect(jsonPath("$.items[1].clip.id").value(clip.getId()))
                 .andExpect(jsonPath("$.items[1].ordering").value(2))
+                .andExpect(jsonPath("$.items[0].video.sections", hasSize(2)))
                 .andReturn();
 
         JsonNode playlistAfterClip = objectMapper.readTree(addClipResult.getResponse().getContentAsString());
@@ -139,6 +153,8 @@ class PlaylistControllerIntegrationTest {
                 .andExpect(jsonPath("$", hasSize(1)))
                 .andExpect(jsonPath("$[0].id").value(playlist.getId()))
                 .andExpect(jsonPath("$[0].items", hasSize(1)))
-                .andExpect(jsonPath("$[0].items[0].type").value("video"));
+                .andExpect(jsonPath("$[0].items[0].type").value("video"))
+                .andExpect(jsonPath("$[0].items[0].video.sections", hasSize(2)))
+                .andExpect(jsonPath("$[0].items[0].video.sections[0].title").value("Early"));
     }
 }
