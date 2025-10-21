@@ -5448,6 +5448,7 @@ export default function App() {
         currentIndex={currentPlaybackIndex}
         isPlaying={isPlaybackActive}
         isExpanded={isPlaybackExpanded}
+        isMobileViewport={isMobileViewport}
         canCreatePlaylist={isAuthenticated}
         canModifyPlaylist={canModifyActivePlaylist}
         onCreatePlaylist={handleCreatePlaylist}

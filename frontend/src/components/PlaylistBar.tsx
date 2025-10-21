@@ -31,6 +31,7 @@ interface PlaylistBarProps {
   currentIndex: number;
   isPlaying: boolean;
   isExpanded: boolean;
+  isMobileViewport: boolean;
   canCreatePlaylist: boolean;
   canModifyPlaylist: boolean;
   onCreatePlaylist: () => void | Promise<unknown>;
@@ -96,6 +97,7 @@ export default function PlaylistBar({
   currentIndex,
   isPlaying,
   isExpanded,
+  isMobileViewport,
   canCreatePlaylist,
   canModifyPlaylist,
   onCreatePlaylist,
@@ -114,6 +116,9 @@ export default function PlaylistBar({
   );
 
   const hasPlayableItems = items.some((item) => item.isPlayable);
+  const placeholderMessage = hasPlayableItems
+    ? '재생할 항목을 선택하세요.'
+    : '재생 가능한 항목이 없습니다.';
 
   const handleCreatePlaylistClick = useCallback(async () => {
     if (!canCreatePlaylist || isCreatingPlaylist) {
@@ -237,35 +242,68 @@ export default function PlaylistBar({
     );
   };
 
+  const renderPlayerContent = () => {
+    if (!currentItem || !currentItem.isPlayable) {
+      const placeholderClassName = isMobileViewport
+        ? 'playback-bar__player-compact-placeholder'
+        : 'playback-bar__player-placeholder';
+      return (
+        <div className={placeholderClassName} aria-live="polite">
+          {placeholderMessage}
+        </div>
+      );
+    }
+
+    if (isMobileViewport) {
+      return currentItem.thumbnailUrl ? (
+        <img
+          className="playback-bar__player-compact-thumbnail"
+          src={currentItem.thumbnailUrl}
+          alt={currentItem.title}
+        />
+      ) : (
+        <div className="playback-bar__player-compact-placeholder" aria-live="polite">
+          {placeholderMessage}
+        </div>
+      );
+    }
+
+    if (!currentItem.youtubeVideoId) {
+      return (
+        <div className="playback-bar__player-placeholder" aria-live="polite">
+          {placeholderMessage}
+        </div>
+      );
+    }
+
+    return (
+      <Suspense
+        fallback={
+          <div className="playback-bar__player-loading" role="status" aria-live="polite">
+            플레이어 준비 중…
+          </div>
+        }
+      >
+        <ClipPlayer
+          youtubeVideoId={currentItem.youtubeVideoId}
+          startSec={currentItem.startSec}
+          endSec={typeof currentItem.endSec === 'number' ? currentItem.endSec : undefined}
+          autoplay={isPlaying}
+          playing={isPlaying}
+          shouldLoop={false}
+          onEnded={onTrackEnded}
+        />
+      </Suspense>
+    );
+  };
+
   return (
     <div className="playback-bar" aria-label="재생 상태">
       <div className="playback-bar__body">
-        <div className="playback-bar__player">
-          {currentItem && currentItem.youtubeVideoId && currentItem.isPlayable ? (
-            <Suspense
-              fallback={
-                <div className="playback-bar__player-loading" role="status" aria-live="polite">
-                  플레이어 준비 중…
-                </div>
-              }
-            >
-              <ClipPlayer
-                youtubeVideoId={currentItem.youtubeVideoId}
-                startSec={currentItem.startSec}
-                endSec={typeof currentItem.endSec === 'number' ? currentItem.endSec : undefined}
-                autoplay={isPlaying}
-                playing={isPlaying}
-                shouldLoop={false}
-                onEnded={onTrackEnded}
-              />
-            </Suspense>
-          ) : (
-            <div className="playback-bar__player-placeholder" aria-live="polite">
-              {hasPlayableItems
-                ? '재생할 항목을 선택하세요.'
-                : '재생 가능한 항목이 없습니다.'}
-            </div>
-          )}
+        <div
+          className={`playback-bar__player${isMobileViewport ? ' playback-bar__player--compact' : ''}`}
+        >
+          {renderPlayerContent()}
         </div>
         <div className="playback-bar__info">
           <div className="playback-bar__info-row">
