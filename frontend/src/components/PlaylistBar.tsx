@@ -1,7 +1,6 @@
 import {
   Suspense,
   lazy,
-  type CSSProperties,
   type MouseEvent,
   type TouchEvent,
   useCallback,
@@ -10,7 +9,7 @@ import {
   useRef,
   useState
 } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, motion, useMotionValue, useSpring } from 'framer-motion';
 
 const ClipPlayer = lazy(() => import('./ClipPlayer'));
 
@@ -157,8 +156,12 @@ export default function PlaylistBar({
   onTrackEnded
 }: PlaylistBarProps) {
   const [isCreatingPlaylist, setIsCreatingPlaylist] = useState(false);
-  const [dragOffset, setDragOffset] = useState(0);
-  const [isDragActive, setIsDragActive] = useState(false);
+  const dragTranslateY = useMotionValue(0);
+  const animatedTranslateY = useSpring(dragTranslateY, {
+    stiffness: 520,
+    damping: 42,
+    mass: 0.8
+  });
   const dragStateRef = useRef<{
     startY: number;
     isDragging: boolean;
@@ -166,23 +169,12 @@ export default function PlaylistBar({
     expandedAtStart: boolean;
   } | null>(null);
   const DRAG_THRESHOLD_PX = 48;
-  type PlaybackBarStyle = CSSProperties & {
-    '--playback-bar-translate-y': string;
-  };
 
   const resetDragState = useCallback(() => {
     dragStateRef.current = null;
-    setDragOffset(0);
-    setIsDragActive(false);
-  }, []);
-
-  const playbackBarStyle = useMemo<PlaybackBarStyle>(
-    () => ({
-      '--playback-bar-translate-y': `${dragOffset}px`,
-      ...(isDragActive ? { transition: 'none' } : {})
-    }),
-    [dragOffset, isDragActive]
-  );
+    dragTranslateY.stop();
+    dragTranslateY.set(0);
+  }, [dragTranslateY]);
   const currentItem = useMemo(
     () => items.find((item) => item.key === currentItemKey) ?? null,
     [items, currentItemKey]
@@ -332,10 +324,10 @@ export default function PlaylistBar({
         hasToggled: false,
         expandedAtStart: isExpanded
       };
-      setDragOffset(0);
-      setIsDragActive(true);
+      dragTranslateY.stop();
+      dragTranslateY.set(0);
     },
-    [isExpanded, isMobileViewport, resetDragState]
+    [dragTranslateY, isExpanded, isMobileViewport, resetDragState]
   );
 
   const handleMobileDragMove = useCallback(
@@ -359,7 +351,7 @@ export default function PlaylistBar({
       const nextOffset = state.expandedAtStart
         ? Math.max(0, deltaY)
         : Math.min(0, deltaY);
-      setDragOffset(nextOffset);
+      dragTranslateY.set(nextOffset);
 
       if (state.hasToggled) {
         return;
@@ -373,7 +365,7 @@ export default function PlaylistBar({
         onToggleExpanded();
       }
     },
-    [onToggleExpanded, resetDragState]
+    [dragTranslateY, onToggleExpanded, resetDragState]
   );
 
   const handleMobileDragEnd = useCallback(
@@ -558,7 +550,7 @@ export default function PlaylistBar({
           key="playbackBarMobile"
           className={collapsedClassName}
           aria-label="재생 상태"
-          style={playbackBarStyle}
+          style={{ y: animatedTranslateY }}
           initial={playbackBarVariants.initial}
           animate={playbackBarVariants.animate}
           exit={playbackBarVariants.exit}
@@ -619,7 +611,7 @@ export default function PlaylistBar({
         key="playbackBarDesktop"
         className="playback-bar"
         aria-label="재생 상태"
-        style={playbackBarStyle}
+        style={{ y: animatedTranslateY }}
         initial={playbackBarVariants.initial}
         animate={playbackBarVariants.animate}
         exit={playbackBarVariants.exit}
