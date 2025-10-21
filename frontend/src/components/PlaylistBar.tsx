@@ -139,6 +139,7 @@ export default function PlaylistBar({
 }: PlaylistBarProps) {
   const [isCreatingPlaylist, setIsCreatingPlaylist] = useState(false);
   const [dragOffset, setDragOffset] = useState(0);
+  const [isDragActive, setIsDragActive] = useState(false);
   const dragStateRef = useRef<{
     startY: number;
     isDragging: boolean;
@@ -152,9 +153,12 @@ export default function PlaylistBar({
 
   const playbackBarStyle = useMemo<PlaybackBarStyle>(
     () => ({
-      '--playback-bar-translate-y': `${dragOffset}px`
+      '--playback-bar-translate-y': `${dragOffset}px`,
+      ...(isDragActive
+        ? { transition: 'none' }
+        : { transition: 'transform 220ms ease-out' })
     }),
-    [dragOffset]
+    [dragOffset, isDragActive]
   );
   const currentItem = useMemo(
     () => items.find((item) => item.key === currentItemKey) ?? null,
@@ -302,6 +306,7 @@ export default function PlaylistBar({
         expandedAtStart: isExpanded
       };
       setDragOffset(0);
+      setIsDragActive(true);
     },
     [isMobileViewport, isExpanded]
   );
@@ -340,6 +345,7 @@ export default function PlaylistBar({
   const resetDragState = useCallback(() => {
     dragStateRef.current = null;
     setDragOffset(0);
+    setIsDragActive(false);
   }, []);
 
   const handleMobileDragEnd = useCallback(
@@ -359,6 +365,7 @@ export default function PlaylistBar({
   useEffect(() => {
     dragStateRef.current = null;
     setDragOffset(0);
+    setIsDragActive(false);
   }, [isExpanded]);
 
   const renderQueueItem = (item: PlaylistBarItem, index: number) => {
