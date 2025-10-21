@@ -3804,9 +3804,11 @@ button:disabled:hover {
 
 .playback-bar__collapsed-body {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  justify-content: center;
+  column-gap: 12px;
+  row-gap: 8px;
 }
 
 .playback-bar__collapsed-toggle {
@@ -3895,6 +3897,10 @@ button:disabled:hover {
 .playback-bar__collapsed-controls {
   display: flex;
   align-items: center;
+  flex: 1 0 100%;
+  justify-content: center;
+  margin-top: 6px;
+  column-gap: 8px;
 }
 
 .playback-bar__transport--compact {
