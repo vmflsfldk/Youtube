@@ -137,6 +137,8 @@ export default function PlaylistBar({
     [items, currentItemKey]
   );
 
+  const isMobileCollapsed = isMobileViewport && !isExpanded;
+
   const hasPlayableItems = items.some((item) => item.isPlayable);
   const placeholderMessage = hasPlayableItems
     ? '재생할 항목을 선택하세요.'
@@ -156,39 +158,45 @@ export default function PlaylistBar({
     }
   }, [canCreatePlaylist, isCreatingPlaylist, onCreatePlaylist]);
 
-  const renderControls = () => {
+  const renderTransport = (className?: string) => {
     const disableTransport = !hasPlayableItems || !currentItem?.isPlayable;
     return (
+      <div className={className ?? 'playback-bar__transport'} role="group" aria-label="재생 제어">
+        <button
+          type="button"
+          className="playback-bar__button"
+          onClick={onPrevious}
+          disabled={!hasPlayableItems}
+          aria-label="이전 항목"
+        >
+          <PreviousIcon />
+        </button>
+        <button
+          type="button"
+          className="playback-bar__button playback-bar__button--primary"
+          onClick={onPlayPause}
+          disabled={!hasPlayableItems}
+          aria-label={isPlaying ? '일시 정지' : '재생'}
+        >
+          {isPlaying && currentItem?.isPlayable && !disableTransport ? <PauseIcon /> : <PlayIcon />}
+        </button>
+        <button
+          type="button"
+          className="playback-bar__button"
+          onClick={onNext}
+          disabled={!hasPlayableItems}
+          aria-label="다음 항목"
+        >
+          <NextIcon />
+        </button>
+      </div>
+    );
+  };
+
+  const renderControls = () => {
+    return (
       <div className="playback-bar__controls">
-        <div className="playback-bar__transport" role="group" aria-label="재생 제어">
-          <button
-            type="button"
-            className="playback-bar__button"
-            onClick={onPrevious}
-            disabled={!hasPlayableItems}
-            aria-label="이전 항목"
-          >
-            <PreviousIcon />
-          </button>
-          <button
-            type="button"
-            className="playback-bar__button playback-bar__button--primary"
-            onClick={onPlayPause}
-            disabled={!hasPlayableItems}
-            aria-label={isPlaying ? '일시 정지' : '재생'}
-          >
-            {isPlaying && currentItem?.isPlayable && !disableTransport ? <PauseIcon /> : <PlayIcon />}
-          </button>
-          <button
-            type="button"
-            className="playback-bar__button"
-            onClick={onNext}
-            disabled={!hasPlayableItems}
-            aria-label="다음 항목"
-          >
-            <NextIcon />
-          </button>
-        </div>
+        {renderTransport()}
         <button
           type="button"
           className="playback-bar__create-playlist-button"
@@ -393,6 +401,62 @@ export default function PlaylistBar({
       </Suspense>
     );
   };
+
+  if (isMobileCollapsed) {
+    const collapsedTitle = currentItem?.title ?? placeholderMessage;
+    const collapsedIndexLabel = currentIndex >= 0 ? `${currentIndex + 1}/${items.length}` : `0/${items.length}`;
+    return (
+      <div
+        className="playback-bar playback-bar--mobile-collapsed"
+        aria-label="재생 상태"
+        style={playbackBarStyle}
+      >
+        <div
+          className="playback-bar__drag-handle"
+          onTouchStart={handleMobileDragStart}
+          onTouchMove={handleMobileDragMove}
+          onTouchEnd={handleMobileDragEnd}
+          onTouchCancel={handleMobileDragCancel}
+        >
+          <div className="playback-bar__drag-grip" />
+        </div>
+        <div className="playback-bar__collapsed-body">
+          <button
+            type="button"
+            className="playback-bar__collapsed-toggle"
+            onClick={onToggleExpanded}
+            aria-expanded={false}
+            aria-label="재생 목록 펼치기"
+          >
+            {currentItem?.thumbnailUrl ? (
+              <img
+                className="playback-bar__collapsed-thumbnail"
+                src={currentItem.thumbnailUrl}
+                alt={currentItem.title}
+              />
+            ) : (
+              <div className="playback-bar__collapsed-placeholder" aria-live="polite">
+                {placeholderMessage}
+              </div>
+            )}
+            <div className="playback-bar__collapsed-meta" aria-live="polite">
+              <div className="playback-bar__collapsed-label-row">
+                <span className="playback-bar__collapsed-label">Now Playing</span>
+                <span className="playback-bar__collapsed-index">{collapsedIndexLabel}</span>
+              </div>
+              <span className="playback-bar__collapsed-title">{collapsedTitle}</span>
+              {currentItem?.subtitle && (
+                <span className="playback-bar__collapsed-subtitle">{currentItem.subtitle}</span>
+              )}
+            </div>
+          </button>
+          <div className="playback-bar__collapsed-controls">
+            {renderTransport('playback-bar__transport playback-bar__transport--compact')}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
