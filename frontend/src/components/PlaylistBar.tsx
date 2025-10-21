@@ -436,21 +436,57 @@ export default function PlaylistBar({
       );
     }
 
+    const clipPlayerElement = currentItem.youtubeVideoId ? (
+        <Suspense
+          fallback={
+            <div className="playback-bar__player-loading" role="status" aria-live="polite">
+              플레이어 준비 중…
+            </div>
+          }
+        >
+          <ClipPlayer
+            youtubeVideoId={currentItem.youtubeVideoId}
+            startSec={currentItem.startSec}
+            endSec={typeof currentItem.endSec === 'number' ? currentItem.endSec : undefined}
+            autoplay={isPlaying}
+            playing={isPlaying}
+            shouldLoop={repeatMode === 'one'}
+            onEnded={onTrackEnded}
+          />
+        </Suspense>
+      ) : null;
+
     if (isMobileViewport) {
-      return currentItem.thumbnailUrl ? (
-        <img
-          className="playback-bar__player-compact-thumbnail"
-          src={currentItem.thumbnailUrl}
-          alt={currentItem.title}
-        />
-      ) : (
-        <div className="playback-bar__player-compact-placeholder" aria-live="polite">
-          {placeholderMessage}
+      const hiddenPlayer = clipPlayerElement ? (
+        <div className="playback-bar__player-hidden" aria-hidden="true">
+          {clipPlayerElement}
         </div>
+      ) : null;
+
+      if (currentItem.thumbnailUrl) {
+        return (
+          <>
+            <img
+              className="playback-bar__player-compact-thumbnail"
+              src={currentItem.thumbnailUrl}
+              alt={currentItem.title}
+            />
+            {hiddenPlayer}
+          </>
+        );
+      }
+
+      return (
+        <>
+          <div className="playback-bar__player-compact-placeholder" aria-live="polite">
+            {placeholderMessage}
+          </div>
+          {hiddenPlayer}
+        </>
       );
     }
 
-    if (!currentItem.youtubeVideoId) {
+    if (!clipPlayerElement) {
       return (
         <div className="playback-bar__player-placeholder" aria-live="polite">
           {placeholderMessage}
@@ -458,25 +494,7 @@ export default function PlaylistBar({
       );
     }
 
-    return (
-      <Suspense
-        fallback={
-          <div className="playback-bar__player-loading" role="status" aria-live="polite">
-            플레이어 준비 중…
-          </div>
-        }
-      >
-        <ClipPlayer
-          youtubeVideoId={currentItem.youtubeVideoId}
-          startSec={currentItem.startSec}
-          endSec={typeof currentItem.endSec === 'number' ? currentItem.endSec : undefined}
-          autoplay={isPlaying}
-          playing={isPlaying}
-          shouldLoop={repeatMode === 'one'}
-          onEnded={onTrackEnded}
-        />
-      </Suspense>
-    );
+    return clipPlayerElement;
   };
 
   if (isMobileCollapsed) {
