@@ -14,7 +14,10 @@ import {
 } from 'react';
 import axios from 'axios';
 import ClipList, { type ClipListRenderContext, type ClipListRenderResult } from './components/ClipList';
-import PlaylistBar, { type PlaylistBarItem } from './components/PlaylistBar';
+import PlaylistBar, {
+  type PlaybackRepeatMode,
+  type PlaylistBarItem
+} from './components/PlaylistBar';
 import AuthPanel from './components/AuthPanel';
 import utahubLogo from './assets/utahub-logo.svg';
 import ArtistLibraryGrid from './ArtistLibraryGrid';
@@ -1251,6 +1254,7 @@ export default function App() {
   const [expandedPlaylistEntryId, setExpandedPlaylistEntryId] = useState<string | null>(null);
   const [isPlaybackExpanded, setIsPlaybackExpanded] = useState(false);
   const [isPlaybackActive, setIsPlaybackActive] = useState(false);
+  const [playbackRepeatMode, setPlaybackRepeatMode] = useState<PlaybackRepeatMode>('off');
   const [activePlaybackKey, setActivePlaybackKey] = useState<string | null>(null);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [selectedVideo, setSelectedVideo] = useState<number | null>(null);
@@ -3839,6 +3843,44 @@ export default function App() {
     }
   }, [isPlaybackActive, playbackBarItems]);
 
+  const activatePlaybackItem = useCallback(
+    (item: PlaylistBarItem | null | undefined) => {
+      if (!item || !item.isPlayable) {
+        return false;
+      }
+      setActivePlaybackKey(item.key);
+      setIsPlaybackActive(true);
+      return true;
+    },
+    []
+  );
+
+  const findNextPlayableItem = useCallback(
+    (startIndex: number) => {
+      for (let index = startIndex + 1; index < playbackBarItems.length; index += 1) {
+        const candidate = playbackBarItems[index];
+        if (candidate.isPlayable) {
+          return candidate;
+        }
+      }
+      return null;
+    },
+    [playbackBarItems]
+  );
+
+  const findPreviousPlayableItem = useCallback(
+    (startIndex: number) => {
+      for (let index = startIndex - 1; index >= 0; index -= 1) {
+        const candidate = playbackBarItems[index];
+        if (candidate.isPlayable) {
+          return candidate;
+        }
+      }
+      return null;
+    },
+    [playbackBarItems]
+  );
+
   const handlePlaybackToggle = useCallback(() => {
     if (playbackBarItems.length === 0) {
       return;
@@ -3861,17 +3903,33 @@ export default function App() {
     }
 
     const startIndex = currentPlaybackIndex >= 0 ? currentPlaybackIndex : -1;
-    for (let index = startIndex + 1; index < playbackBarItems.length; index += 1) {
-      const candidate = playbackBarItems[index];
-      if (candidate.isPlayable) {
-        setActivePlaybackKey(candidate.key);
-        setIsPlaybackActive(true);
+    const nextItem = findNextPlayableItem(startIndex);
+    if (activatePlaybackItem(nextItem)) {
+      return;
+    }
+
+    if (playbackRepeatMode === 'all') {
+      const wrappedItem = findNextPlayableItem(-1);
+      if (activatePlaybackItem(wrappedItem)) {
+        return;
+      }
+    }
+
+    if (playbackRepeatMode === 'one') {
+      if (activatePlaybackItem(currentPlaybackItem)) {
         return;
       }
     }
 
     setIsPlaybackActive(false);
-  }, [currentPlaybackIndex, playbackBarItems]);
+  }, [
+    activatePlaybackItem,
+    currentPlaybackIndex,
+    currentPlaybackItem,
+    findNextPlayableItem,
+    playbackBarItems,
+    playbackRepeatMode
+  ]);
 
   const handlePlaybackPrevious = useCallback(() => {
     if (playbackBarItems.length === 0) {
@@ -3880,15 +3938,29 @@ export default function App() {
 
     const startIndex =
       currentPlaybackIndex >= 0 ? currentPlaybackIndex : playbackBarItems.length;
-    for (let index = startIndex - 1; index >= 0; index -= 1) {
-      const candidate = playbackBarItems[index];
-      if (candidate.isPlayable) {
-        setActivePlaybackKey(candidate.key);
-        setIsPlaybackActive(true);
+    const previousItem = findPreviousPlayableItem(startIndex);
+    if (activatePlaybackItem(previousItem)) {
+      return;
+    }
+
+    if (playbackRepeatMode === 'all') {
+      const wrappedItem = findPreviousPlayableItem(playbackBarItems.length);
+      if (activatePlaybackItem(wrappedItem)) {
         return;
       }
     }
-  }, [currentPlaybackIndex, playbackBarItems]);
+
+    if (playbackRepeatMode === 'one') {
+      activatePlaybackItem(currentPlaybackItem);
+    }
+  }, [
+    activatePlaybackItem,
+    currentPlaybackIndex,
+    currentPlaybackItem,
+    findPreviousPlayableItem,
+    playbackBarItems,
+    playbackRepeatMode
+  ]);
 
   const handlePlaybackSelect = useCallback(
     (key: string) => {
@@ -3914,17 +3986,34 @@ export default function App() {
       return;
     }
 
+    if (playbackRepeatMode === 'one') {
+      if (activatePlaybackItem(currentPlaybackItem)) {
+        return;
+      }
+    }
+
     const startIndex = currentPlaybackIndex >= 0 ? currentPlaybackIndex : -1;
-    for (let index = startIndex + 1; index < playbackBarItems.length; index += 1) {
-      const candidate = playbackBarItems[index];
-      if (candidate.isPlayable) {
-        setActivePlaybackKey(candidate.key);
+    const nextItem = findNextPlayableItem(startIndex);
+    if (activatePlaybackItem(nextItem)) {
+      return;
+    }
+
+    if (playbackRepeatMode === 'all') {
+      const wrappedItem = findNextPlayableItem(-1);
+      if (activatePlaybackItem(wrappedItem)) {
         return;
       }
     }
 
     setIsPlaybackActive(false);
-  }, [currentPlaybackIndex, playbackBarItems]);
+  }, [
+    activatePlaybackItem,
+    currentPlaybackIndex,
+    currentPlaybackItem,
+    findNextPlayableItem,
+    playbackBarItems,
+    playbackRepeatMode
+  ]);
 
   const normalizedPlaylistQuery = playlistSearchQuery.trim().toLowerCase();
 
@@ -5455,6 +5544,8 @@ export default function App() {
         onPlayPause={handlePlaybackToggle}
         onNext={handlePlaybackNext}
         onPrevious={handlePlaybackPrevious}
+        repeatMode={playbackRepeatMode}
+        onRepeatModeChange={setPlaybackRepeatMode}
         onToggleExpanded={handlePlaybackToggleExpanded}
         onSelectItem={handlePlaybackSelect}
         onRemoveItem={handlePlaylistEntryRemove}

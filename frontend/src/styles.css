@@ -3901,6 +3901,14 @@ button:disabled:hover {
   gap: 8px;
 }
 
+.playback-bar__transport--compact .playback-bar__transport-main {
+  gap: 8px;
+}
+
+.playback-bar__transport--compact .playback-bar__repeat-group {
+  gap: 6px;
+}
+
 .playback-bar__transport--compact .playback-bar__button {
   width: 38px;
   height: 38px;
@@ -4023,6 +4031,18 @@ button:disabled:hover {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-wrap: wrap;
+}
+
+.playback-bar__transport-main,
+.playback-bar__repeat-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.playback-bar__repeat-group {
+  gap: 10px;
 }
 
 .playback-bar__button {
@@ -4039,6 +4059,10 @@ button:disabled:hover {
   transition: transform 0.2s ease, background 0.2s ease;
 }
 
+.playback-bar__button--toggle {
+  background: rgba(148, 163, 184, 0.18);
+}
+
 .playback-bar__button svg {
   width: 22px;
   height: 22px;
@@ -4047,6 +4071,15 @@ button:disabled:hover {
 .playback-bar__button:hover:not(:disabled) {
   transform: translateY(-1px);
   background: rgba(148, 163, 184, 0.28);
+}
+
+.playback-bar__button--active {
+  background: rgba(148, 163, 184, 0.36);
+  box-shadow: 0 0 0 2px rgba(148, 163, 184, 0.25);
+}
+
+.playback-bar__button--active:hover:not(:disabled) {
+  background: rgba(148, 163, 184, 0.42);
 }
 
 .playback-bar__button:active:not(:disabled) {
