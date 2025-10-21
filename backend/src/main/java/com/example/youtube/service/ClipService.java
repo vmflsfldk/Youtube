@@ -12,8 +12,10 @@ import com.example.youtube.repository.VideoRepository;
 import jakarta.persistence.EntityNotFoundException;
 import java.util.List;
 import java.util.stream.Collectors;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class ClipService {
@@ -36,11 +38,12 @@ public class ClipService {
                 .orElseThrow(() -> new EntityNotFoundException("Video not found: " + request.videoId()));
 
         if (request.endSec() <= request.startSec()) {
-            throw new IllegalArgumentException("endSec must be greater than startSec");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "endSec must be greater than startSec");
         }
 
         if (clipRepository.existsByVideoAndStartSecAndEndSec(video, request.startSec(), request.endSec())) {
-            throw new IllegalArgumentException("A clip with the same time range already exists for this video");
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A clip with the same time range already exists for this video");
         }
 
         Clip clip = new Clip(video, request.title(), request.startSec(), request.endSec());
@@ -85,11 +88,12 @@ public class ClipService {
         int endSec = request.endSec();
 
         if (endSec <= startSec) {
-            throw new IllegalArgumentException("endSec must be greater than startSec");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "endSec must be greater than startSec");
         }
 
         if (clipRepository.existsByVideoAndStartSecAndEndSecAndIdNot(video, startSec, endSec, clipId)) {
-            throw new IllegalArgumentException("A clip with the same time range already exists for this video");
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A clip with the same time range already exists for this video");
         }
 
         clip.setStartSec(startSec);
