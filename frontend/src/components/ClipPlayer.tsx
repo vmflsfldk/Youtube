@@ -9,6 +9,7 @@ interface ClipPlayerProps {
   playing?: boolean;
   shouldLoop?: boolean;
   onEnded?: () => void;
+  activationNonce?: number;
 }
 
 type YouTubeReadyEvent = Parameters<NonNullable<YouTubeProps['onReady']>>[0];
@@ -21,7 +22,8 @@ export default function ClipPlayer({
   autoplay = true,
   playing,
   shouldLoop = true,
-  onEnded
+  onEnded,
+  activationNonce
 }: ClipPlayerProps) {
   const playerRef = useRef<YouTubePlayer | null>(null);
   const { playerOrigin, playerReferrer } = useMemo(() => {
@@ -99,10 +101,35 @@ export default function ClipPlayer({
   );
 
   useEffect(() => {
+    if (typeof activationNonce === 'number') {
+      return;
+    }
+
     if (playerRef.current) {
       loadSegment(playerRef.current);
     }
-  }, [loadSegment]);
+  }, [activationNonce, loadSegment]);
+
+  useEffect(() => {
+    if (!playerRef.current || typeof activationNonce !== 'number') {
+      return;
+    }
+
+    loadSegment(playerRef.current);
+
+    if (typeof playing === 'boolean') {
+      if (playing) {
+        playerRef.current.playVideo();
+      } else {
+        playerRef.current.pauseVideo();
+      }
+      return;
+    }
+
+    if (autoplay) {
+      playerRef.current.playVideo();
+    }
+  }, [activationNonce, autoplay, loadSegment, playing]);
 
   useEffect(() => {
     return () => {
