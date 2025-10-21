@@ -168,19 +168,61 @@ export default function PlaylistBar({
     hasToggled: boolean;
     expandedAtStart: boolean;
   } | null>(null);
+  const dragHeight = useMotionValue(0);
+  const collapsedHeightRef = useRef(0);
+  const expandedHeightRef = useRef(0);
+  const [collapsedWrapper, setCollapsedWrapper] = useState<HTMLDivElement | null>(null);
+  const [expandedLayout, setExpandedLayout] = useState<HTMLDivElement | null>(null);
+  const handleCollapsedWrapperRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      setCollapsedWrapper(node);
+      if (!node || !isMobileViewport) {
+        return;
+      }
+      const nextHeight = node.getBoundingClientRect().height;
+      collapsedHeightRef.current = nextHeight;
+      if (!isExpanded && nextHeight > 0) {
+        dragHeight.set(nextHeight);
+      }
+    },
+    [dragHeight, isExpanded, isMobileViewport]
+  );
+  const handleExpandedLayoutRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      setExpandedLayout(node);
+      if (!node || !isMobileViewport) {
+        return;
+      }
+      const nextHeight = node.getBoundingClientRect().height;
+      expandedHeightRef.current = nextHeight;
+      if (isExpanded && nextHeight > 0) {
+        dragHeight.set(nextHeight);
+      }
+    },
+    [dragHeight, isExpanded, isMobileViewport]
+  );
   const DRAG_THRESHOLD_PX = 48;
-
-  const resetDragState = useCallback(() => {
-    dragStateRef.current = null;
-    dragTranslateY.stop();
-    dragTranslateY.set(0);
-  }, [dragTranslateY]);
   const currentItem = useMemo(
     () => items.find((item) => item.key === currentItemKey) ?? null,
     [items, currentItemKey]
   );
 
   const isMobileCollapsed = isMobileViewport && !isExpanded;
+
+  const resetDragState = useCallback(() => {
+    dragStateRef.current = null;
+    dragTranslateY.stop();
+    dragTranslateY.set(0);
+    if (!isMobileViewport) {
+      return;
+    }
+    const targetHeight = isExpanded
+      ? expandedHeightRef.current || collapsedHeightRef.current
+      : collapsedHeightRef.current;
+    if (targetHeight > 0) {
+      dragHeight.set(targetHeight);
+    }
+  }, [dragHeight, dragTranslateY, isExpanded, isMobileViewport]);
 
   const hasPlayableItems = items.some((item) => item.isPlayable);
   const placeholderMessage = hasPlayableItems
@@ -353,12 +395,27 @@ export default function PlaylistBar({
         : Math.min(0, deltaY);
       dragTranslateY.set(nextOffset);
 
+      if (!state.expandedAtStart) {
+        const collapsedHeight = collapsedHeightRef.current || 0;
+        const expandedHeight = expandedHeightRef.current || collapsedHeight;
+        const maxGrowth = Math.max(0, expandedHeight - collapsedHeight);
+        const growth = Math.min(maxGrowth, Math.abs(nextOffset));
+        const nextHeight = collapsedHeight + growth;
+        if (nextHeight > 0) {
+          dragHeight.set(nextHeight);
+        }
+      }
+
       if (state.hasToggled) {
         return;
       }
 
       if (!state.expandedAtStart && deltaY <= -DRAG_THRESHOLD_PX) {
         state.hasToggled = true;
+        const expandedHeight = expandedHeightRef.current || collapsedHeightRef.current;
+        if (expandedHeight > 0) {
+          dragHeight.set(Math.max(collapsedHeightRef.current, expandedHeight));
+        }
         onToggleExpanded();
       } else if (state.expandedAtStart && deltaY >= DRAG_THRESHOLD_PX) {
         state.hasToggled = true;
@@ -391,6 +448,58 @@ export default function PlaylistBar({
       resetDragState();
     }
   }, [isMobileViewport, resetDragState]);
+
+  useEffect(() => {
+    const node = collapsedWrapper;
+    if (!node || !isMobileViewport) {
+      return;
+    }
+    const updateHeight = () => {
+      const nextHeight = node.getBoundingClientRect().height;
+      collapsedHeightRef.current = nextHeight;
+      if (!isExpanded && nextHeight > 0) {
+        dragHeight.set(nextHeight);
+      }
+    };
+    updateHeight();
+    if (typeof ResizeObserver === 'undefined') {
+      return;
+    }
+    const observer = new ResizeObserver(updateHeight);
+    observer.observe(node);
+    return () => {
+      observer.disconnect();
+    };
+  }, [collapsedWrapper, dragHeight, isExpanded, isMobileViewport]);
+
+  useEffect(() => {
+    const node = expandedLayout;
+    if (!node || !isMobileViewport) {
+      return;
+    }
+    const updateHeight = () => {
+      const nextHeight = node.getBoundingClientRect().height;
+      expandedHeightRef.current = nextHeight;
+      if (isExpanded && nextHeight > 0) {
+        dragHeight.set(nextHeight);
+      }
+    };
+    updateHeight();
+    if (typeof ResizeObserver === 'undefined') {
+      return;
+    }
+    const observer = new ResizeObserver(updateHeight);
+    observer.observe(node);
+    return () => {
+      observer.disconnect();
+    };
+  }, [expandedLayout, dragHeight, isExpanded, isMobileViewport]);
+
+  useEffect(() => {
+    if (!isMobileViewport) {
+      dragHeight.set(0);
+    }
+  }, [dragHeight, isMobileViewport]);
 
   const renderQueueItem = (item: PlaylistBarItem, index: number) => {
     const isActive = item.key === currentItem?.key;
@@ -550,7 +659,8 @@ export default function PlaylistBar({
           key="playbackBarMobile"
           className={collapsedClassName}
           aria-label="재생 상태"
-          style={{ y: animatedTranslateY }}
+          ref={handleCollapsedWrapperRef}
+          style={{ y: animatedTranslateY, height: dragHeight }}
           initial={playbackBarVariants.initial}
           animate={playbackBarVariants.animate}
           exit={playbackBarVariants.exit}
@@ -611,6 +721,7 @@ export default function PlaylistBar({
         key="playbackBarDesktop"
         className="playback-bar"
         aria-label="재생 상태"
+        ref={handleExpandedLayoutRef}
         style={{ y: animatedTranslateY }}
         initial={playbackBarVariants.initial}
         animate={playbackBarVariants.animate}
