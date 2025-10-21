@@ -1425,6 +1425,9 @@ export default function App() {
   const [artistPreviewError, setArtistPreviewError] = useState<string | null>(null);
   const [isArtistDebugVisible, setArtistDebugVisible] = useState(false);
   const [artistDebugLog, setArtistDebugLog] = useState<ArtistDebugLogEntry[]>([]);
+  const [isArtistOptionalFieldsOpen, setArtistOptionalFieldsOpen] = useState(false);
+  const [isMobileArtistPreviewOpen, setMobileArtistPreviewOpen] = useState(false);
+  const [isMobileArtistDebugOpen, setMobileArtistDebugOpen] = useState(false);
   const [activeSection, setActiveSection] = useState<SectionKey>('library');
   const [activeClipId, setActiveClipId] = useState<number | null>(null);
 
@@ -1445,6 +1448,21 @@ export default function App() {
       setArtistPreviewError(null);
     }
   }, [artistForm.channelId, artistPreview]);
+
+  useEffect(() => {
+    if (!isMobileViewport) {
+      return;
+    }
+    setArtistOptionalFieldsOpen(false);
+    setMobileArtistPreviewOpen(false);
+  }, [isMobileViewport]);
+
+  useEffect(() => {
+    if (!isMobileViewport) {
+      return;
+    }
+    setMobileArtistDebugOpen(isArtistDebugVisible);
+  }, [isArtistDebugVisible, isMobileViewport]);
 
   const artistSubmitLabel = useMemo(() => {
     if (artistPreviewReady && artistPreview) {
@@ -4309,6 +4327,251 @@ export default function App() {
     ? `${greetingName} 님, 환영합니다!`
     : '닉네임을 설정해주세요.';
 
+  const artistOptionalFields = (
+    <>
+      <div className="artist-registration__field-grid">
+        <div className="artist-registration__field">
+          <label htmlFor="artistTags">아티스트 태그</label>
+          <input
+            id="artistTags"
+            placeholder="예: 라이브, 커버"
+            value={artistForm.tags}
+            onChange={(event) => setArtistForm((prev) => ({ ...prev, tags: event.target.value }))}
+            disabled={creationDisabled}
+          />
+          <p className="form-hint">콤마(,)로 구분하여 입력하세요.</p>
+        </div>
+        <div className="artist-registration__field">
+          <label htmlFor="artistAgency">소속사</label>
+          <input
+            id="artistAgency"
+            placeholder="소속사 이름"
+            value={artistForm.agency}
+            onChange={(event) => setArtistForm((prev) => ({ ...prev, agency: event.target.value }))}
+            disabled={creationDisabled}
+          />
+        </div>
+      </div>
+      <fieldset className="artist-registration__countries">
+        <legend>서비스 국가</legend>
+        <p className="artist-registration__countries-hint">복수 선택 가능</p>
+        <div className="artist-registration__country-options">
+          <label className="artist-registration__country-option">
+            <input
+              type="checkbox"
+              checked={artistForm.countries.ko}
+              onChange={(event) =>
+                setArtistForm((prev) => ({
+                  ...prev,
+                  countries: { ...prev.countries, ko: event.target.checked }
+                }))
+              }
+              disabled={creationDisabled}
+            />
+            <span className="artist-registration__country-label">
+              <span className="artist-registration__country-code">KO</span>
+              한국
+            </span>
+          </label>
+          <label className="artist-registration__country-option">
+            <input
+              type="checkbox"
+              checked={artistForm.countries.en}
+              onChange={(event) =>
+                setArtistForm((prev) => ({
+                  ...prev,
+                  countries: { ...prev.countries, en: event.target.checked }
+                }))
+              }
+              disabled={creationDisabled}
+            />
+            <span className="artist-registration__country-label">
+              <span className="artist-registration__country-code">EN</span>
+              영어권
+            </span>
+          </label>
+          <label className="artist-registration__country-option">
+            <input
+              type="checkbox"
+              checked={artistForm.countries.jp}
+              onChange={(event) =>
+                setArtistForm((prev) => ({
+                  ...prev,
+                  countries: { ...prev.countries, jp: event.target.checked }
+                }))
+              }
+              disabled={creationDisabled}
+            />
+            <span className="artist-registration__country-label">
+              <span className="artist-registration__country-code">JP</span>
+              일본
+            </span>
+          </label>
+        </div>
+      </fieldset>
+    </>
+  );
+
+  const artistPreviewBody = isArtistPreviewLoading ? (
+    <p className="artist-preview__status">채널 정보를 불러오는 중...</p>
+  ) : artistPreview ? (
+    <div className="artist-preview__content">
+      {artistPreview.data.profileImageUrl ? (
+        <img
+          className="artist-preview__thumbnail"
+          src={artistPreview.data.profileImageUrl}
+          alt={
+            artistPreview.data.title
+              ? `${artistPreview.data.title} 채널 썸네일`
+              : '채널 썸네일'
+          }
+        />
+      ) : (
+        <div className="artist-preview__thumbnail artist-preview__thumbnail--placeholder">썸네일 없음</div>
+      )}
+      <div className="artist-preview__details">
+        <div className="artist-preview__meta">
+          <p className="artist-preview__title">
+            {artistPreview.data.title ?? '채널 제목을 확인할 수 없습니다.'}
+          </p>
+          {artistPreview.data.channelUrl && (
+            <a
+              className="artist-preview__link"
+              href={artistPreview.data.channelUrl}
+              target="_blank"
+              rel="noreferrer"
+            >
+              채널 바로가기
+            </a>
+          )}
+          {artistPreview.data.channelId && (
+            <p className="artist-preview__channel-id">{artistPreview.data.channelId}</p>
+          )}
+          {artistPreviewSource && (
+            <p className="artist-preview__source">데이터 출처: {artistPreviewSource}</p>
+          )}
+          {artistPreview.data.debug?.apiStatus !== undefined &&
+            artistPreview.data.debug?.apiStatus !== null && (
+              <p className="artist-preview__api-status">
+                API 응답 상태: {artistPreview.data.debug.apiStatus}
+              </p>
+            )}
+        </div>
+        <div className="artist-preview__videos">
+          <div className="artist-preview__videos-header">
+            <h5>키워드 매칭 영상</h5>
+            {previewVideoKeywords.length > 0 && (
+              <span className="artist-preview__videos-keywords">
+                키워드: {previewVideoKeywords.join(' / ')}
+              </span>
+            )}
+          </div>
+          {previewVideos.length > 0 ? (
+            <ul className="artist-preview__videos-list">
+              {previewVideos.map((video) => {
+                const publishedLabel = formatPreviewVideoDate(video.publishedAt);
+                return (
+                  <li key={video.videoId} className="artist-preview__video">
+                    {video.thumbnailUrl ? (
+                      <img
+                        className="artist-preview__video-thumbnail"
+                        src={video.thumbnailUrl}
+                        alt={video.title ? `${video.title} 썸네일` : '영상 썸네일'}
+                        loading="lazy"
+                        decoding="async"
+                      />
+                    ) : (
+                      <div className="artist-preview__video-thumbnail artist-preview__video-thumbnail--placeholder">
+                        썸네일 없음
+                      </div>
+                    )}
+                    <div className="artist-preview__video-meta">
+                      <p className="artist-preview__video-title">
+                        {video.title ?? `영상 ${video.videoId}`}
+                      </p>
+                      {publishedLabel && (
+                        <p className="artist-preview__video-date">업로드: {publishedLabel}</p>
+                      )}
+                      <div className="artist-preview__video-actions">
+                        <a
+                          className="artist-preview__video-link"
+                          href={video.url}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          유튜브에서 보기
+                        </a>
+                        <button
+                          type="button"
+                          className="artist-preview__video-apply"
+                          onClick={() => applyPreviewVideoToForm(video)}
+                        >
+                          영상 등록 폼에 추가
+                        </button>
+                      </div>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <p className="artist-preview__videos-empty">
+              {artistPreview.data.debug?.videoFetchError
+                ? `채널 영상 정보를 불러올 수 없습니다. (${artistPreview.data.debug.videoFetchError})`
+                : '조건에 맞는 영상을 찾지 못했습니다.'}
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  ) : (
+    <p className="artist-preview__empty">채널 ID를 입력한 뒤 등록 버튼을 눌러 미리보기를 확인하세요.</p>
+  );
+
+  const artistDebugLogContent = (
+    <div className="artist-debug-log">
+      {artistDebugLog.length === 0 ? (
+        <p className="artist-debug-log__empty">최근 디버그 로그가 없습니다.</p>
+      ) : (
+        <ul className="artist-debug-log__list">
+          {artistDebugLog.map((entry) => (
+            <li key={entry.id} className="artist-debug-log__entry">
+              <div className="artist-debug-log__entry-header">
+                <span className="artist-debug-log__label">{formatDebugLabel(entry.type)}</span>
+                <span className="artist-debug-log__timestamp">{formatTimestamp(entry.timestamp)}</span>
+              </div>
+              <details className="artist-debug-log__details">
+                <summary>세부 정보</summary>
+                <pre>{JSON.stringify({ request: entry.request, response: entry.response, error: entry.error }, null, 2)}</pre>
+              </details>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+
+  const showOptionalFields = !isMobileViewport || isArtistOptionalFieldsOpen;
+  const optionalToggleLabel = isArtistOptionalFieldsOpen ? '추가 정보 숨기기' : '추가 정보 입력';
+  const mobilePreviewSummary = (() => {
+    if (isArtistPreviewLoading) {
+      return '채널 확인 중...';
+    }
+    if (artistPreviewError) {
+      return `오류: ${artistPreviewError}`;
+    }
+    if (artistPreviewReady && artistPreview) {
+      const title = artistPreview.data.title?.trim();
+      return title && title.length > 0 ? `${title} 확인 완료` : '채널 정보 확인 완료';
+    }
+    return '등록 버튼으로 채널을 확인하세요.';
+  })();
+  const mobileDebugSummary =
+    artistDebugLog.length > 0 ? `${artistDebugLog.length}건의 로그` : '최근 로그 없음';
+  const mobileOptionalPanelId = 'artistRegistrationOptional';
+  const mobilePreviewPanelId = 'artistPreviewMobilePanel';
+  const mobileDebugPanelId = 'artistDebugMobilePanel';
+
   return (
     <>
       <div className="app-shell">
@@ -4432,106 +4695,54 @@ export default function App() {
                         닫기
                       </button>
                     </div>
-                    <div className="artist-registration">
-                      <form onSubmit={handleArtistSubmit} className="stacked-form artist-registration__form">
-                        <label htmlFor="artistName">아티스트 이름</label>
-                        <input
-                          id="artistName"
-                          placeholder="아티스트 이름"
-                          value={artistForm.name}
-                          onChange={(event) => setArtistForm((prev) => ({ ...prev, name: event.target.value }))}
-                          required
-                          disabled={creationDisabled}
-                        />
-                        <label htmlFor="artistChannelId">YouTube 채널 ID</label>
-                        <input
-                          id="artistChannelId"
-                          placeholder="UC..."
-                          value={artistForm.channelId}
-                          onChange={(event) => setArtistForm((prev) => ({ ...prev, channelId: event.target.value }))}
-                          required
-                          disabled={creationDisabled}
-                        />
-                        <div className="artist-registration__field-grid">
-                          <div className="artist-registration__field">
-                            <label htmlFor="artistTags">아티스트 태그</label>
-                            <input
-                              id="artistTags"
-                              placeholder="예: 라이브, 커버"
-                              value={artistForm.tags}
-                              onChange={(event) => setArtistForm((prev) => ({ ...prev, tags: event.target.value }))}
-                              disabled={creationDisabled}
-                            />
-                            <p className="form-hint">콤마(,)로 구분하여 입력하세요.</p>
-                          </div>
-                          <div className="artist-registration__field">
-                            <label htmlFor="artistAgency">소속사</label>
-                            <input
-                              id="artistAgency"
-                              placeholder="소속사 이름"
-                              value={artistForm.agency}
-                              onChange={(event) => setArtistForm((prev) => ({ ...prev, agency: event.target.value }))}
-                              disabled={creationDisabled}
-                            />
-                          </div>
+                    <div
+                      className={`artist-registration${isMobileViewport ? ' artist-registration--mobile' : ''}`}
+                    >
+                      <form
+                        onSubmit={handleArtistSubmit}
+                        className={`stacked-form artist-registration__form${
+                          isMobileViewport ? ' artist-registration__form--mobile' : ''
+                        }`}
+                      >
+                        <div className="artist-registration__section artist-registration__section--required">
+                          <label htmlFor="artistName">아티스트 이름</label>
+                          <input
+                            id="artistName"
+                            placeholder="아티스트 이름"
+                            value={artistForm.name}
+                            onChange={(event) => setArtistForm((prev) => ({ ...prev, name: event.target.value }))}
+                            required
+                            disabled={creationDisabled}
+                          />
+                          <label htmlFor="artistChannelId">YouTube 채널 ID</label>
+                          <input
+                            id="artistChannelId"
+                            placeholder="UC..."
+                            value={artistForm.channelId}
+                            onChange={(event) => setArtistForm((prev) => ({ ...prev, channelId: event.target.value }))}
+                            required
+                            disabled={creationDisabled}
+                          />
                         </div>
-                        <fieldset className="artist-registration__countries">
-                          <legend>서비스 국가</legend>
-                          <p className="artist-registration__countries-hint">복수 선택 가능</p>
-                          <div className="artist-registration__country-options">
-                            <label className="artist-registration__country-option">
-                              <input
-                                type="checkbox"
-                                checked={artistForm.countries.ko}
-                                onChange={(event) =>
-                                  setArtistForm((prev) => ({
-                                    ...prev,
-                                    countries: { ...prev.countries, ko: event.target.checked }
-                                  }))
-                                }
-                                disabled={creationDisabled}
-                              />
-                              <span className="artist-registration__country-label">
-                                <span className="artist-registration__country-code">KO</span>
-                                한국
-                              </span>
-                            </label>
-                            <label className="artist-registration__country-option">
-                              <input
-                                type="checkbox"
-                                checked={artistForm.countries.en}
-                                onChange={(event) =>
-                                  setArtistForm((prev) => ({
-                                    ...prev,
-                                    countries: { ...prev.countries, en: event.target.checked }
-                                  }))
-                                }
-                                disabled={creationDisabled}
-                              />
-                              <span className="artist-registration__country-label">
-                                <span className="artist-registration__country-code">EN</span>
-                                영어권
-                              </span>
-                            </label>
-                            <label className="artist-registration__country-option">
-                              <input
-                                type="checkbox"
-                                checked={artistForm.countries.jp}
-                                onChange={(event) =>
-                                  setArtistForm((prev) => ({
-                                    ...prev,
-                                    countries: { ...prev.countries, jp: event.target.checked }
-                                  }))
-                                }
-                                disabled={creationDisabled}
-                              />
-                              <span className="artist-registration__country-label">
-                                <span className="artist-registration__country-code">JP</span>
-                                일본
-                              </span>
-                            </label>
-                          </div>
-                        </fieldset>
+                        {isMobileViewport && (
+                          <button
+                            type="button"
+                            className="artist-registration__toggle"
+                            onClick={() => setArtistOptionalFieldsOpen((prev) => !prev)}
+                            aria-expanded={isArtistOptionalFieldsOpen}
+                            aria-controls={mobileOptionalPanelId}
+                          >
+                            {optionalToggleLabel}
+                          </button>
+                        )}
+                        <div
+                          className="artist-registration__section artist-registration__section--optional"
+                          id={isMobileViewport ? mobileOptionalPanelId : undefined}
+                          hidden={isMobileViewport && !showOptionalFields}
+                          aria-hidden={isMobileViewport && !showOptionalFields ? true : undefined}
+                        >
+                          {artistOptionalFields}
+                        </div>
                         <button
                           type="submit"
                           disabled={creationDisabled || isArtistPreviewLoading}
@@ -4550,163 +4761,81 @@ export default function App() {
                           <p className="artist-preview__hint">채널 정보를 확인하셨다면 다시 등록 버튼을 눌러 완료하세요.</p>
                         )}
                       </form>
-                      <aside className="artist-preview-panel" aria-live="polite">
-                        <div className="artist-preview-panel__header">
-                          <h4>채널 미리보기</h4>
-                          <button
-                            type="button"
-                            className="artist-debug-toggle"
-                            onClick={() => setArtistDebugVisible((prev) => !prev)}
+                      {isMobileViewport ? (
+                        <div className="artist-registration__mobile-panels">
+                          <section
+                            className={`artist-preview-card${isMobileArtistPreviewOpen ? ' is-open' : ''}`}
                           >
-                            {isArtistDebugVisible ? '디버그 숨기기' : '디버그 보기'}
-                          </button>
-                        </div>
-                        <div className="artist-preview-panel__body">
-                          {isArtistPreviewLoading ? (
-                            <p className="artist-preview__status">채널 정보를 불러오는 중...</p>
-                          ) : artistPreview ? (
-                            <div className="artist-preview__content">
-                              {artistPreview.data.profileImageUrl ? (
-                                <img
-                                  className="artist-preview__thumbnail"
-                                  src={artistPreview.data.profileImageUrl}
-                                  alt={
-                                    artistPreview.data.title
-                                      ? `${artistPreview.data.title} 채널 썸네일`
-                                      : '채널 썸네일'
-                                  }
-                                />
-                              ) : (
-                                <div className="artist-preview__thumbnail artist-preview__thumbnail--placeholder">
-                                  썸네일 없음
-                                </div>
-                              )}
-                              <div className="artist-preview__details">
-                                <div className="artist-preview__meta">
-                                  <p className="artist-preview__title">
-                                    {artistPreview.data.title ?? '채널 제목을 확인할 수 없습니다.'}
-                                  </p>
-                                  {artistPreview.data.channelUrl && (
-                                    <a
-                                      className="artist-preview__link"
-                                      href={artistPreview.data.channelUrl}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                    >
-                                      채널 바로가기
-                                    </a>
-                                  )}
-                                  {artistPreview.data.channelId && (
-                                    <p className="artist-preview__channel-id">{artistPreview.data.channelId}</p>
-                                  )}
-                                  {artistPreviewSource && (
-                                    <p className="artist-preview__source">데이터 출처: {artistPreviewSource}</p>
-                                  )}
-                                  {artistPreview.data.debug?.apiStatus !== undefined &&
-                                    artistPreview.data.debug?.apiStatus !== null && (
-                                      <p className="artist-preview__api-status">
-                                        API 응답 상태: {artistPreview.data.debug.apiStatus}
-                                      </p>
-                                    )}
-                                </div>
-                                <div className="artist-preview__videos">
-                                  <div className="artist-preview__videos-header">
-                                    <h5>키워드 매칭 영상</h5>
-                                    {previewVideoKeywords.length > 0 && (
-                                      <span className="artist-preview__videos-keywords">
-                                        키워드: {previewVideoKeywords.join(' / ')}
-                                      </span>
-                                    )}
-                                  </div>
-                                  {previewVideos.length > 0 ? (
-                                    <ul className="artist-preview__videos-list">
-                                      {previewVideos.map((video) => {
-                                        const publishedLabel = formatPreviewVideoDate(video.publishedAt);
-                                        return (
-                                          <li key={video.videoId} className="artist-preview__video">
-                                            {video.thumbnailUrl ? (
-                                              <img
-                                                className="artist-preview__video-thumbnail"
-                                                src={video.thumbnailUrl}
-                                                alt={video.title ? `${video.title} 썸네일` : '영상 썸네일'}
-                                                loading="lazy"
-                                                decoding="async"
-                                              />
-                                            ) : (
-                                              <div className="artist-preview__video-thumbnail artist-preview__video-thumbnail--placeholder">
-                                                썸네일 없음
-                                              </div>
-                                            )}
-                                            <div className="artist-preview__video-meta">
-                                              <p className="artist-preview__video-title">
-                                                {video.title ?? `영상 ${video.videoId}`}
-                                              </p>
-                                              {publishedLabel && (
-                                                <p className="artist-preview__video-date">업로드: {publishedLabel}</p>
-                                              )}
-                                              <div className="artist-preview__video-actions">
-                                                <a
-                                                  className="artist-preview__video-link"
-                                                  href={video.url}
-                                                  target="_blank"
-                                                  rel="noreferrer"
-                                                >
-                                                  유튜브에서 보기
-                                                </a>
-                                                <button
-                                                  type="button"
-                                                  className="artist-preview__video-apply"
-                                                  onClick={() => applyPreviewVideoToForm(video)}
-                                                >
-                                                  영상 등록 폼에 추가
-                                                </button>
-                                              </div>
-                                            </div>
-                                          </li>
-                                        );
-                                      })}
-                                    </ul>
-                                  ) : (
-                                    <p className="artist-preview__videos-empty">
-                                      {artistPreview.data.debug?.videoFetchError
-                                        ? `채널 영상 정보를 불러올 수 없습니다. (${artistPreview.data.debug.videoFetchError})`
-                                        : '조건에 맞는 영상을 찾지 못했습니다.'}
-                                    </p>
-                                  )}
-                                </div>
+                            <button
+                              type="button"
+                              className="artist-preview-card__header"
+                              onClick={() => setMobileArtistPreviewOpen((prev) => !prev)}
+                              aria-expanded={isMobileArtistPreviewOpen}
+                              aria-controls={mobilePreviewPanelId}
+                            >
+                              <div className="artist-preview-card__text">
+                                <span className="artist-preview-card__title">채널 미리보기</span>
+                                <span className="artist-preview-card__summary">{mobilePreviewSummary}</span>
                               </div>
-                            </div>
-                          ) : (
-                            <p className="artist-preview__empty">
-                              채널 ID를 입력한 뒤 등록 버튼을 눌러 미리보기를 확인하세요.
-                            </p>
-                          )}
-                        </div>
-                        {isArtistDebugVisible && (
-                          <div className="artist-debug-log">
-                            {artistDebugLog.length === 0 ? (
-                              <p className="artist-debug-log__empty">최근 디버그 로그가 없습니다.</p>
-                            ) : (
-                              <ul className="artist-debug-log__list">
-                                {artistDebugLog.map((entry) => (
-                                  <li key={entry.id} className="artist-debug-log__entry">
-                                    <div className="artist-debug-log__entry-header">
-                                      <span className="artist-debug-log__label">{formatDebugLabel(entry.type)}</span>
-                                      <span className="artist-debug-log__timestamp">
-                                        {formatTimestamp(entry.timestamp)}
-                                      </span>
-                                    </div>
-                                    <details className="artist-debug-log__details">
-                                      <summary>세부 정보</summary>
-                                      <pre>{JSON.stringify({ request: entry.request, response: entry.response, error: entry.error }, null, 2)}</pre>
-                                    </details>
-                                  </li>
-                                ))}
-                              </ul>
+                              <span className="artist-preview-card__chevron" aria-hidden="true" />
+                            </button>
+                            {isMobileArtistPreviewOpen && (
+                              <div
+                                className="artist-preview-card__body"
+                                id={mobilePreviewPanelId}
+                                aria-live="polite"
+                              >
+                                {artistPreviewBody}
+                              </div>
                             )}
+                          </section>
+                          <section
+                            className={`artist-preview-card artist-preview-card--debug${
+                              isMobileArtistDebugOpen ? ' is-open' : ''
+                            }`}
+                          >
+                            <button
+                              type="button"
+                              className="artist-preview-card__header"
+                              onClick={() =>
+                                setMobileArtistDebugOpen((prev) => {
+                                  const next = !prev;
+                                  setArtistDebugVisible(next);
+                                  return next;
+                                })
+                              }
+                              aria-expanded={isMobileArtistDebugOpen}
+                              aria-controls={mobileDebugPanelId}
+                            >
+                              <div className="artist-preview-card__text">
+                                <span className="artist-preview-card__title">디버그 로그</span>
+                                <span className="artist-preview-card__summary">{mobileDebugSummary}</span>
+                              </div>
+                              <span className="artist-preview-card__chevron" aria-hidden="true" />
+                            </button>
+                            {isMobileArtistDebugOpen && (
+                              <div className="artist-preview-card__body" id={mobileDebugPanelId}>
+                                {artistDebugLogContent}
+                              </div>
+                            )}
+                          </section>
+                        </div>
+                      ) : (
+                        <aside className="artist-preview-panel" aria-live="polite">
+                          <div className="artist-preview-panel__header">
+                            <h4>채널 미리보기</h4>
+                            <button
+                              type="button"
+                              className="artist-debug-toggle"
+                              onClick={() => setArtistDebugVisible((prev) => !prev)}
+                            >
+                              {isArtistDebugVisible ? '디버그 숨기기' : '디버그 보기'}
+                            </button>
                           </div>
-                        )}
-                      </aside>
+                          <div className="artist-preview-panel__body">{artistPreviewBody}</div>
+                          {isArtistDebugVisible && artistDebugLogContent}
+                        </aside>
+                      )}
                     </div>
                   </section>
                 )}
