@@ -547,12 +547,16 @@ export default function PlaylistBar({
   if (isMobileCollapsed) {
     const collapsedTitle = currentItem?.title ?? placeholderMessage;
     const collapsedIndexLabel = currentIndex >= 0 ? `${currentIndex + 1}/${items.length}` : `0/${items.length}`;
+    const collapsedClassName = `playback-bar playback-bar--mobile-collapsed${
+      isMobileViewport ? ' playback-bar--mobile-collapsed--with-offset' : ''
+    }`;
+
     return (
       <>
         {hiddenPlayerContent}
         <motion.div
           key="playbackBarMobile"
-          className="playback-bar playback-bar--mobile-collapsed"
+          className={collapsedClassName}
           aria-label="재생 상태"
           style={playbackBarStyle}
           initial={playbackBarVariants.initial}
