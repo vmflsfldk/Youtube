@@ -10,6 +10,7 @@ import {
   useRef,
   useState
 } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 
 const ClipPlayer = lazy(() => import('./ClipPlayer'));
 
@@ -118,6 +119,22 @@ const RepeatOneIcon = () => (
   </svg>
 );
 
+const playbackBarVariants = {
+  initial: { opacity: 0, y: 24 },
+  animate: { opacity: 1, y: 0 },
+  exit: { opacity: 0, y: 24 }
+};
+
+const playbackBarTransition = { duration: 0.24, ease: 'easeOut' as const };
+
+const queueVariants = {
+  initial: { opacity: 0, height: 0 },
+  animate: { opacity: 1, height: 'auto' as const },
+  exit: { opacity: 0, height: 0 }
+};
+
+const queueTransition = { duration: 0.2, ease: 'easeOut' as const };
+
 export default function PlaylistBar({
   items,
   currentItemKey,
@@ -156,9 +173,7 @@ export default function PlaylistBar({
   const playbackBarStyle = useMemo<PlaybackBarStyle>(
     () => ({
       '--playback-bar-translate-y': `${dragOffset}px`,
-      ...(isDragActive
-        ? { transition: 'none' }
-        : { transition: 'transform 220ms ease-out' })
+      ...(isDragActive ? { transition: 'none' } : {})
     }),
     [dragOffset, isDragActive]
   );
@@ -520,10 +535,15 @@ export default function PlaylistBar({
     return (
       <>
         {hiddenPlayerContent}
-        <div
+        <motion.div
+          key="playbackBarMobile"
           className="playback-bar playback-bar--mobile-collapsed"
           aria-label="재생 상태"
           style={playbackBarStyle}
+          initial={playbackBarVariants.initial}
+          animate={playbackBarVariants.animate}
+          exit={playbackBarVariants.exit}
+          transition={playbackBarTransition}
         >
           <div
             className="playback-bar__drag-handle"
@@ -568,7 +588,7 @@ export default function PlaylistBar({
               {renderTransport('playback-bar__transport playback-bar__transport--compact')}
             </div>
           </div>
-        </div>
+        </motion.div>
       </>
     );
   }
@@ -576,10 +596,15 @@ export default function PlaylistBar({
   return (
     <>
       {hiddenPlayerContent}
-      <div
+      <motion.div
+        key="playbackBarDesktop"
         className="playback-bar"
         aria-label="재생 상태"
         style={playbackBarStyle}
+        initial={playbackBarVariants.initial}
+        animate={playbackBarVariants.animate}
+        exit={playbackBarVariants.exit}
+        transition={playbackBarTransition}
       >
         {isMobileViewport && (
           <div
@@ -626,19 +651,28 @@ export default function PlaylistBar({
             {renderControls()}
           </div>
         </div>
-        <div
-          id="playbackBarQueue"
-          className={`playback-bar__queue${isExpanded ? ' playback-bar__queue--visible' : ''}`}
-        >
-          {items.length === 0 ? (
-            <p className="playback-bar__queue-empty">재생 목록이 비어 있습니다.</p>
-          ) : (
-            <ul className="playback-bar__queue-list">
-              {items.map((item, index) => renderQueueItem(item, index))}
-            </ul>
+        <AnimatePresence initial={false}>
+          {isExpanded && (
+            <motion.div
+              key="playbackBarQueue"
+              id="playbackBarQueue"
+              className="playback-bar__queue playback-bar__queue--visible"
+              initial={queueVariants.initial}
+              animate={queueVariants.animate}
+              exit={queueVariants.exit}
+              transition={queueTransition}
+            >
+              {items.length === 0 ? (
+                <p className="playback-bar__queue-empty">재생 목록이 비어 있습니다.</p>
+              ) : (
+                <ul className="playback-bar__queue-list">
+                  {items.map((item, index) => renderQueueItem(item, index))}
+                </ul>
+              )}
+            </motion.div>
           )}
-        </div>
-      </div>
+        </AnimatePresence>
+      </motion.div>
     </>
   );
 }
