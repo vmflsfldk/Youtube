@@ -1,6 +1,7 @@
 import {
   Suspense,
   lazy,
+  type CSSProperties,
   type MouseEvent,
   type TouchEvent,
   useCallback,
@@ -121,6 +122,16 @@ export default function PlaylistBar({
     expandedAtStart: boolean;
   } | null>(null);
   const DRAG_THRESHOLD_PX = 48;
+  type PlaybackBarStyle = CSSProperties & {
+    '--playback-bar-translate-y': string;
+  };
+
+  const playbackBarStyle = useMemo<PlaybackBarStyle>(
+    () => ({
+      '--playback-bar-translate-y': `${dragOffset}px`
+    }),
+    [dragOffset]
+  );
   const currentItem = useMemo(
     () => items.find((item) => item.key === currentItemKey) ?? null,
     [items, currentItemKey]
@@ -387,7 +398,7 @@ export default function PlaylistBar({
     <div
       className="playback-bar"
       aria-label="재생 상태"
-      style={{ '--playback-bar-translate-y': `${dragOffset}px` }}
+      style={playbackBarStyle}
     >
       {isMobileViewport && (
         <div
