@@ -3770,6 +3770,7 @@ button:disabled:hover {
   left: 50%;
   bottom: 32px;
   transform: translateX(-50%);
+  transition: transform 220ms ease-out;
   width: min(1080px, calc(100% - 48px));
   padding: 20px 24px;
   border-radius: 28px;
@@ -3789,6 +3790,7 @@ button:disabled:hover {
   right: 0;
   bottom: 0;
   transform: translateY(var(--playback-bar-translate-y));
+  transition: transform 220ms ease-out;
   width: auto;
   padding: 10px 16px;
   border-radius: 20px 20px 0 0;
@@ -4423,6 +4425,7 @@ button:disabled:hover {
     right: 16px;
     bottom: 16px;
     transform: translateY(var(--playback-bar-translate-y));
+    transition: transform 220ms ease-out;
     width: auto;
     padding: 14px;
     gap: 12px;
