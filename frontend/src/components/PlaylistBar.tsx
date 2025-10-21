@@ -1,9 +1,13 @@
 import {
   Suspense,
   lazy,
+  type CSSProperties,
   type MouseEvent,
+  type TouchEvent,
   useCallback,
+  useEffect,
   useMemo,
+  useRef,
   useState
 } from 'react';
 
@@ -110,6 +114,24 @@ export default function PlaylistBar({
   onTrackEnded
 }: PlaylistBarProps) {
   const [isCreatingPlaylist, setIsCreatingPlaylist] = useState(false);
+  const [dragOffset, setDragOffset] = useState(0);
+  const dragStateRef = useRef<{
+    startY: number;
+    isDragging: boolean;
+    hasToggled: boolean;
+    expandedAtStart: boolean;
+  } | null>(null);
+  const DRAG_THRESHOLD_PX = 48;
+  type PlaybackBarStyle = CSSProperties & {
+    '--playback-bar-translate-y': string;
+  };
+
+  const playbackBarStyle = useMemo<PlaybackBarStyle>(
+    () => ({
+      '--playback-bar-translate-y': `${dragOffset}px`
+    }),
+    [dragOffset]
+  );
   const currentItem = useMemo(
     () => items.find((item) => item.key === currentItemKey) ?? null,
     [items, currentItemKey]
@@ -178,6 +200,81 @@ export default function PlaylistBar({
       </div>
     );
   };
+
+  const handleMobileDragStart = useCallback(
+    (event: TouchEvent<HTMLDivElement>) => {
+      if (!isMobileViewport) {
+        return;
+      }
+      const touch = event.touches[0];
+      if (!touch) {
+        return;
+      }
+      dragStateRef.current = {
+        startY: touch.clientY,
+        isDragging: true,
+        hasToggled: false,
+        expandedAtStart: isExpanded
+      };
+      setDragOffset(0);
+    },
+    [isMobileViewport, isExpanded]
+  );
+
+  const handleMobileDragMove = useCallback(
+    (event: TouchEvent<HTMLDivElement>) => {
+      const state = dragStateRef.current;
+      if (!state?.isDragging) {
+        return;
+      }
+      const touch = event.touches[0];
+      if (!touch) {
+        return;
+      }
+      const deltaY = touch.clientY - state.startY;
+      const nextOffset = state.expandedAtStart
+        ? Math.max(0, deltaY)
+        : Math.min(0, deltaY);
+      setDragOffset(nextOffset);
+
+      if (state.hasToggled) {
+        return;
+      }
+
+      if (!state.expandedAtStart && deltaY <= -DRAG_THRESHOLD_PX) {
+        state.hasToggled = true;
+        onToggleExpanded();
+      } else if (state.expandedAtStart && deltaY >= DRAG_THRESHOLD_PX) {
+        state.hasToggled = true;
+        onToggleExpanded();
+      }
+    },
+    [onToggleExpanded]
+  );
+
+  const resetDragState = useCallback(() => {
+    dragStateRef.current = null;
+    setDragOffset(0);
+  }, []);
+
+  const handleMobileDragEnd = useCallback(
+    (event: TouchEvent<HTMLDivElement>) => {
+      if (dragStateRef.current?.isDragging) {
+        event.preventDefault();
+      }
+      resetDragState();
+    },
+    [resetDragState]
+  );
+
+  const handleMobileDragCancel = useCallback(() => {
+    resetDragState();
+  }, [resetDragState]);
+
+  useEffect(() => {
+    dragStateRef.current = null;
+    setDragOffset(0);
+  }, [isExpanded]);
 
   const renderQueueItem = (item: PlaylistBarItem, index: number) => {
     const isActive = item.key === currentItem?.key;
@@ -298,7 +395,22 @@ export default function PlaylistBar({
   };
 
   return (
-    <div className="playback-bar" aria-label="재생 상태">
+    <div
+      className="playback-bar"
+      aria-label="재생 상태"
+      style={playbackBarStyle}
+    >
+      {isMobileViewport && (
+        <div
+          className="playback-bar__drag-handle"
+          onTouchStart={handleMobileDragStart}
+          onTouchMove={handleMobileDragMove}
+          onTouchEnd={handleMobileDragEnd}
+          onTouchCancel={handleMobileDragCancel}
+        >
+          <div className="playback-bar__drag-grip" />
+        </div>
+      )}
       <div className="playback-bar__body">
         <div
           className={`playback-bar__player${isMobileViewport ? ' playback-bar__player--compact' : ''}`}
