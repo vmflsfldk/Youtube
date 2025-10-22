@@ -4155,7 +4155,6 @@ button:disabled:hover {
   position: fixed;
   left: 50%;
   bottom: env(safe-area-inset-bottom, 0px);
-  transform: translateX(-50%);
   transition: transform 220ms ease-out;
   width: min(calc(100% - 144px), 1640px);
   padding: 20px 24px;
@@ -4173,12 +4172,10 @@ button:disabled:hover {
 
 .playback-bar--mobile-collapsed {
   position: fixed;
-  left: 0;
-  right: 0;
+  left: 50%;
   bottom: var(--mobile-bottom-nav-offset, 0px);
   transition: transform 220ms ease-out;
   width: 100%;
-  transform: none;
   padding: 10px 16px;
   border-radius: 20px 20px 0 0;
   gap: 0;

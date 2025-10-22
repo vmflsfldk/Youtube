@@ -708,7 +708,7 @@ export default function PlaylistBar({
           className={collapsedClassName}
           aria-label="재생 상태"
           ref={handleCollapsedWrapperRef}
-          style={{ y: animatedTranslateY, height: dragHeight }}
+          style={{ x: '-50%', y: animatedTranslateY, height: dragHeight }}
           initial={playbackBarVariants.initial}
           animate={playbackBarVariants.animate}
           exit={playbackBarVariants.exit}
@@ -768,7 +768,7 @@ export default function PlaylistBar({
         className="playback-bar"
         aria-label="재생 상태"
         ref={handleExpandedLayoutRef}
-        style={{ y: animatedTranslateY }}
+        style={{ x: '-50%', y: animatedTranslateY }}
         initial={playbackBarVariants.initial}
         animate={playbackBarVariants.animate}
         exit={playbackBarVariants.exit}
