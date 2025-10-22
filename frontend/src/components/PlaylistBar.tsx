@@ -173,19 +173,32 @@ export default function PlaylistBar({
   const expandedHeightRef = useRef(0);
   const [collapsedWrapper, setCollapsedWrapper] = useState<HTMLDivElement | null>(null);
   const [expandedLayout, setExpandedLayout] = useState<HTMLDivElement | null>(null);
+  const measureCollapsedContentHeight = useCallback((node: HTMLDivElement) => {
+    const previousHeight = node.style.height;
+    const hadPreviousHeight = previousHeight.length > 0;
+    node.style.height = '';
+    const nextHeight = node.scrollHeight;
+    if (hadPreviousHeight) {
+      node.style.height = previousHeight;
+    } else {
+      node.style.removeProperty('height');
+    }
+    return nextHeight;
+  }, []);
+
   const handleCollapsedWrapperRef = useCallback(
     (node: HTMLDivElement | null) => {
       setCollapsedWrapper(node);
       if (!node || !isMobileViewport) {
         return;
       }
-      const nextHeight = node.getBoundingClientRect().height;
+      const nextHeight = measureCollapsedContentHeight(node);
       collapsedHeightRef.current = nextHeight;
       if (!isExpanded && nextHeight > 0) {
         dragHeight.set(nextHeight);
       }
     },
-    [dragHeight, isExpanded, isMobileViewport]
+    [dragHeight, isExpanded, isMobileViewport, measureCollapsedContentHeight]
   );
   const handleExpandedLayoutRef = useCallback(
     (node: HTMLDivElement | null) => {
@@ -469,7 +482,7 @@ export default function PlaylistBar({
       return;
     }
     const updateHeight = () => {
-      const nextHeight = node.getBoundingClientRect().height;
+      const nextHeight = measureCollapsedContentHeight(node);
       collapsedHeightRef.current = nextHeight;
       if (!isExpanded && nextHeight > 0) {
         dragHeight.set(nextHeight);
@@ -484,7 +497,7 @@ export default function PlaylistBar({
     return () => {
       observer.disconnect();
     };
-  }, [collapsedWrapper, dragHeight, isExpanded, isMobileViewport]);
+  }, [collapsedWrapper, dragHeight, isExpanded, isMobileViewport, measureCollapsedContentHeight]);
 
   useEffect(() => {
     const node = expandedLayout;
