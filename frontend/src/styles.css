@@ -4156,7 +4156,7 @@ button:disabled:hover {
   left: 50%;
   bottom: env(safe-area-inset-bottom, 0px);
   transition: transform 220ms ease-out;
-  width: min(calc(100% - 144px), 1640px);
+  width: min(calc(100% - 144px), var(--playback-bar-max-width, 720px));
   padding: 20px 24px;
   border-radius: 28px;
   border: 1px solid var(--color-border);
@@ -4313,8 +4313,8 @@ button:disabled:hover {
 
 .playback-bar__body {
   display: grid;
-  grid-template-columns: 240px minmax(0, 1fr);
-  gap: 24px;
+  grid-template-columns: minmax(200px, 260px) minmax(0, 1fr);
+  gap: 20px;
   align-items: stretch;
   position: relative;
 }
@@ -4393,6 +4393,8 @@ button:disabled:hover {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+  flex-wrap: wrap;
+  row-gap: 8px;
 }
 
 .playback-bar__now-playing {
@@ -4800,7 +4802,8 @@ button:disabled:hover {
 
 @media (max-width: 1200px) {
   .playback-bar__body {
-    grid-template-columns: 220px minmax(0, 1fr);
+    grid-template-columns: minmax(180px, 220px) minmax(0, 1fr);
+    gap: 16px;
   }
 }
 
