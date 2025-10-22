@@ -1239,6 +1239,9 @@ async function handleApi(
     if (request.method === "GET" && path === "/api/library/media") {
       return await listMediaLibrary(env, user, cors);
     }
+    if (request.method === "GET" && path === "/api/public/library") {
+      return await listPublicLibrary(env, cors);
+    }
     if (path === "/api/videos") {
       if (request.method === "POST") {
         return await createVideo(request, env, requireUser(user), cors);
@@ -1881,6 +1884,19 @@ async function listVideos(
 async function listMediaLibrary(env: Env, user: UserContext | null, cors: CorsConfig): Promise<Response> {
   requireUser(user);
 
+  const payload = await loadMediaLibrary(env, { includeHidden: true });
+  return jsonResponse(payload, 200, cors);
+}
+
+async function listPublicLibrary(env: Env, cors: CorsConfig): Promise<Response> {
+  const payload = await loadMediaLibrary(env, { includeHidden: false });
+  return jsonResponse(payload, 200, cors);
+}
+
+async function loadMediaLibrary(
+  env: Env,
+  options: { includeHidden: boolean }
+): Promise<{ videos: VideoResponse[]; clips: ClipResponse[] }> {
   await ensureArtistDisplayNameColumn(env.DB);
   await ensureArtistProfileImageColumn(env.DB);
   await ensureArtistChannelTitleColumn(env.DB);
@@ -1889,6 +1905,8 @@ async function listMediaLibrary(env: Env, user: UserContext | null, cors: CorsCo
   await ensureVideoCategoryColumn(env.DB);
   await ensureVideoOriginalComposerColumn(env.DB);
   await ensureClipOriginalComposerColumn(env.DB);
+
+  const visibilityPredicate = options.includeHidden ? "" : "WHERE COALESCE(v.hidden, 0) = 0";
 
   const { results } = await env.DB.prepare(
     `SELECT
@@ -1912,41 +1930,43 @@ async function listMediaLibrary(env: Env, user: UserContext | null, cors: CorsCo
         a.profile_image_url AS artist_profile_image_url
       FROM videos v
       JOIN artists a ON a.id = v.artist_id
+      ${visibilityPredicate}
      ORDER BY v.id DESC`
   ).all<VideoLibraryRow>();
 
   const videos = (results ?? []).map(toVideoLibraryResponse);
 
-  let clips: ClipResponse[] = [];
-  if (videos.length > 0) {
-    const videoIds = videos.map((video) => video.id);
-    const placeholders = videoIds.map(() => "?").join(", ");
-    const { results: clipRows } = await env.DB.prepare(
-      `SELECT id, video_id, title, start_sec, end_sec, original_composer
-         FROM clips
-        WHERE video_id IN (${placeholders})
-        ORDER BY video_id, start_sec`
-    )
-      .bind(...videoIds)
-      .all<ClipRow>();
-
-    const clipResponses = await attachTags(env, clipRows ?? [], { includeVideoMeta: true });
-    const videoMap = new Map(videos.map((video) => [video.id, video]));
-    clips = clipResponses.map((clip) => {
-      const video = videoMap.get(clip.videoId);
-      return {
-        ...clip,
-        artistId: video?.artistId,
-        artistName: video?.artistName,
-        artistDisplayName: video?.artistDisplayName,
-        artistYoutubeChannelId: video?.artistYoutubeChannelId,
-        artistYoutubeChannelTitle: video?.artistYoutubeChannelTitle ?? null,
-        artistProfileImageUrl: video?.artistProfileImageUrl ?? null
-      } satisfies ClipResponse;
-    });
+  if (videos.length === 0) {
+    return { videos, clips: [] };
   }
 
-  return jsonResponse({ videos, clips }, 200, cors);
+  const videoIds = videos.map((video) => video.id);
+  const placeholders = videoIds.map(() => "?").join(", ");
+  const { results: clipRows } = await env.DB.prepare(
+    `SELECT id, video_id, title, start_sec, end_sec, original_composer
+       FROM clips
+      WHERE video_id IN (${placeholders})
+      ORDER BY video_id, start_sec`
+  )
+    .bind(...videoIds)
+    .all<ClipRow>();
+
+  const clipResponses = await attachTags(env, clipRows ?? [], { includeVideoMeta: true });
+  const videoMap = new Map(videos.map((video) => [video.id, video]));
+  const clips = clipResponses.map((clip) => {
+    const video = videoMap.get(clip.videoId);
+    return {
+      ...clip,
+      artistId: video?.artistId,
+      artistName: video?.artistName,
+      artistDisplayName: video?.artistDisplayName,
+      artistYoutubeChannelId: video?.artistYoutubeChannelId,
+      artistYoutubeChannelTitle: video?.artistYoutubeChannelTitle ?? null,
+      artistProfileImageUrl: video?.artistProfileImageUrl ?? null
+    } satisfies ClipResponse;
+  });
+
+  return { videos, clips };
 }
 
 async function createClip(
