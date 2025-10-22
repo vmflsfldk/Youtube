@@ -1,15 +1,18 @@
 package com.example.youtube.service;
 
 import com.example.youtube.dto.ClipResponse;
+import com.example.youtube.dto.LocalizedTextResponse;
 import com.example.youtube.dto.PlaylistItemRequest;
 import com.example.youtube.dto.PlaylistItemResponse;
 import com.example.youtube.dto.PlaylistResponse;
 import com.example.youtube.dto.VideoResponse;
 import com.example.youtube.dto.VideoSectionResponse;
 import com.example.youtube.model.Clip;
+import com.example.youtube.model.ComposerName;
 import com.example.youtube.model.Playlist;
 import com.example.youtube.model.Playlist.PlaylistVisibility;
 import com.example.youtube.model.PlaylistItem;
+import com.example.youtube.model.SongTitle;
 import com.example.youtube.model.UserAccount;
 import com.example.youtube.model.Video;
 import com.example.youtube.model.VideoSection;
@@ -183,6 +186,8 @@ public class PlaylistService {
                 video.getThumbnailUrl(),
                 video.getChannelId(),
                 video.getOriginalComposer(),
+                mapSongTitles(video.getTitles()),
+                mapComposerNames(video.getComposerNames()),
                 sections
         );
     }
@@ -198,7 +203,29 @@ public class PlaylistService {
                 clip.getStartSec(),
                 clip.getEndSec(),
                 clip.getTags(),
-                clip.getOriginalComposer()
+                clip.getOriginalComposer(),
+                mapSongTitles(clip.getTitles()),
+                mapComposerNames(clip.getComposerNames())
         );
+    }
+
+    private List<LocalizedTextResponse> mapSongTitles(List<SongTitle> titles) {
+        if (titles == null || titles.isEmpty()) {
+            return List.of();
+        }
+        return titles.stream()
+                .map(title -> new LocalizedTextResponse(title.getLanguageCode(), title.getValue(), title.getNormalizedValue()))
+                .collect(Collectors.toList());
+    }
+
+    private List<LocalizedTextResponse> mapComposerNames(List<ComposerName> composers) {
+        if (composers == null || composers.isEmpty()) {
+            return List.of();
+        }
+        return composers.stream()
+                .map(composer -> new LocalizedTextResponse(composer.getLanguageCode(),
+                        composer.getValue(),
+                        composer.getNormalizedValue()))
+                .collect(Collectors.toList());
     }
 }

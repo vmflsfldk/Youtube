@@ -2,9 +2,11 @@ package com.example.youtube.controller;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.example.youtube.dto.ClipCreateRequest;
+import com.example.youtube.dto.LocalizedTextRequest;
 import com.example.youtube.model.Artist;
 import com.example.youtube.model.UserAccount;
 import com.example.youtube.model.Video;
@@ -60,7 +62,7 @@ class ClipControllerIntegrationTest {
     void createClipWithInvalidRangeReturnsBadRequest() throws Exception {
         ClipCreateRequest invalidRequest = new ClipCreateRequest(
                 video.getId(),
-                "Invalid Clip",
+                List.of(new LocalizedTextRequest("en", "Invalid Clip")),
                 30,
                 20,
                 List.of("tag1"),
@@ -77,7 +79,7 @@ class ClipControllerIntegrationTest {
     void createClipWithDuplicateRangeReturnsConflict() throws Exception {
         ClipCreateRequest request = new ClipCreateRequest(
                 video.getId(),
-                "Clip",
+                List.of(new LocalizedTextRequest("en", "Clip")),
                 10,
                 20,
                 List.of("tag1"),
@@ -93,6 +95,26 @@ class ClipControllerIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isConflict());
+    }
+
+    @Test
+    void createClipReturnsLocalizedFields() throws Exception {
+        ClipCreateRequest request = new ClipCreateRequest(
+                video.getId(),
+                List.of(new LocalizedTextRequest("en", "Localized Clip")),
+                0,
+                30,
+                List.of("tag1"),
+                null,
+                List.of(new LocalizedTextRequest("en", "Composer")));
+
+        mockMvc.perform(post("/api/clips")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.titles[0].languageCode").value("en"))
+                .andExpect(jsonPath("$.titles[0].value").value("Localized Clip"))
+                .andExpect(jsonPath("$.originalComposers[0].value").value("Composer"));
     }
 
     @Test

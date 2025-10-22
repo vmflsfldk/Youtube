@@ -2,12 +2,16 @@ package com.example.youtube.service;
 
 import com.example.youtube.dto.ArtistRequest;
 import com.example.youtube.dto.ArtistResponse;
+import com.example.youtube.dto.LocalizedTextRequest;
+import com.example.youtube.dto.LocalizedTextResponse;
 import com.example.youtube.model.Artist;
+import com.example.youtube.model.ArtistName;
 import com.example.youtube.model.UserAccount;
 import com.example.youtube.repository.ArtistRepository;
 import com.example.youtube.repository.UserAccountRepository;
 import jakarta.persistence.EntityNotFoundException;
 import java.util.List;
+import java.util.Locale;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,17 +36,16 @@ public class ArtistService {
         ChannelMetadata channelMetadata = channelMetadataProvider.fetch(request.youtubeChannelId());
         String metadataTitle = channelMetadata.title();
 
-        String displayName = request.displayName();
-        if (displayName == null || displayName.isBlank()) {
-            if (metadataTitle != null && !metadataTitle.isBlank()) {
-                displayName = metadataTitle;
-            } else {
-                displayName = request.name();
-            }
+        List<LocalizedTextRequest> nameRequests = request.names();
+        if (nameRequests == null || nameRequests.isEmpty()) {
+            throw new IllegalArgumentException("At least one name must be provided");
         }
 
+        String primaryName = nameRequests.get(0).value().trim();
+        String displayName = metadataTitle != null && !metadataTitle.isBlank() ? metadataTitle : primaryName;
+
         Artist artist = new Artist(
-                request.name(),
+                primaryName,
                 displayName,
                 request.youtubeChannelId(),
                 creator,
@@ -51,6 +54,7 @@ public class ArtistService {
                 request.availableJp());
         artist.setTags(normalizeTags(request.tags()));
         artist.setAgency(trimToNull(request.agency()));
+        artist.setNames(toArtistNames(artist, nameRequests));
         String profileImageUrl = channelMetadata.profileImageUrl();
         if (metadataTitle != null && !metadataTitle.isBlank()) {
             artist.setYoutubeChannelTitle(metadataTitle);
@@ -63,12 +67,22 @@ public class ArtistService {
     }
 
     @Transactional
-    public ArtistResponse updateProfile(Long artistId, List<String> tags, String agency, UserAccount user) {
+    public ArtistResponse updateProfile(Long artistId,
+                                        List<String> tags,
+                                        String agency,
+                                        List<LocalizedTextRequest> names,
+                                        UserAccount user) {
         Artist artist = artistRepository.findById(artistId)
                 .orElseThrow(() -> new EntityNotFoundException("Artist not found: " + artistId));
 
         artist.setTags(normalizeTags(tags));
         artist.setAgency(trimToNull(agency));
+        if (names != null && !names.isEmpty()) {
+            artist.setNames(toArtistNames(artist, names));
+            String primaryName = names.get(0).value().trim();
+            artist.setName(primaryName);
+            artist.setDisplayName(primaryName);
+        }
         Artist saved = artistRepository.save(artist);
         return map(saved);
     }
@@ -110,8 +124,9 @@ public class ArtistService {
     public List<ArtistResponse> search(String name, String tag) {
         String trimmedName = trimToNull(name);
         String trimmedTag = trimToNull(tag);
+        String normalized = trimmedName == null ? null : normalizeName(trimmedName);
 
-        List<Artist> artists = artistRepository.search(trimmedName, trimmedTag);
+        List<Artist> artists = artistRepository.search(trimmedName, trimmedTag, normalized);
         return artists.stream()
                 .map(this::map)
                 .collect(Collectors.toList());
@@ -150,7 +165,8 @@ public class ArtistService {
                 resolved.isAvailableEn(),
                 resolved.isAvailableJp(),
                 resolved.getAgency(),
-                tags == null ? List.of() : List.copyOf(tags));
+                tags == null ? List.of() : List.copyOf(tags),
+                mapNames(resolved.getNames()));
     }
 
     private Artist refreshMetadataIfNeeded(Artist artist) {
@@ -194,5 +210,39 @@ public class ArtistService {
 
     private static boolean isBlank(String value) {
         return value == null || value.isBlank();
+    }
+
+    private List<ArtistName> toArtistNames(Artist artist, List<LocalizedTextRequest> names) {
+        if (names == null) {
+            return List.of();
+        }
+        return names.stream()
+                .filter(name -> name != null && name.value() != null && !name.value().isBlank())
+                .map(name -> new ArtistName(artist, normalizeLanguageCode(name.languageCode()), name.value().trim()))
+                .collect(Collectors.toList());
+    }
+
+    private List<LocalizedTextResponse> mapNames(List<ArtistName> names) {
+        if (names == null || names.isEmpty()) {
+            return List.of();
+        }
+        return names.stream()
+                .map(name -> new LocalizedTextResponse(name.getLanguageCode(), name.getValue(), name.getNormalizedValue()))
+                .collect(Collectors.toList());
+    }
+
+    private String normalizeLanguageCode(String languageCode) {
+        if (languageCode == null) {
+            return "und";
+        }
+        String trimmed = languageCode.trim();
+        if (trimmed.isEmpty()) {
+            return "und";
+        }
+        return trimmed.toLowerCase(Locale.ROOT);
+    }
+
+    private String normalizeName(String value) {
+        return com.example.youtube.util.TextNormalizer.normalize(value);
     }
 }

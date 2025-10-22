@@ -7,6 +7,7 @@ import static org.mockito.Mockito.when;
 
 import com.example.youtube.dto.ArtistRequest;
 import com.example.youtube.dto.ArtistResponse;
+import com.example.youtube.dto.LocalizedTextRequest;
 import com.example.youtube.model.Artist;
 import com.example.youtube.model.UserAccount;
 import com.example.youtube.repository.ArtistRepository;
@@ -41,8 +42,9 @@ class ArtistServiceTest {
     @Test
     void createArtistAppliesAgencyAndTagsNormalization() {
         ArtistRequest request = new ArtistRequest(
-                "Test Artist",
-                "Display Name",
+                List.of(
+                        new LocalizedTextRequest("en", "Test Artist"),
+                        new LocalizedTextRequest("ko", "테스트 아티스트")),
                 "channel-123",
                 true,
                 false,
@@ -63,8 +65,12 @@ class ArtistServiceTest {
 
         assertThat(saved.getAgency()).isEqualTo("Agency Name");
         assertThat(saved.getTags()).containsExactly("TagOne", "TagTwo", "tag-three");
+        assertThat(saved.getNames()).hasSize(2);
+        assertThat(saved.getNames().get(0).getLanguageCode()).isEqualTo("en");
+        assertThat(saved.getNames().get(0).getNormalizedValue()).isEqualTo("test artist");
 
         assertThat(response.agency()).isEqualTo("Agency Name");
         assertThat(response.tags()).containsExactly("TagOne", "TagTwo", "tag-three");
+        assertThat(response.names()).hasSize(2);
     }
 }

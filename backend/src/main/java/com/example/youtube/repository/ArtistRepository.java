@@ -13,9 +13,14 @@ public interface ArtistRepository extends JpaRepository<Artist, Long> {
     @Query("""
             SELECT DISTINCT a FROM Artist a
             LEFT JOIN a.tags t
+            LEFT JOIN a.names n
             WHERE (:name IS NULL OR :name = '' OR LOWER(a.name) LIKE LOWER(CONCAT('%', :name, '%'))
-                   OR LOWER(a.displayName) LIKE LOWER(CONCAT('%', :name, '%')))
+                   OR LOWER(a.displayName) LIKE LOWER(CONCAT('%', :name, '%'))
+                   OR LOWER(n.value) LIKE LOWER(CONCAT('%', :name, '%'))
+                   OR (:normalizedName IS NOT NULL AND n.normalizedValue LIKE CONCAT('%', :normalizedName, '%')))
               AND (:tag IS NULL OR :tag = '' OR LOWER(t) LIKE LOWER(CONCAT('%', :tag, '%')))
             """)
-    List<Artist> search(@Param("name") String name, @Param("tag") String tag);
+    List<Artist> search(@Param("name") String name,
+                        @Param("tag") String tag,
+                        @Param("normalizedName") String normalizedName);
 }

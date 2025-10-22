@@ -39,6 +39,12 @@ public class Video {
     @Column(name = "original_composer")
     private String originalComposer;
 
+    @OneToMany(mappedBy = "video", cascade = CascadeType.ALL, orphanRemoval = true)
+    private java.util.List<SongTitle> titles = new java.util.ArrayList<>();
+
+    @OneToMany(mappedBy = "video", cascade = CascadeType.ALL, orphanRemoval = true)
+    private java.util.List<ComposerName> composerNames = new java.util.ArrayList<>();
+
     public Video() {
     }
 
@@ -122,5 +128,55 @@ public class Video {
 
     public void setOriginalComposer(String originalComposer) {
         this.originalComposer = originalComposer;
+    }
+
+    public java.util.List<SongTitle> getTitles() {
+        if (titles == null) {
+            titles = new java.util.ArrayList<>();
+        }
+        return titles;
+    }
+
+    public void setTitles(java.util.List<SongTitle> titles) {
+        getTitles().clear();
+        if (titles != null) {
+            for (SongTitle title : titles) {
+                addTitle(title);
+            }
+        }
+    }
+
+    public void addTitle(SongTitle title) {
+        if (title == null) {
+            return;
+        }
+        title.setVideo(this);
+        title.setClip(null);
+        getTitles().add(title);
+    }
+
+    public java.util.List<ComposerName> getComposerNames() {
+        if (composerNames == null) {
+            composerNames = new java.util.ArrayList<>();
+        }
+        return composerNames;
+    }
+
+    public void setComposerNames(java.util.List<ComposerName> composerNames) {
+        getComposerNames().clear();
+        if (composerNames != null) {
+            for (ComposerName composerName : composerNames) {
+                addComposerName(composerName);
+            }
+        }
+    }
+
+    public void addComposerName(ComposerName composerName) {
+        if (composerName == null) {
+            return;
+        }
+        composerName.setVideo(this);
+        composerName.setClip(null);
+        getComposerNames().add(composerName);
     }
 }

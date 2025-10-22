@@ -1,5 +1,6 @@
 package com.example.youtube.model;
 
+import jakarta.persistence.CascadeType;
 import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
 import jakarta.persistence.ElementCollection;
@@ -9,6 +10,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import java.util.ArrayList;
 import java.util.List;
@@ -56,6 +58,9 @@ public class Artist {
     @CollectionTable(name = "artist_tags", joinColumns = @JoinColumn(name = "artist_id"))
     @Column(name = "tag", nullable = false)
     private List<String> tags = new ArrayList<>();
+
+    @OneToMany(mappedBy = "artist", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<ArtistName> names = new ArrayList<>();
 
     public Artist() {
     }
@@ -169,5 +174,29 @@ public class Artist {
 
     public void setTags(List<String> tags) {
         this.tags = tags == null ? new ArrayList<>() : new ArrayList<>(tags);
+    }
+
+    public List<ArtistName> getNames() {
+        if (names == null) {
+            names = new ArrayList<>();
+        }
+        return names;
+    }
+
+    public void setNames(List<ArtistName> names) {
+        getNames().clear();
+        if (names != null) {
+            for (ArtistName name : names) {
+                addName(name);
+            }
+        }
+    }
+
+    public void addName(ArtistName artistName) {
+        if (artistName == null) {
+            return;
+        }
+        artistName.setArtist(this);
+        getNames().add(artistName);
     }
 }
