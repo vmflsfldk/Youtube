@@ -1631,6 +1631,7 @@ export default function App() {
   }, [authToken]);
 
   const isAuthenticated = Boolean(authToken && currentUser);
+  const shouldAutoPromptGoogle = !authToken && !isLoadingUser;
   const creationDisabled = !isAuthenticated;
 
   useEffect(() => {
@@ -4603,6 +4604,7 @@ export default function App() {
           onSignOut={handleSignOut}
           isGoogleReady={isGoogleReady}
           onGoogleCredential={handleGoogleCredential}
+          shouldAutoPromptGoogle={shouldAutoPromptGoogle}
         />
         <nav className="sidebar__nav">
           {sidebarTabs.map((tab) => {
@@ -4658,6 +4660,7 @@ export default function App() {
             onSignOut={handleSignOut}
             isGoogleReady={isGoogleReady}
             onGoogleCredential={handleGoogleCredential}
+            shouldAutoPromptGoogle={shouldAutoPromptGoogle}
           />
         )}
 

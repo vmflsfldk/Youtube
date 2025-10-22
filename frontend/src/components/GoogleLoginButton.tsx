@@ -3,6 +3,7 @@ import { useEffect, useRef } from 'react';
 interface GoogleLoginButtonProps {
   clientId: string;
   onCredential: (credential: string) => void;
+  autoPrompt?: boolean;
 }
 
 const BUTTON_OPTIONS = {
@@ -11,7 +12,11 @@ const BUTTON_OPTIONS = {
   text: 'signin_with' as const
 };
 
-export default function GoogleLoginButton({ clientId, onCredential }: GoogleLoginButtonProps) {
+export default function GoogleLoginButton({
+  clientId,
+  onCredential,
+  autoPrompt = false
+}: GoogleLoginButtonProps) {
   const buttonRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -60,14 +65,14 @@ export default function GoogleLoginButton({ clientId, onCredential }: GoogleLogi
     };
 
     ensureFullWidth();
-    if (googleId.prompt) {
+    if (autoPrompt && googleId.prompt) {
       try {
         googleId.prompt();
       } catch (error) {
         console.warn('Google Identity Services prompt failed', error);
       }
     }
-  }, [clientId, onCredential]);
+  }, [autoPrompt, clientId, onCredential]);
 
   return <div ref={buttonRef} className="google-login-button" />;
 }

@@ -14,6 +14,7 @@ type AuthPanelProps = {
   onSignOut: () => void;
   isGoogleReady: boolean;
   onGoogleCredential: (credential: string) => void;
+  shouldAutoPromptGoogle?: boolean;
 };
 
 const GOOGLE_CLIENT_ID = '245943329145-os94mkp21415hadulir67v1i0lqjrcnq.apps.googleusercontent.com';
@@ -30,7 +31,8 @@ export default function AuthPanel({
   nicknameError,
   onSignOut,
   isGoogleReady,
-  onGoogleCredential
+  onGoogleCredential,
+  shouldAutoPromptGoogle = false
 }: AuthPanelProps) {
   const nicknameInputId = useId();
 
@@ -74,7 +76,11 @@ export default function AuthPanel({
         <div className="sidebar__auth-content sidebar__auth-content--guest">
           <div className="sidebar__auth-social">
             {isGoogleReady ? (
-              <GoogleLoginButton clientId={GOOGLE_CLIENT_ID} onCredential={onGoogleCredential} />
+              <GoogleLoginButton
+                clientId={GOOGLE_CLIENT_ID}
+                onCredential={onGoogleCredential}
+                autoPrompt={shouldAutoPromptGoogle}
+              />
             ) : (
               <span className="sidebar__auth-muted">구글 로그인 준비 중...</span>
             )}
