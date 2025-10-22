@@ -4529,7 +4529,7 @@ export default function App() {
     <p className="artist-preview__empty">채널 ID를 입력한 뒤 등록 버튼을 눌러 미리보기를 확인하세요.</p>
   );
 
-  const artistDebugLogContent = (
+  const artistDebugLogContent = useMemo(() => (
     <div className="artist-debug-log">
       {artistDebugLog.length === 0 ? (
         <p className="artist-debug-log__empty">최근 디버그 로그가 없습니다.</p>
@@ -4550,7 +4550,7 @@ export default function App() {
         </ul>
       )}
     </div>
-  );
+  ), [artistDebugLog, formatDebugLabel, formatTimestamp]);
 
   const showOptionalFields = !isMobileViewport || isArtistOptionalFieldsOpen;
   const optionalToggleLabel = isArtistOptionalFieldsOpen ? '추가 정보 숨기기' : '추가 정보 입력';
