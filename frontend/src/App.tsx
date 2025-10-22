@@ -1240,6 +1240,8 @@ export default function App() {
   const [isLoadingUser, setIsLoadingUser] = useState(false);
   const [artists, setArtists] = useState<PreparedArtist[]>([]);
   const [videos, setVideos] = useState<VideoResponse[]>([]);
+  const [publicVideos, setPublicVideos] = useState<VideoResponse[]>([]);
+  const isAuthenticated = Boolean(authToken && currentUser);
   const [hiddenVideoIds, setHiddenVideoIds] = useState<number[]>([]);
   const hiddenVideoIdSet = useMemo(() => new Set(hiddenVideoIds), [hiddenVideoIds]);
   const [favoriteVideoIds, setFavoriteVideoIds] = useState<number[]>([]);
@@ -1252,6 +1254,7 @@ export default function App() {
     original: false
   });
   const [clips, setClips] = useState<ClipResponse[]>([]);
+  const [publicClips, setPublicClips] = useState<ClipResponse[]>([]);
   const [isClipsLoading, setClipsLoading] = useState(false);
   const [playlistSearchQuery, setPlaylistSearchQuery] = useState('');
   const [expandedPlaylistEntryId, setExpandedPlaylistEntryId] = useState<string | null>(null);
@@ -1263,6 +1266,8 @@ export default function App() {
   const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [selectedVideo, setSelectedVideo] = useState<number | null>(null);
   const [clipCandidates, setClipCandidates] = useState<ClipCandidateResponse[]>([]);
+  const libraryVideos = isAuthenticated ? videos : publicVideos;
+  const libraryClips = isAuthenticated ? clips : publicClips;
   const [videoSubmissionStatus, setVideoSubmissionStatus] = useState<
     { type: 'success' | 'info' | 'error'; message: string }
   | null
@@ -1632,7 +1637,6 @@ export default function App() {
     return headers;
   }, [authToken]);
 
-  const isAuthenticated = Boolean(authToken && currentUser);
   const shouldAutoPromptGoogle = !authToken && !isLoadingUser;
   const creationDisabled = !isAuthenticated;
 
@@ -1861,57 +1865,12 @@ export default function App() {
   }, [authHeaders]);
 
   useEffect(() => {
-    if (isAuthenticated) {
-      setClipsLoading(false);
+    if (!isAuthenticated) {
       return;
     }
 
-    let cancelled = false;
-    let controller: AbortController | null = null;
-
-    setClipCandidates([]);
-    const parsedArtistId = Number(videoForm.artistId);
-
-    if (!videoForm.artistId || Number.isNaN(parsedArtistId)) {
-      setClips([]);
-      setClipsLoading(false);
-    } else {
-      controller = new AbortController();
-      setClips([]);
-      setClipsLoading(true);
-      (async () => {
-        try {
-          const response = await http.get<ClipResponse[]>('/clips', {
-            params: { artistId: parsedArtistId },
-            signal: controller?.signal
-          });
-          if (cancelled || controller?.signal.aborted) {
-            return;
-          }
-          const normalizedClips = ensureArray(response.data).map(normalizeClip);
-          setClips(normalizedClips);
-        } catch (error) {
-          if (controller?.signal.aborted) {
-            return;
-          }
-          console.error('Failed to load guest clips', error);
-          if (!cancelled) {
-            setClips([]);
-          }
-        } finally {
-          if (!cancelled) {
-            setClipsLoading(false);
-          }
-        }
-      })();
-    }
-
-    return () => {
-      cancelled = true;
-      controller?.abort();
-      setClipsLoading(false);
-    };
-  }, [isAuthenticated, http, videoForm.artistId]);
+    setClipsLoading(false);
+  }, [isAuthenticated]);
 
   useEffect(() => {
     void fetchArtists();
@@ -2529,6 +2488,61 @@ export default function App() {
   }, [authHeaders, http, isAuthenticated]);
 
   useEffect(() => {
+    if (isAuthenticated) {
+      return;
+    }
+
+    const controller = new AbortController();
+    let cancelled = false;
+
+    setHiddenVideoIds([]);
+    setClipsLoading(true);
+
+    const loadPublicLibrary = async () => {
+      try {
+        const response = await http.get<{
+          videos?: MaybeArray<VideoResponse>;
+          clips?: MaybeArray<ClipResponse>;
+        }>('/public/library', {
+          signal: controller.signal
+        });
+        if (cancelled) {
+          return;
+        }
+        const fetchedVideos = ensureArray(response.data?.videos).map(normalizeVideo);
+        const normalizedClips = ensureArray(response.data?.clips).map(normalizeClip);
+        setPublicVideos(fetchedVideos);
+        setPublicClips(normalizedClips);
+        setSelectedVideo((previous) =>
+          previous && fetchedVideos.some((video) => video.id === previous) ? previous : null
+        );
+      } catch (error) {
+        if (controller.signal.aborted) {
+          return;
+        }
+        console.error('Failed to load public media library', error);
+        if (!cancelled) {
+          setPublicVideos([]);
+          setPublicClips([]);
+          setSelectedVideo(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setClipsLoading(false);
+        }
+      }
+    };
+
+    void loadPublicLibrary();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+      setClipsLoading(false);
+    };
+  }, [http, isAuthenticated]);
+
+  useEffect(() => {
     if (!isAuthenticated) {
       setVideos([]);
       setClips([]);
@@ -2537,6 +2551,9 @@ export default function App() {
       setClipsLoading(false);
       return;
     }
+
+    setPublicVideos([]);
+    setPublicClips([]);
 
     const controller = new AbortController();
     let cancelled = false;
@@ -3082,17 +3099,17 @@ export default function App() {
     setSelectedVideo((previous) => {
       if (
         previous &&
-        (videos.some((video) => video.id === previous) || hiddenVideoIdSet.has(previous))
+        (libraryVideos.some((video) => video.id === previous) || hiddenVideoIdSet.has(previous))
       ) {
         return previous;
       }
-      const clipSource = videos.find((video) => isClipSourceVideo(video));
+      const clipSource = libraryVideos.find((video) => isClipSourceVideo(video));
       if (clipSource) {
         return clipSource.id;
       }
-      return videos.length > 0 ? videos[0].id : null;
+      return libraryVideos.length > 0 ? libraryVideos[0].id : null;
     });
-  }, [videos, hiddenVideoIdSet]);
+  }, [libraryVideos, hiddenVideoIdSet]);
 
   const selectedArtist = artists.find((artist) => artist.id === Number(videoForm.artistId));
   const noArtistsRegistered = artists.length === 0;
@@ -3285,7 +3302,9 @@ export default function App() {
       setClipUpdateSaving(false);
     }
   };
-  const selectedVideoData = selectedVideo ? videos.find((video) => video.id === selectedVideo) : null;
+  const selectedVideoData = selectedVideo
+    ? libraryVideos.find((video) => video.id === selectedVideo)
+    : null;
   const selectedVideoSectionsWithCandidates = useMemo(
     () => mergeSections(selectedVideoData?.sections ?? [], autoDetectedSections),
     [selectedVideoData, autoDetectedSections]
@@ -3331,8 +3350,8 @@ export default function App() {
       (selectedVideoCategory ? expandedVideoCategories[selectedVideoCategory] : false)
     : false;
   const displayableVideos = useMemo(
-    () => videos.filter((video) => !hiddenVideoIdSet.has(video.id)),
-    [videos, hiddenVideoIdSet]
+    () => libraryVideos.filter((video) => !hiddenVideoIdSet.has(video.id)),
+    [libraryVideos, hiddenVideoIdSet]
   );
   const categorizedVideos = useMemo(() => {
     const groups: Record<VideoCategoryKey, VideoResponse[]> = {
@@ -3355,8 +3374,8 @@ export default function App() {
     [displayableVideos]
   );
   const selectedVideoClips = useMemo(
-    () => (selectedVideo ? clips.filter((clip) => clip.videoId === selectedVideo) : []),
-    [clips, selectedVideo]
+    () => (selectedVideo ? libraryClips.filter((clip) => clip.videoId === selectedVideo) : []),
+    [libraryClips, selectedVideo]
   );
 
   const canModifyActivePlaylist = Boolean(isAuthenticated && activePlaylist);
@@ -3394,7 +3413,7 @@ export default function App() {
       return null;
     }
 
-    const clip = clips.find((candidate) => candidate.id === activeClipId);
+    const clip = libraryClips.find((candidate) => candidate.id === activeClipId);
     if (!clip) {
       return null;
     }
@@ -3405,7 +3424,7 @@ export default function App() {
 
     const parentVideo =
       (selectedVideoData && selectedVideoData.id === clip.videoId ? selectedVideoData : null) ??
-      videos.find((video) => video.id === clip.videoId) ??
+      libraryVideos.find((video) => video.id === clip.videoId) ??
       null;
     const isEditingClip = clipEditForm.clipId === clip.id;
     const editedStartSec = isEditingClip
@@ -5613,22 +5632,17 @@ export default function App() {
             hidden={activeSection !== 'catalog'}
           >
             <div className="panel catalog-panel">
-              {!isAuthenticated ? (
-                <div className="catalog-panel__empty-state">
-                  <h3>곡 데이터베이스는 로그인 후 이용할 수 있습니다.</h3>
-                  <p>UtaHub Studio에 로그인하여 등록한 영상과 클립을 곡 단위로 탐색해 보세요.</p>
-                </div>
-              ) : isClipsLoading ? (
+              {isClipsLoading ? (
                 <div className="catalog-panel__status" role="status" aria-live="polite">
                   곡 정보를 불러오는 중입니다…
                 </div>
-              ) : clips.length === 0 ? (
+              ) : libraryClips.length === 0 ? (
                 <div className="catalog-panel__empty-state">
                   <h3>아직 등록된 곡 정보가 없습니다.</h3>
                   <p>영상이나 클립을 추가하면 이곳에서 곡별 데이터를 확인할 수 있어요.</p>
                 </div>
               ) : (
-                <SongCatalogTable clips={clips} videos={videos} />
+                <SongCatalogTable clips={libraryClips} videos={libraryVideos} />
               )}
             </div>
           </section>
