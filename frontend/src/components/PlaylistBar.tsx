@@ -9,7 +9,7 @@ import {
   useRef,
   useState
 } from 'react';
-import { AnimatePresence, motion, useMotionValue, useSpring } from 'framer-motion';
+import { AnimatePresence, animate, motion, useMotionValue, useSpring } from 'framer-motion';
 
 const ClipPlayer = lazy(() => import('./ClipPlayer'));
 
@@ -134,6 +134,13 @@ const queueVariants = {
 
 const queueTransition = { duration: 0.2, ease: 'easeOut' as const };
 
+const dragHeightSpring = {
+  type: 'spring' as const,
+  stiffness: 260,
+  damping: 24,
+  bounce: 0.25
+};
+
 export default function PlaylistBar({
   items,
   currentItemKey,
@@ -169,6 +176,13 @@ export default function PlaylistBar({
     expandedAtStart: boolean;
   } | null>(null);
   const dragHeight = useMotionValue(0);
+  const animateDragHeightTo = useCallback(
+    (targetHeight: number) => {
+      dragHeight.stop();
+      animate(dragHeight, targetHeight, dragHeightSpring);
+    },
+    [dragHeight]
+  );
   const collapsedHeightRef = useRef(0);
   const expandedHeightRef = useRef(0);
   const [collapsedWrapper, setCollapsedWrapper] = useState<HTMLDivElement | null>(null);
@@ -195,10 +209,10 @@ export default function PlaylistBar({
       const nextHeight = measureCollapsedContentHeight(node);
       collapsedHeightRef.current = nextHeight;
       if (!isExpanded && nextHeight > 0) {
-        dragHeight.set(nextHeight);
+        animateDragHeightTo(nextHeight);
       }
     },
-    [dragHeight, isExpanded, isMobileViewport, measureCollapsedContentHeight]
+    [animateDragHeightTo, isExpanded, isMobileViewport, measureCollapsedContentHeight]
   );
   const handleExpandedLayoutRef = useCallback(
     (node: HTMLDivElement | null) => {
@@ -209,10 +223,10 @@ export default function PlaylistBar({
       const nextHeight = node.getBoundingClientRect().height;
       expandedHeightRef.current = nextHeight;
       if (isExpanded && nextHeight > 0) {
-        dragHeight.set(nextHeight);
+        animateDragHeightTo(nextHeight);
       }
     },
-    [dragHeight, isExpanded, isMobileViewport]
+    [animateDragHeightTo, isExpanded, isMobileViewport]
   );
   const DRAG_THRESHOLD_PX = 48;
   const DRAG_ACTIVATION_DELTA_PX = 6;
@@ -234,9 +248,9 @@ export default function PlaylistBar({
       ? expandedHeightRef.current || collapsedHeightRef.current
       : collapsedHeightRef.current;
     if (targetHeight > 0) {
-      dragHeight.set(targetHeight);
+      animateDragHeightTo(targetHeight);
     }
-  }, [dragHeight, dragTranslateY, isExpanded, isMobileViewport]);
+  }, [animateDragHeightTo, dragTranslateY, isExpanded, isMobileViewport]);
 
   const hasPlayableItems = items.some((item) => item.isPlayable);
   const placeholderMessage = hasPlayableItems
@@ -387,10 +401,11 @@ export default function PlaylistBar({
         hasToggled: false,
         expandedAtStart: isExpanded
       };
+      dragHeight.stop();
       dragTranslateY.stop();
       dragTranslateY.set(0);
     },
-    [dragTranslateY, isExpanded, isMobileViewport, resetDragState]
+    [dragHeight, dragTranslateY, isExpanded, isMobileViewport, resetDragState]
   );
 
   const handleMobileDragMove = useCallback(
@@ -485,7 +500,7 @@ export default function PlaylistBar({
       const nextHeight = measureCollapsedContentHeight(node);
       collapsedHeightRef.current = nextHeight;
       if (!isExpanded && nextHeight > 0) {
-        dragHeight.set(nextHeight);
+        animateDragHeightTo(nextHeight);
       }
     };
     updateHeight();
@@ -497,7 +512,13 @@ export default function PlaylistBar({
     return () => {
       observer.disconnect();
     };
-  }, [collapsedWrapper, dragHeight, isExpanded, isMobileViewport, measureCollapsedContentHeight]);
+  }, [
+    animateDragHeightTo,
+    collapsedWrapper,
+    isExpanded,
+    isMobileViewport,
+    measureCollapsedContentHeight
+  ]);
 
   useEffect(() => {
     const node = expandedLayout;
@@ -508,7 +529,7 @@ export default function PlaylistBar({
       const nextHeight = node.getBoundingClientRect().height;
       expandedHeightRef.current = nextHeight;
       if (isExpanded && nextHeight > 0) {
-        dragHeight.set(nextHeight);
+        animateDragHeightTo(nextHeight);
       }
     };
     updateHeight();
@@ -520,7 +541,7 @@ export default function PlaylistBar({
     return () => {
       observer.disconnect();
     };
-  }, [expandedLayout, dragHeight, isExpanded, isMobileViewport]);
+  }, [animateDragHeightTo, expandedLayout, isExpanded, isMobileViewport]);
 
   useEffect(() => {
     if (!isMobileViewport) {
