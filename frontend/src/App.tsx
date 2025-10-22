@@ -1241,6 +1241,7 @@ export default function App() {
   const [artists, setArtists] = useState<PreparedArtist[]>([]);
   const [videos, setVideos] = useState<VideoResponse[]>([]);
   const [publicVideos, setPublicVideos] = useState<VideoResponse[]>([]);
+  const isAuthenticated = Boolean(authToken && currentUser);
   const [hiddenVideoIds, setHiddenVideoIds] = useState<number[]>([]);
   const hiddenVideoIdSet = useMemo(() => new Set(hiddenVideoIds), [hiddenVideoIds]);
   const [favoriteVideoIds, setFavoriteVideoIds] = useState<number[]>([]);
@@ -1636,7 +1637,6 @@ export default function App() {
     return headers;
   }, [authToken]);
 
-  const isAuthenticated = Boolean(authToken && currentUser);
   const shouldAutoPromptGoogle = !authToken && !isLoadingUser;
   const creationDisabled = !isAuthenticated;
 
