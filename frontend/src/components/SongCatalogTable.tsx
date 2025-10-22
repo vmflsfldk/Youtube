@@ -17,6 +17,7 @@ type SongCatalogVideo = {
   originalComposer?: string | null;
   artistDisplayName?: string | null;
   artistName?: string | null;
+  contentType?: 'OFFICIAL' | 'CLIP_SOURCE' | string;
 };
 
 interface SongCatalogTableProps {
@@ -83,18 +84,21 @@ const SongCatalogTable = ({ clips, videos }: SongCatalogTableProps) => {
         normalize(clip.videoOriginalComposer) ||
         normalize(video?.originalComposer) ||
         '';
-      const songValue = normalize(clip.videoTitle) || normalize(video?.title) || '';
-      const clipValue = normalize(clip.title);
+      const videoTitleValue = normalize(clip.videoTitle) || normalize(video?.title) || '';
+      const clipTitleValue = normalize(clip.title);
+      const isClipSource = video?.contentType === 'CLIP_SOURCE';
+      const primaryTitle = isClipSource ? clipTitleValue : videoTitleValue;
+      const secondaryTitle = isClipSource ? videoTitleValue : clipTitleValue;
 
       return {
         id: clip.id,
         artist: artistValue || FALLBACK_ARTIST,
         composer: composerValue || FALLBACK_COMPOSER,
-        songTitle: songValue || FALLBACK_SONG,
-        clipTitle: clipValue || songValue || FALLBACK_CLIP,
+        songTitle: primaryTitle || FALLBACK_SONG,
+        clipTitle: secondaryTitle || primaryTitle || FALLBACK_CLIP,
         artistValue,
         composerValue,
-        songValue
+        songValue: primaryTitle
       };
     });
   }, [clips, videoMap]);
