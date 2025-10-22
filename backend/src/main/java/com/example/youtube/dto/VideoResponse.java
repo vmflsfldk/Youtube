@@ -11,6 +11,8 @@ public record VideoResponse(
         String thumbnailUrl,
         String channelId,
         String originalComposer,
+        List<LocalizedTextResponse> titles,
+        List<LocalizedTextResponse> originalComposers,
         List<VideoSectionResponse> sections
 ) {
 }

@@ -13,6 +13,7 @@ public record ArtistResponse(
         boolean availableEn,
         boolean availableJp,
         String agency,
-        List<String> tags
+        List<String> tags,
+        List<LocalizedTextResponse> names
 ) {
 }

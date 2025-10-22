@@ -3,14 +3,19 @@ package com.example.youtube.service;
 import com.example.youtube.dto.ClipCreateRequest;
 import com.example.youtube.dto.ClipResponse;
 import com.example.youtube.dto.ClipUpdateRequest;
+import com.example.youtube.dto.LocalizedTextRequest;
+import com.example.youtube.dto.LocalizedTextResponse;
 import com.example.youtube.model.Artist;
 import com.example.youtube.model.Clip;
+import com.example.youtube.model.ComposerName;
+import com.example.youtube.model.SongTitle;
 import com.example.youtube.model.Video;
 import com.example.youtube.repository.ArtistRepository;
 import com.example.youtube.repository.ClipRepository;
 import com.example.youtube.repository.VideoRepository;
 import jakarta.persistence.EntityNotFoundException;
 import java.util.List;
+import java.util.Locale;
 import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -46,11 +51,20 @@ public class ClipService {
                     "A clip with the same time range already exists for this video");
         }
 
-        Clip clip = new Clip(video, request.title(), request.startSec(), request.endSec());
+        Clip clip = new Clip(video, "", request.startSec(), request.endSec());
+        clip.setTitles(toClipSongTitles(clip, request.titles()));
+        if (!clip.getTitles().isEmpty()) {
+            clip.setTitle(clip.getTitles().get(0).getValue());
+        }
         if (request.tags() != null) {
             clip.setTags(request.tags());
         }
-        clip.setOriginalComposer(request.originalComposer());
+        clip.setComposerNames(toClipComposerNames(clip, request.originalComposers()));
+        if (!clip.getComposerNames().isEmpty()) {
+            clip.setOriginalComposer(clip.getComposerNames().get(0).getValue());
+        } else {
+            clip.setOriginalComposer(null);
+        }
         Clip saved = clipRepository.save(clip);
         return map(saved);
     }
@@ -99,6 +113,22 @@ public class ClipService {
         clip.setStartSec(startSec);
         clip.setEndSec(endSec);
 
+        if (request.titles() != null) {
+            clip.setTitles(toClipSongTitles(clip, request.titles()));
+            if (!clip.getTitles().isEmpty()) {
+                clip.setTitle(clip.getTitles().get(0).getValue());
+            }
+        }
+
+        if (request.originalComposers() != null) {
+            clip.setComposerNames(toClipComposerNames(clip, request.originalComposers()));
+            if (!clip.getComposerNames().isEmpty()) {
+                clip.setOriginalComposer(clip.getComposerNames().get(0).getValue());
+            } else {
+                clip.setOriginalComposer(null);
+            }
+        }
+
         Clip saved = clipRepository.save(clip);
         return map(saved);
     }
@@ -110,6 +140,60 @@ public class ClipService {
                 clip.getStartSec(),
                 clip.getEndSec(),
                 clip.getTags(),
-                clip.getOriginalComposer());
+                clip.getOriginalComposer(),
+                mapSongTitles(clip.getTitles()),
+                mapComposerNames(clip.getComposerNames()));
+    }
+
+    private List<SongTitle> toClipSongTitles(Clip clip, List<LocalizedTextRequest> titles) {
+        if (titles == null) {
+            return List.of();
+        }
+        return titles.stream()
+                .filter(title -> title != null && title.value() != null && !title.value().isBlank())
+                .map(title -> new SongTitle(null, clip, normalizeLanguageCode(title.languageCode()), title.value().trim()))
+                .collect(Collectors.toList());
+    }
+
+    private List<ComposerName> toClipComposerNames(Clip clip, List<LocalizedTextRequest> composers) {
+        if (composers == null) {
+            return List.of();
+        }
+        return composers.stream()
+                .filter(composer -> composer != null && composer.value() != null && !composer.value().isBlank())
+                .map(composer -> new ComposerName(null, clip,
+                        normalizeLanguageCode(composer.languageCode()), composer.value().trim()))
+                .collect(Collectors.toList());
+    }
+
+    private List<LocalizedTextResponse> mapSongTitles(List<SongTitle> titles) {
+        if (titles == null || titles.isEmpty()) {
+            return List.of();
+        }
+        return titles.stream()
+                .map(title -> new LocalizedTextResponse(title.getLanguageCode(), title.getValue(), title.getNormalizedValue()))
+                .collect(Collectors.toList());
+    }
+
+    private List<LocalizedTextResponse> mapComposerNames(List<ComposerName> composers) {
+        if (composers == null || composers.isEmpty()) {
+            return List.of();
+        }
+        return composers.stream()
+                .map(composer -> new LocalizedTextResponse(composer.getLanguageCode(),
+                        composer.getValue(),
+                        composer.getNormalizedValue()))
+                .collect(Collectors.toList());
+    }
+
+    private String normalizeLanguageCode(String languageCode) {
+        if (languageCode == null) {
+            return "und";
+        }
+        String trimmed = languageCode.trim();
+        if (trimmed.isEmpty()) {
+            return "und";
+        }
+        return trimmed.toLowerCase(Locale.ROOT);
     }
 }

@@ -33,6 +33,12 @@ public class Clip {
     @Column(name = "original_composer")
     private String originalComposer;
 
+    @OneToMany(mappedBy = "clip", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<SongTitle> titles = new ArrayList<>();
+
+    @OneToMany(mappedBy = "clip", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<ComposerName> composerNames = new ArrayList<>();
+
     public Clip() {
     }
 
@@ -93,5 +99,55 @@ public class Clip {
 
     public void setOriginalComposer(String originalComposer) {
         this.originalComposer = originalComposer;
+    }
+
+    public List<SongTitle> getTitles() {
+        if (titles == null) {
+            titles = new ArrayList<>();
+        }
+        return titles;
+    }
+
+    public void setTitles(List<SongTitle> titles) {
+        getTitles().clear();
+        if (titles != null) {
+            for (SongTitle title : titles) {
+                addTitle(title);
+            }
+        }
+    }
+
+    public void addTitle(SongTitle title) {
+        if (title == null) {
+            return;
+        }
+        title.setClip(this);
+        title.setVideo(null);
+        getTitles().add(title);
+    }
+
+    public List<ComposerName> getComposerNames() {
+        if (composerNames == null) {
+            composerNames = new ArrayList<>();
+        }
+        return composerNames;
+    }
+
+    public void setComposerNames(List<ComposerName> composerNames) {
+        getComposerNames().clear();
+        if (composerNames != null) {
+            for (ComposerName composerName : composerNames) {
+                addComposerName(composerName);
+            }
+        }
+    }
+
+    public void addComposerName(ComposerName composerName) {
+        if (composerName == null) {
+            return;
+        }
+        composerName.setClip(this);
+        composerName.setVideo(null);
+        getComposerNames().add(composerName);
     }
 }

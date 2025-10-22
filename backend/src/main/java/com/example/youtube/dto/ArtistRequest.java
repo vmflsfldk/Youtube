@@ -1,14 +1,15 @@
 package com.example.youtube.dto;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.util.List;
 import java.util.Locale;
 
 public record ArtistRequest(
-        @NotBlank String name,
-        @NotBlank String displayName,
+        @NotNull @Size(min = 1) List<@Valid LocalizedTextRequest> names,
         @NotBlank String youtubeChannelId,
         boolean availableKo,
         boolean availableEn,
@@ -32,5 +33,18 @@ public record ArtistRequest(
                 .distinct()
                 .count();
         return distinctCount == tags.size();
+    }
+
+    @AssertTrue(message = "이름은 중복 언어를 가질 수 없습니다.")
+    public boolean hasUniqueLanguageCodes() {
+        if (names == null) {
+            return false;
+        }
+        return names.stream()
+                .map(LocalizedTextRequest::languageCode)
+                .map(code -> code == null ? null : code.trim().toLowerCase(Locale.ROOT))
+                .filter(code -> code != null && !code.isBlank())
+                .distinct()
+                .count() == names.size();
     }
 }

@@ -1,9 +1,13 @@
 package com.example.youtube.service;
 
+import com.example.youtube.dto.LocalizedTextRequest;
+import com.example.youtube.dto.LocalizedTextResponse;
 import com.example.youtube.dto.VideoCreateRequest;
 import com.example.youtube.dto.VideoResponse;
 import com.example.youtube.dto.VideoSectionResponse;
 import com.example.youtube.model.Artist;
+import com.example.youtube.model.ComposerName;
+import com.example.youtube.model.SongTitle;
 import com.example.youtube.model.Video;
 import com.example.youtube.model.VideoSection;
 import com.example.youtube.repository.ArtistRepository;
@@ -16,6 +20,7 @@ import java.net.URISyntaxException;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Matcher;
@@ -64,7 +69,17 @@ public class VideoService {
         Video video = new Video(artist, videoId, "");
 
         VideoMetadata metadata = metadataProvider.fetch(videoId);
-        video.setTitle(Optional.ofNullable(metadata.title()).orElse("Untitled"));
+        List<LocalizedTextRequest> titleRequests = request.titles();
+        if ((titleRequests == null || titleRequests.isEmpty()) && metadata.title() != null
+                && !metadata.title().isBlank()) {
+            titleRequests = List.of(new LocalizedTextRequest("und", metadata.title()));
+        }
+        video.setTitles(toVideoSongTitles(video, titleRequests));
+        if (!video.getTitles().isEmpty()) {
+            video.setTitle(video.getTitles().get(0).getValue());
+        } else {
+            video.setTitle(Optional.ofNullable(metadata.title()).orElse("Untitled"));
+        }
         video.setDurationSec(metadata.durationSec());
         video.setThumbnailUrl(metadata.thumbnailUrl());
         video.setChannelId(metadata.channelId());
@@ -74,7 +89,13 @@ public class VideoService {
         }
         video.setDescription(description);
         video.setCaptionsJson(request.captionsJson());
-        video.setOriginalComposer(request.originalComposer());
+        List<LocalizedTextRequest> composerRequests = request.originalComposers();
+        video.setComposerNames(toVideoComposerNames(video, composerRequests));
+        if (!video.getComposerNames().isEmpty()) {
+            video.setOriginalComposer(video.getComposerNames().get(0).getValue());
+        } else {
+            video.setOriginalComposer(null);
+        }
 
         List<YouTubeVideoSectionProvider.VideoSectionData> sectionData = sectionProvider.fetch(videoId, description,
                 metadata.durationSec());
@@ -135,6 +156,8 @@ public class VideoService {
                 video.getThumbnailUrl(),
                 video.getChannelId(),
                 video.getOriginalComposer(),
+                mapSongTitles(video.getTitles()),
+                mapComposerNames(video.getComposerNames()),
                 sectionResponses);
     }
 
@@ -159,5 +182,57 @@ public class VideoService {
         } catch (URISyntaxException ignored) {
         }
         return Optional.empty();
+    }
+
+    private List<SongTitle> toVideoSongTitles(Video video, List<LocalizedTextRequest> titles) {
+        if (titles == null) {
+            return List.of();
+        }
+        return titles.stream()
+                .filter(title -> title != null && title.value() != null && !title.value().isBlank())
+                .map(title -> new SongTitle(video, null, normalizeLanguageCode(title.languageCode()), title.value().trim()))
+                .collect(Collectors.toList());
+    }
+
+    private List<ComposerName> toVideoComposerNames(Video video, List<LocalizedTextRequest> composers) {
+        if (composers == null) {
+            return List.of();
+        }
+        return composers.stream()
+                .filter(composer -> composer != null && composer.value() != null && !composer.value().isBlank())
+                .map(composer -> new ComposerName(video, null,
+                        normalizeLanguageCode(composer.languageCode()), composer.value().trim()))
+                .collect(Collectors.toList());
+    }
+
+    private List<LocalizedTextResponse> mapSongTitles(List<SongTitle> titles) {
+        if (titles == null || titles.isEmpty()) {
+            return List.of();
+        }
+        return titles.stream()
+                .map(title -> new LocalizedTextResponse(title.getLanguageCode(), title.getValue(), title.getNormalizedValue()))
+                .collect(Collectors.toList());
+    }
+
+    private List<LocalizedTextResponse> mapComposerNames(List<ComposerName> composers) {
+        if (composers == null || composers.isEmpty()) {
+            return List.of();
+        }
+        return composers.stream()
+                .map(composer -> new LocalizedTextResponse(composer.getLanguageCode(),
+                        composer.getValue(),
+                        composer.getNormalizedValue()))
+                .collect(Collectors.toList());
+    }
+
+    private String normalizeLanguageCode(String languageCode) {
+        if (languageCode == null) {
+            return "und";
+        }
+        String trimmed = languageCode.trim();
+        if (trimmed.isEmpty()) {
+            return "und";
+        }
+        return trimmed.toLowerCase(Locale.ROOT);
     }
 }
