@@ -153,6 +153,7 @@ export default function ClipPlayer({
             autoplay: autoplay ? 1 : 0,
             controls: 1,
             start: startSec,
+            playsinline: 1,
             ...(typeof endSec === 'number' && Number.isFinite(endSec) ? { end: endSec } : {}),
             ...(playerOrigin ? { origin: playerOrigin } : {}),
             ...(playerReferrer ? { widget_referrer: playerReferrer } : {})
