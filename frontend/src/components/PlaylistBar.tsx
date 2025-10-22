@@ -368,7 +368,7 @@ export default function PlaylistBar({
       }
       if (isExpanded) {
         const target = event.target as HTMLElement | null;
-        if (!target?.closest('.playback-bar__drag-handle')) {
+        if (target?.closest('.playback-bar__queue')) {
           dragStateRef.current = null;
           return;
         }
