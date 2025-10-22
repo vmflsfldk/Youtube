@@ -55,9 +55,7 @@ interface PlaylistBarProps {
 
 const PlayIcon = () => (
   <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-    <g transform="translate(-2.5 0)">
-      <path fill="currentColor" d="m8 5 13 7-13 7V5z" />
-    </g>
+    <path fill="currentColor" d="m8 5 13 7-13 7V5z" />
   </svg>
 );
 
@@ -69,17 +67,13 @@ const PauseIcon = () => (
 
 const NextIcon = () => (
   <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-    <g transform="translate(1 0)">
-      <path fill="currentColor" d="M5 5.5v13l9-6.5-9-6.5zm10 0h2v13h-2z" />
-    </g>
+    <path fill="currentColor" d="M5 5.5v13l9-6.5-9-6.5zm10 0h2v13h-2z" />
   </svg>
 );
 
 const PreviousIcon = () => (
   <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-    <g transform="translate(-1 0)">
-      <path fill="currentColor" d="M19 5.5v13l-9-6.5 9-6.5zm-10 0h-2v13h2z" />
-    </g>
+    <path fill="currentColor" d="M19 5.5v13l-9-6.5 9-6.5zm-10 0h-2v13h2z" />
   </svg>
 );
 
