@@ -121,8 +121,19 @@ export default function ClipPlayer({
 
   useEffect(() => {
     return () => {
-      if (playerRef.current) {
-        playerRef.current.stopVideo();
+      const player = playerRef.current;
+      if (!player) {
+        return;
+      }
+
+      try {
+        const iframe = typeof player.getIframe === 'function' ? player.getIframe() : null;
+        if (iframe) {
+          player.stopVideo();
+        }
+      } catch {
+        // Ignore errors triggered when the iframe has already been torn down.
+      } finally {
         playerRef.current = null;
       }
     };
