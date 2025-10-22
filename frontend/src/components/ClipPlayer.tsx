@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import YouTube, { YouTubePlayer, YouTubeProps } from 'react-youtube';
 
+import { createHandleStateChangeHandler, type HandleStateChangeOptions } from './clipPlayerStateChange';
+
 interface ClipPlayerProps {
   youtubeVideoId: string;
   startSec: number;
@@ -13,7 +15,6 @@ interface ClipPlayerProps {
 }
 
 type YouTubeReadyEvent = Parameters<NonNullable<YouTubeProps['onReady']>>[0];
-type YouTubeStateChangeEvent = Parameters<NonNullable<YouTubeProps['onStateChange']>>[0];
 
 export default function ClipPlayer({
   youtubeVideoId,
@@ -76,29 +77,16 @@ export default function ClipPlayer({
     [loadSegment, playing]
   );
 
-  const handleStateChange = useCallback<NonNullable<YouTubeProps['onStateChange']>>(
-    (event: YouTubeStateChangeEvent) => {
-      const isEnded = event.data === window.YT?.PlayerState?.ENDED;
-      if (!isEnded) {
-        return;
-      }
-
-      if (shouldLoop && typeof endSec === 'number' && Number.isFinite(endSec)) {
-        event.target.seekTo(startSec, true);
-        if (typeof playing === 'boolean') {
-          if (playing) {
-            event.target.playVideo();
-          } else {
-            event.target.pauseVideo();
-          }
-        }
-        return;
-      }
-
-      onEnded?.();
-    },
-    [startSec, endSec, shouldLoop, playing, onEnded]
-  );
+  const handleStateChange = useMemo<NonNullable<YouTubeProps['onStateChange']>>(() => {
+    const options: HandleStateChangeOptions = {
+      startSec,
+      endSec,
+      shouldLoop,
+      playing,
+      onEnded
+    };
+    return createHandleStateChangeHandler(options);
+  }, [startSec, endSec, shouldLoop, playing, onEnded]);
 
   useEffect(() => {
     if (typeof activationNonce === 'number') {
