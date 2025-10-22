@@ -24,6 +24,7 @@ import ArtistLibraryGrid from './ArtistLibraryGrid';
 import ArtistLibraryCard, { type ArtistLibraryCardData } from './components/ArtistLibraryCard';
 import ArtistSearchControls from './components/ArtistSearchControls';
 import ClipPreviewPanel from './components/ClipPreviewPanel';
+import SongCatalogTable from './components/SongCatalogTable';
 
 const ClipPlayer = lazy(() => import('./components/ClipPlayer'));
 
@@ -955,7 +956,7 @@ const normalizePlaylist = (playlist: PlaylistLike): PlaylistResponse => {
   };
 };
 
-type SectionKey = 'library' | 'playlist';
+type SectionKey = 'library' | 'catalog' | 'playlist';
 
 const allowCrossOriginApi = String(import.meta.env.VITE_ALLOW_CROSS_ORIGIN_API ?? '')
   .toLowerCase()
@@ -1251,6 +1252,7 @@ export default function App() {
     original: false
   });
   const [clips, setClips] = useState<ClipResponse[]>([]);
+  const [isClipsLoading, setClipsLoading] = useState(false);
   const [playlistSearchQuery, setPlaylistSearchQuery] = useState('');
   const [expandedPlaylistEntryId, setExpandedPlaylistEntryId] = useState<string | null>(null);
   const [isPlaybackExpanded, setIsPlaybackExpanded] = useState(false);
@@ -1860,6 +1862,7 @@ export default function App() {
 
   useEffect(() => {
     if (isAuthenticated) {
+      setClipsLoading(false);
       return;
     }
 
@@ -1871,9 +1874,11 @@ export default function App() {
 
     if (!videoForm.artistId || Number.isNaN(parsedArtistId)) {
       setClips([]);
+      setClipsLoading(false);
     } else {
       controller = new AbortController();
       setClips([]);
+      setClipsLoading(true);
       (async () => {
         try {
           const response = await http.get<ClipResponse[]>('/clips', {
@@ -1893,6 +1898,10 @@ export default function App() {
           if (!cancelled) {
             setClips([]);
           }
+        } finally {
+          if (!cancelled) {
+            setClipsLoading(false);
+          }
         }
       })();
     }
@@ -1900,6 +1909,7 @@ export default function App() {
     return () => {
       cancelled = true;
       controller?.abort();
+      setClipsLoading(false);
     };
   }, [isAuthenticated, http, videoForm.artistId]);
 
@@ -2524,6 +2534,7 @@ export default function App() {
       setClips([]);
       setHiddenVideoIds([]);
       setSelectedVideo(null);
+      setClipsLoading(false);
       return;
     }
 
@@ -2531,6 +2542,7 @@ export default function App() {
     let cancelled = false;
 
     const loadMediaLibrary = async () => {
+      setClipsLoading(true);
       try {
         const response = await http.get<{ videos?: MaybeArray<VideoResponse>; clips?: MaybeArray<ClipResponse> }>(
           '/library/media',
@@ -2552,6 +2564,9 @@ export default function App() {
         setSelectedVideo((previous) =>
           previous && fetchedVideos.some((video) => video.id === previous) ? previous : null
         );
+        if (!cancelled) {
+          setClipsLoading(false);
+        }
       } catch (error) {
         if (controller.signal.aborted) {
           return;
@@ -2562,6 +2577,7 @@ export default function App() {
           setClips([]);
           setHiddenVideoIds([]);
           setSelectedVideo(null);
+          setClipsLoading(false);
         }
       }
     };
@@ -2571,6 +2587,7 @@ export default function App() {
     return () => {
       cancelled = true;
       controller.abort();
+      setClipsLoading(false);
     };
   }, [authHeaders, http, isAuthenticated]);
 
@@ -4293,6 +4310,19 @@ export default function App() {
         )
       },
       {
+        id: 'catalog',
+        label: '곡 DB',
+        description: '등록된 곡과 클립을 아티스트·원곡자 기준으로 찾아보세요.',
+        icon: (
+          <svg viewBox="0 0 24 24" role="presentation" aria-hidden="true">
+            <path
+              d="M6.5 4A2.5 2.5 0 0 0 4 6.5v11A2.5 2.5 0 0 0 6.5 20H18a1 1 0 0 0 0-2H6.5A.5.5 0 0 1 6 17.5V8h11.5a.5.5 0 0 1 .5.5V18a1 1 0 1 0 2 0V8.5A2.5 2.5 0 0 0 17.5 6H6V5.5A1.5 1.5 0 0 1 7.5 4H18a1 1 0 0 0 0-2H7.5A2.5 2.5 0 0 0 5 3.5v.618A2.5 2.5 0 0 1 6.5 4Z"
+              fill="currentColor"
+            />
+          </svg>
+        )
+      },
+      {
         id: 'playlist',
         label: '영상·클립 모음',
         description: '저장된 영상과 클립을 한눈에 확인하세요.',
@@ -5573,6 +5603,33 @@ export default function App() {
                 )}
               </div>
 
+            </div>
+          </section>
+
+          <section
+            className={`content-panel${activeSection === 'catalog' ? ' active' : ''}`}
+            role="tabpanel"
+            aria-labelledby="sidebar-tab-catalog"
+            hidden={activeSection !== 'catalog'}
+          >
+            <div className="panel catalog-panel">
+              {!isAuthenticated ? (
+                <div className="catalog-panel__empty-state">
+                  <h3>곡 데이터베이스는 로그인 후 이용할 수 있습니다.</h3>
+                  <p>UtaHub Studio에 로그인하여 등록한 영상과 클립을 곡 단위로 탐색해 보세요.</p>
+                </div>
+              ) : isClipsLoading ? (
+                <div className="catalog-panel__status" role="status" aria-live="polite">
+                  곡 정보를 불러오는 중입니다…
+                </div>
+              ) : clips.length === 0 ? (
+                <div className="catalog-panel__empty-state">
+                  <h3>아직 등록된 곡 정보가 없습니다.</h3>
+                  <p>영상이나 클립을 추가하면 이곳에서 곡별 데이터를 확인할 수 있어요.</p>
+                </div>
+              ) : (
+                <SongCatalogTable clips={clips} videos={videos} />
+              )}
             </div>
           </section>
 
