@@ -4583,6 +4583,7 @@ button:disabled:hover {
 
   .playback-bar--mobile-collapsed {
     padding: 12px 16px;
+    touch-action: none;
   }
 
   .playback-bar__drag-handle {
@@ -4590,7 +4591,6 @@ button:disabled:hover {
     justify-content: center;
     align-items: center;
     padding: 6px 0 2px;
-    touch-action: none;
   }
 
   .playback-bar__drag-grip {

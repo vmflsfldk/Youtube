@@ -202,6 +202,7 @@ export default function PlaylistBar({
     [dragHeight, isExpanded, isMobileViewport]
   );
   const DRAG_THRESHOLD_PX = 48;
+  const DRAG_ACTIVATION_DELTA_PX = 6;
   const currentItem = useMemo(
     () => items.find((item) => item.key === currentItemKey) ?? null,
     [items, currentItemKey]
@@ -352,6 +353,13 @@ export default function PlaylistBar({
       if (!isMobileViewport) {
         return;
       }
+      if (isExpanded) {
+        const target = event.target as HTMLElement | null;
+        if (!target?.closest('.playback-bar__drag-handle')) {
+          dragStateRef.current = null;
+          return;
+        }
+      }
       if (event.touches.length !== 1) {
         resetDragState();
         return;
@@ -362,7 +370,7 @@ export default function PlaylistBar({
       }
       dragStateRef.current = {
         startY: touch.clientY,
-        isDragging: true,
+        isDragging: false,
         hasToggled: false,
         expandedAtStart: isExpanded
       };
@@ -375,21 +383,27 @@ export default function PlaylistBar({
   const handleMobileDragMove = useCallback(
     (event: TouchEvent<HTMLDivElement>) => {
       const state = dragStateRef.current;
-      if (!state?.isDragging) {
+      if (!state) {
         return;
       }
       if (event.touches.length !== 1) {
         resetDragState();
         return;
       }
-      if (event.cancelable) {
-        event.preventDefault();
-      }
       const touch = event.touches[0];
       if (!touch) {
         return;
       }
       const deltaY = touch.clientY - state.startY;
+      if (!state.isDragging) {
+        if (Math.abs(deltaY) < DRAG_ACTIVATION_DELTA_PX) {
+          return;
+        }
+        state.isDragging = true;
+      }
+      if (event.cancelable) {
+        event.preventDefault();
+      }
       const nextOffset = state.expandedAtStart
         ? Math.max(0, deltaY)
         : Math.min(0, deltaY);
@@ -665,14 +679,12 @@ export default function PlaylistBar({
           animate={playbackBarVariants.animate}
           exit={playbackBarVariants.exit}
           transition={playbackBarTransition}
+          onTouchStart={handleMobileDragStart}
+          onTouchMove={handleMobileDragMove}
+          onTouchEnd={handleMobileDragEnd}
+          onTouchCancel={handleMobileDragCancel}
         >
-          <div
-            className="playback-bar__drag-handle"
-            onTouchStart={handleMobileDragStart}
-            onTouchMove={handleMobileDragMove}
-            onTouchEnd={handleMobileDragEnd}
-            onTouchCancel={handleMobileDragCancel}
-          >
+          <div className="playback-bar__drag-handle">
             <div className="playback-bar__drag-grip" />
           </div>
           <div className="playback-bar__collapsed-body">
@@ -727,15 +739,13 @@ export default function PlaylistBar({
         animate={playbackBarVariants.animate}
         exit={playbackBarVariants.exit}
         transition={playbackBarTransition}
+        onTouchStart={isMobileViewport ? handleMobileDragStart : undefined}
+        onTouchMove={isMobileViewport ? handleMobileDragMove : undefined}
+        onTouchEnd={isMobileViewport ? handleMobileDragEnd : undefined}
+        onTouchCancel={isMobileViewport ? handleMobileDragCancel : undefined}
       >
         {isMobileViewport && (
-          <div
-            className="playback-bar__drag-handle"
-            onTouchStart={handleMobileDragStart}
-            onTouchMove={handleMobileDragMove}
-            onTouchEnd={handleMobileDragEnd}
-            onTouchCancel={handleMobileDragCancel}
-          >
+          <div className="playback-bar__drag-handle">
             <div className="playback-bar__drag-grip" />
           </div>
         )}
