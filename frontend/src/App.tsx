@@ -1240,6 +1240,7 @@ export default function App() {
   const [artists, setArtists] = useState<PreparedArtist[]>([]);
   const [videos, setVideos] = useState<VideoResponse[]>([]);
   const [hiddenVideoIds, setHiddenVideoIds] = useState<number[]>([]);
+  const hiddenVideoIdSet = useMemo(() => new Set(hiddenVideoIds), [hiddenVideoIds]);
   const [favoriteVideoIds, setFavoriteVideoIds] = useState<number[]>([]);
   const [userPlaylists, setUserPlaylists] = useState<PlaylistResponse[]>([]);
   const [publicPlaylists, setPublicPlaylists] = useState<PlaylistResponse[]>([]);
@@ -3063,7 +3064,7 @@ export default function App() {
     setSelectedVideo((previous) => {
       if (
         previous &&
-        (videos.some((video) => video.id === previous) || hiddenVideoIds.includes(previous))
+        (videos.some((video) => video.id === previous) || hiddenVideoIdSet.has(previous))
       ) {
         return previous;
       }
@@ -3073,7 +3074,7 @@ export default function App() {
       }
       return videos.length > 0 ? videos[0].id : null;
     });
-  }, [videos, hiddenVideoIds]);
+  }, [videos, hiddenVideoIdSet]);
 
   const selectedArtist = artists.find((artist) => artist.id === Number(videoForm.artistId));
   const noArtistsRegistered = artists.length === 0;
@@ -3302,7 +3303,7 @@ export default function App() {
     selectedVideo,
     selectedVideoData
   ]);
-  const selectedVideoIsHidden = selectedVideo !== null && hiddenVideoIds.includes(selectedVideo);
+  const selectedVideoIsHidden = selectedVideo !== null && hiddenVideoIdSet.has(selectedVideo);
   const selectedVideoCategory = useMemo<VideoCategoryKey | null>(
     () => (selectedVideoData ? categorizeVideo(selectedVideoData) : null),
     [selectedVideoData]
@@ -3312,8 +3313,8 @@ export default function App() {
       (selectedVideoCategory ? expandedVideoCategories[selectedVideoCategory] : false)
     : false;
   const displayableVideos = useMemo(
-    () => videos.filter((video) => !hiddenVideoIds.includes(video.id)),
-    [videos, hiddenVideoIds]
+    () => videos.filter((video) => !hiddenVideoIdSet.has(video.id)),
+    [videos, hiddenVideoIdSet]
   );
   const categorizedVideos = useMemo(() => {
     const groups: Record<VideoCategoryKey, VideoResponse[]> = {
