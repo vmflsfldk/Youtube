@@ -3932,11 +3932,13 @@ button:disabled:hover {
 }
 
 .playback-bar--mobile-collapsed {
+  position: fixed;
   left: 0;
   right: 0;
   bottom: var(--mobile-bottom-nav-offset, 0px);
   transition: transform 220ms ease-out;
-  width: auto;
+  width: 100%;
+  transform: none;
   padding: 10px 16px;
   border-radius: 20px 20px 0 0;
   gap: 0;
