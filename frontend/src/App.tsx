@@ -3080,27 +3080,39 @@ export default function App() {
     setArtistRegistrationOpen((prev) => !prev);
   }, [setActiveSection, setArtistRegistrationOpen]);
 
-  useEffect(() => {
-    setSelectedVideo((previous) => {
-      if (
-        previous &&
-        (libraryVideos.some((video) => video.id === previous) || hiddenVideoIdSet.has(previous))
-      ) {
-        return previous;
-      }
-      const clipSource = libraryVideos.find((video) => isClipSourceVideo(video));
-      if (clipSource) {
-        return clipSource.id;
-      }
-      return libraryVideos.length > 0 ? libraryVideos[0].id : null;
-    });
-  }, [libraryVideos, hiddenVideoIdSet]);
-
   const selectedArtist = artists.find((artist) => artist.id === Number(videoForm.artistId));
   const noArtistsRegistered = artists.length === 0;
   const noFilteredArtists = !noArtistsRegistered && filteredArtists.length === 0 && !selectedArtist;
   const artistList = filteredArtists;
   const selectedArtistId = selectedArtist?.id ?? null;
+  const artistLibraryVideos = useMemo(() => {
+    if (selectedArtistId === null) {
+      return libraryVideos;
+    }
+    return libraryVideos.filter((video) => video.artistId === selectedArtistId);
+  }, [libraryVideos, selectedArtistId]);
+
+  useEffect(() => {
+    setSelectedVideo((previous) => {
+      if (previous !== null) {
+        const matchingVideo = artistLibraryVideos.find((video) => video.id === previous);
+        const hiddenSelectionIsValid =
+          hiddenVideoIdSet.has(previous) &&
+          (selectedArtistId === null ||
+            libraryVideos.some(
+              (video) => video.id === previous && video.artistId === selectedArtistId
+            ));
+        if (matchingVideo || hiddenSelectionIsValid) {
+          return previous;
+        }
+      }
+      const clipSource = artistLibraryVideos.find((video) => isClipSourceVideo(video));
+      if (clipSource) {
+        return clipSource.id;
+      }
+      return artistLibraryVideos.length > 0 ? artistLibraryVideos[0].id : null;
+    });
+  }, [artistLibraryVideos, hiddenVideoIdSet, libraryVideos, selectedArtistId]);
 
   useEffect(() => {
     setArtistProfileForm(createArtistProfileFormState(selectedArtist));
@@ -3288,7 +3300,7 @@ export default function App() {
     }
   };
   const selectedVideoData = selectedVideo
-    ? libraryVideos.find((video) => video.id === selectedVideo)
+    ? artistLibraryVideos.find((video) => video.id === selectedVideo)
     : null;
   const selectedVideoSectionsWithCandidates = useMemo(
     () => mergeSections(selectedVideoData?.sections ?? [], autoDetectedSections),
@@ -3335,8 +3347,8 @@ export default function App() {
       (selectedVideoCategory ? expandedVideoCategories[selectedVideoCategory] : false)
     : false;
   const displayableVideos = useMemo(
-    () => libraryVideos.filter((video) => !hiddenVideoIdSet.has(video.id)),
-    [libraryVideos, hiddenVideoIdSet]
+    () => artistLibraryVideos.filter((video) => !hiddenVideoIdSet.has(video.id)),
+    [artistLibraryVideos, hiddenVideoIdSet]
   );
   const categorizedVideos = useMemo(() => {
     const groups: Record<VideoCategoryKey, VideoResponse[]> = {
@@ -3409,7 +3421,7 @@ export default function App() {
 
     const parentVideo =
       (selectedVideoData && selectedVideoData.id === clip.videoId ? selectedVideoData : null) ??
-      libraryVideos.find((video) => video.id === clip.videoId) ??
+      artistLibraryVideos.find((video) => video.id === clip.videoId) ??
       null;
     const isEditingClip = clipEditForm.clipId === clip.id;
     const editedStartSec = isEditingClip
