@@ -103,22 +103,28 @@ class FakeD1Database implements D1Database {
     const normalized = query.replace(/\s+/g, " ").trim().toLowerCase();
     if (
       normalized.startsWith(
-        "select * from videos where artist_id = ? and content_type = ? and hidden = 0 order by id desc"
+        "select * from videos where artist_id = ? and content_type = ? and hidden = 0 and lower(coalesce(category, '')) != 'live' order by id desc"
       )
     ) {
       const [artistId, contentType] = values as [number, string];
       const rows = this.videos
         .filter((row) => row.artist_id === artistId && (row.content_type ?? "") === contentType)
         .filter((row) => Number(row.hidden ?? 0) === 0)
+        .filter((row) => (row.category ?? "").toLowerCase() !== "live")
         .sort((a, b) => b.id - a.id)
         .map((row) => ({ ...row } as unknown as T));
       return { success: true, meta: { duration: 0, changes: 0 }, results: rows };
     }
-    if (normalized.startsWith("select * from videos where artist_id = ? and hidden = 0 order by id desc")) {
+    if (
+      normalized.startsWith(
+        "select * from videos where artist_id = ? and hidden = 0 and lower(coalesce(category, '')) != 'live' order by id desc"
+      )
+    ) {
       const [artistId] = values as [number];
       const rows = this.videos
         .filter((row) => row.artist_id === artistId)
         .filter((row) => Number(row.hidden ?? 0) === 0)
+        .filter((row) => (row.category ?? "").toLowerCase() !== "live")
         .sort((a, b) => b.id - a.id)
         .map((row) => ({ ...row } as unknown as T));
       return { success: true, meta: { duration: 0, changes: 0 }, results: rows };
@@ -209,4 +215,65 @@ test("listVideos allows unauthenticated access", async (t) => {
   assert.equal(payload.length, 1);
   assert.equal(payload[0].youtubeVideoId, "unauthvid");
   assert.equal(payload[0].originalComposer, null);
+});
+
+test("listVideos excludes live videos", async (t) => {
+  __resetWorkerTestState();
+  __setHasEnsuredVideoColumnsForTests(true);
+  t.after(() => __resetWorkerTestState());
+
+  const artists: ArtistTableRow[] = [{ id: 4, created_by: 4 }];
+  const videos: VideoTableRow[] = [
+    {
+      id: 401,
+      artist_id: 4,
+      youtube_video_id: "livenotallowed",
+      title: "Live Stream",
+      duration_sec: 3600,
+      thumbnail_url: "thumb",
+      channel_id: "channel",
+      description: null,
+      captions_json: null,
+      category: "LIVE",
+      content_type: "OFFICIAL",
+      hidden: 0,
+      original_composer: null
+    },
+    {
+      id: 402,
+      artist_id: 4,
+      youtube_video_id: "coverallowed",
+      title: "Cover Song",
+      duration_sec: 240,
+      thumbnail_url: "thumb",
+      channel_id: "channel",
+      description: null,
+      captions_json: null,
+      category: "cover",
+      content_type: "OFFICIAL",
+      hidden: 0,
+      original_composer: null
+    }
+  ];
+
+  const db = new FakeD1Database(artists, videos);
+  const env: Env = { DB: db };
+
+  const defaultUrl = new URL("https://example.com/api/videos?artistId=4");
+  const defaultResponse = await listVideos(defaultUrl, env, null, corsConfig);
+  assert.equal(defaultResponse.status, 200);
+  const defaultPayload = (await defaultResponse.json()) as any[];
+  assert.deepEqual(
+    defaultPayload.map((video) => video.youtubeVideoId),
+    ["coverallowed"]
+  );
+
+  const filteredUrl = new URL("https://example.com/api/videos?artistId=4&contentType=OFFICIAL");
+  const filteredResponse = await listVideos(filteredUrl, env, null, corsConfig);
+  assert.equal(filteredResponse.status, 200);
+  const filteredPayload = (await filteredResponse.json()) as any[];
+  assert.deepEqual(
+    filteredPayload.map((video) => video.youtubeVideoId),
+    ["coverallowed"]
+  );
 });
