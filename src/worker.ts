@@ -2044,7 +2044,7 @@ async function createClip(
     if (!Number.isFinite(artistIdParam)) {
       throw new HttpError(400, "artistId must be provided when registering a clip source");
     }
-    await ensureArtist(env, artistIdParam, user.id);
+    await ensureArtistExists(env, artistIdParam);
 
     const extractedVideoId = extractVideoId(videoUrl);
     if (!extractedVideoId) {
@@ -2104,7 +2104,7 @@ async function createClip(
     throw new HttpError(400, "Unable to determine video for clip creation");
   }
 
-  await ensureVideo(env, resolvedVideoId, user.id);
+  await ensureVideoExists(env, resolvedVideoId);
 
   const existingContentType = await env.DB
     .prepare("SELECT content_type FROM videos WHERE id = ?")
@@ -2618,21 +2618,6 @@ async function ensureArtistExists(env: Env, artistId: number): Promise<void> {
     .first<{ id: number }>();
   if (!artist) {
     throw new HttpError(404, `Artist not found: ${artistId}`);
-  }
-}
-
-async function ensureVideo(env: Env, videoId: number, userId: number): Promise<void> {
-  const video = await env.DB.prepare(
-    `SELECT v.id
-       FROM videos v
-       JOIN artists a ON a.id = v.artist_id
-      WHERE v.id = ?
-        AND a.created_by = ?`
-  )
-    .bind(videoId, userId)
-    .first<{ id: number }>();
-  if (!video) {
-    throw new HttpError(404, `Video not found: ${videoId}`);
   }
 }
 
