@@ -25,6 +25,12 @@ import ArtistLibraryCard, { type ArtistLibraryCardData } from './components/Arti
 import ArtistSearchControls from './components/ArtistSearchControls';
 import ClipPreviewPanel from './components/ClipPreviewPanel';
 import SongCatalogTable from './components/SongCatalogTable';
+import type { VideoResponse, VideoSectionResponse } from './types/media';
+import {
+  isClipSourceVideo,
+  mergeVideoIntoCollections,
+  normalizeVideo
+} from './utils/videos';
 
 const ClipPlayer = lazy(() => import('./components/ClipPlayer'));
 
@@ -263,9 +269,6 @@ const describeVideoCategory = (category?: string | null): string | null => {
       return null;
   }
 };
-
-const isClipSourceVideo = (video: VideoResponse): boolean =>
-  (video.contentType ?? '').toUpperCase() === 'CLIP_SOURCE';
 
 type MediaRegistrationType = 'video' | 'clip';
 
@@ -620,33 +623,6 @@ const createArtistProfileFormState = (
   tags: formatArtistTagsForInput(artist?.tags)
 });
 
-interface VideoSectionResponse {
-  title: string;
-  startSec: number;
-  endSec: number;
-  source: string;
-}
-
-interface VideoResponse {
-  id: number;
-  artistId: number;
-  youtubeVideoId: string;
-  title: string;
-  durationSec?: number | null;
-  thumbnailUrl?: string | null;
-  channelId?: string | null;
-  contentType?: 'OFFICIAL' | 'CLIP_SOURCE' | string;
-  category?: 'live' | 'cover' | 'original' | null;
-  sections?: VideoSectionResponse[];
-  hidden?: boolean;
-  originalComposer?: string | null;
-  artistName?: string | null;
-  artistDisplayName?: string | null;
-  artistYoutubeChannelId?: string | null;
-  artistYoutubeChannelTitle?: string | null;
-  artistProfileImageUrl?: string | null;
-}
-
 interface ClipResponse {
   id: number;
   videoId: number;
@@ -856,24 +832,6 @@ interface ArtistDebugLogEntry {
   response?: unknown;
   error?: string;
 }
-
-const normalizeVideo = (video: VideoResponse): VideoResponse => {
-  const duration =
-    typeof video.durationSec === 'number'
-      ? video.durationSec
-      : Number.isFinite(Number(video.durationSec))
-        ? Number(video.durationSec)
-        : null;
-  const hidden =
-    typeof video.hidden === 'boolean' ? video.hidden : video.hidden ? true : undefined;
-
-  return {
-    ...video,
-    durationSec: duration,
-    thumbnailUrl: video.thumbnailUrl ?? null,
-    hidden
-  };
-};
 
 const normalizeClip = (clip: ClipLike): ClipResponse => {
   const rawTags = clip.tags;
@@ -1243,6 +1201,14 @@ export default function App() {
   const [publicVideos, setPublicVideos] = useState<VideoResponse[]>([]);
   const [songVideos, setSongVideos] = useState<VideoResponse[]>([]);
   const [publicSongVideos, setPublicSongVideos] = useState<VideoResponse[]>([]);
+  const videosRef = useRef<VideoResponse[]>([]);
+  const songVideosRef = useRef<VideoResponse[]>([]);
+  useEffect(() => {
+    videosRef.current = videos;
+  }, [videos]);
+  useEffect(() => {
+    songVideosRef.current = songVideos;
+  }, [songVideos]);
   const isAuthenticated = Boolean(authToken && currentUser);
   const [hiddenVideoIds, setHiddenVideoIds] = useState<number[]>([]);
   const hiddenVideoIdSet = useMemo(() => new Set(hiddenVideoIds), [hiddenVideoIds]);
@@ -2098,18 +2064,21 @@ export default function App() {
   const applyVideoRegistrationResult = useCallback(
     (video: VideoResponse, candidates: MaybeArray<ClipCandidateResponse>) => {
       const normalizedCandidates = ensureArray(candidates);
-      let existed = false;
-      setVideos((prev) => {
-        existed = prev.some((item) => item.id === video.id);
-        const others = prev.filter((item) => item.id !== video.id);
-        return [...others, video];
-      });
-      setSelectedVideo(video.id);
+      const mergeResult = mergeVideoIntoCollections(
+        { videos: videosRef.current, songVideos: songVideosRef.current },
+        video
+      );
+
+      videosRef.current = mergeResult.videos;
+      songVideosRef.current = mergeResult.songVideos;
+      setVideos(mergeResult.videos);
+      setSongVideos(mergeResult.songVideos);
+      setSelectedVideo(mergeResult.normalizedVideo.id);
       setClipCandidates(normalizedCandidates);
-      autoDetectedVideoIdRef.current = video.id;
-      return { existed, candidates: normalizedCandidates };
+      autoDetectedVideoIdRef.current = mergeResult.normalizedVideo.id;
+      return { existed: mergeResult.existed, candidates: normalizedCandidates };
     },
-    [setVideos, setSelectedVideo, setClipCandidates]
+    [setVideos, setSongVideos, setSelectedVideo, setClipCandidates]
   );
 
   const requestVideoRegistration = useCallback(
