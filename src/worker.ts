@@ -1868,11 +1868,11 @@ async function listVideos(
   let statement: D1PreparedStatement;
   if (requestedContentType) {
     statement = env.DB.prepare(
-      `SELECT * FROM videos WHERE artist_id = ? AND content_type = ? AND hidden = 0 ORDER BY id DESC`
+      `SELECT * FROM videos WHERE artist_id = ? AND content_type = ? AND hidden = 0 AND LOWER(COALESCE(category, '')) != 'live' ORDER BY id DESC`
     ).bind(artistId, requestedContentType);
   } else {
     statement = env.DB.prepare(
-      `SELECT * FROM videos WHERE artist_id = ? AND hidden = 0 ORDER BY id DESC`
+      `SELECT * FROM videos WHERE artist_id = ? AND hidden = 0 AND LOWER(COALESCE(category, '')) != 'live' ORDER BY id DESC`
     ).bind(artistId);
   }
 
