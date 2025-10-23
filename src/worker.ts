@@ -2519,11 +2519,9 @@ async function autoDetect(
   const row = await env.DB.prepare(
     `SELECT v.*
        FROM videos v
-       JOIN artists a ON a.id = v.artist_id
-      WHERE v.id = ?
-        AND a.created_by = ?`
+      WHERE v.id = ?`
   )
-    .bind(videoId, user.id)
+    .bind(videoId)
     .first<VideoRow>();
   if (!row) {
     throw new HttpError(404, `Video not found: ${videoId}`);
