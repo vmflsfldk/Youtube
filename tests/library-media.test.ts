@@ -337,26 +337,38 @@ test("listMediaLibrary returns media and clips for requesting user", async () =>
     }>;
   };
 
-  assert.equal(payload.videos.length, 2);
+  assert.equal(payload.videos.length, 3);
   assert.deepEqual(
     payload.videos.map((video) => video.id),
-    [3, 2],
+    [3, 2, 1],
     "videos should be ordered by id desc"
   );
   assert.deepEqual(
     payload.videos.map((video) => video.artistName),
-    ["Other Artist", "Artist One"]
+    ["Other Artist", "Artist One", "Artist One"]
   );
   assert.deepEqual(
     payload.videos.map((video) => video.artistYoutubeChannelId),
-    ["chan-2", "chan-1"]
+    ["chan-2", "chan-1", "chan-1"]
   );
-  assert(!payload.videos.some((video) => video.id === 1), "live videos should be excluded");
+  assert(payload.videos.some((video) => video.id === 1), "live videos should be included");
 
-  assert.equal(payload.clips.length, 2);
+  assert.equal(payload.clips.length, 3);
   const clipIds = payload.clips.map((clip) => clip.id).sort((a, b) => a - b);
-  assert.deepEqual(clipIds, [102, 103]);
-  assert(!payload.clips.some((clip) => clip.videoId === 1), "clips from live videos should be excluded");
+  assert.deepEqual(clipIds, [101, 102, 103]);
+
+  const introClip = payload.clips.find((clip) => clip.id === 101);
+  assert(introClip);
+  assert.equal(introClip?.artistId, 10);
+  assert.equal(introClip?.artistName, "Artist One");
+  assert.equal(introClip?.artistDisplayName, "Artist 1");
+  assert.equal(introClip?.artistYoutubeChannelId, "chan-1");
+  assert.equal(introClip?.artistYoutubeChannelTitle, "Channel One");
+  assert.equal(introClip?.artistProfileImageUrl, "https://example.com/artist1.png");
+  assert.equal(introClip?.youtubeVideoId, "videoaaaaaa1");
+  assert.equal(introClip?.videoTitle, "First Video");
+  assert.deepEqual(introClip?.tags, ["tag-a", "tag-b"]);
+
   const chorusClip = payload.clips.find((clip) => clip.id === 102);
   assert(chorusClip);
   assert.equal(chorusClip?.artistId, 10);
