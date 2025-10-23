@@ -463,11 +463,25 @@ const formatVideoMetaSummary = (
     parts.push(describeVideoContentType(video.contentType));
   }
   if (options.includeDuration !== false) {
-    parts.push(formatSeconds(video.durationSec ?? 0));
+    const durationSec = parseDurationSeconds(video.durationSec);
+    parts.push(formatSeconds(durationSec ?? 0));
   }
   const uniqueParts = parts.filter((part, index) => parts.indexOf(part) === index);
   return uniqueParts.join(' · ');
 };
+
+function parseDurationSeconds(
+  value: VideoResponse['durationSec'] | null | undefined
+): number | null {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null;
+  }
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
 
 type ArtistCountryKey = 'availableKo' | 'availableEn' | 'availableJp';
 
@@ -1103,7 +1117,7 @@ function PlaylistEntriesList({
                         )}
                         <div className="playlist-preview-placeholder__overlay">
                           <span className="playlist-preview-placeholder__label">
-                            {formatSeconds(video.durationSec ?? 0)}
+                            {formatSeconds(parseDurationSeconds(video.durationSec) ?? 0)}
                           </span>
                           {canPreviewVideo ? (
                             <button
@@ -3080,27 +3094,39 @@ export default function App() {
     setArtistRegistrationOpen((prev) => !prev);
   }, [setActiveSection, setArtistRegistrationOpen]);
 
-  useEffect(() => {
-    setSelectedVideo((previous) => {
-      if (
-        previous &&
-        (libraryVideos.some((video) => video.id === previous) || hiddenVideoIdSet.has(previous))
-      ) {
-        return previous;
-      }
-      const clipSource = libraryVideos.find((video) => isClipSourceVideo(video));
-      if (clipSource) {
-        return clipSource.id;
-      }
-      return libraryVideos.length > 0 ? libraryVideos[0].id : null;
-    });
-  }, [libraryVideos, hiddenVideoIdSet]);
-
   const selectedArtist = artists.find((artist) => artist.id === Number(videoForm.artistId));
   const noArtistsRegistered = artists.length === 0;
   const noFilteredArtists = !noArtistsRegistered && filteredArtists.length === 0 && !selectedArtist;
   const artistList = filteredArtists;
   const selectedArtistId = selectedArtist?.id ?? null;
+  const artistLibraryVideos = useMemo(() => {
+    if (selectedArtistId === null) {
+      return libraryVideos;
+    }
+    return libraryVideos.filter((video) => video.artistId === selectedArtistId);
+  }, [libraryVideos, selectedArtistId]);
+
+  useEffect(() => {
+    setSelectedVideo((previous) => {
+      if (previous !== null) {
+        const matchingVideo = artistLibraryVideos.find((video) => video.id === previous);
+        const hiddenSelectionIsValid =
+          hiddenVideoIdSet.has(previous) &&
+          (selectedArtistId === null ||
+            libraryVideos.some(
+              (video) => video.id === previous && video.artistId === selectedArtistId
+            ));
+        if (matchingVideo || hiddenSelectionIsValid) {
+          return previous;
+        }
+      }
+      const clipSource = artistLibraryVideos.find((video) => isClipSourceVideo(video));
+      if (clipSource) {
+        return clipSource.id;
+      }
+      return artistLibraryVideos.length > 0 ? artistLibraryVideos[0].id : null;
+    });
+  }, [artistLibraryVideos, hiddenVideoIdSet, libraryVideos, selectedArtistId]);
 
   useEffect(() => {
     setArtistProfileForm(createArtistProfileFormState(selectedArtist));
@@ -3288,7 +3314,7 @@ export default function App() {
     }
   };
   const selectedVideoData = selectedVideo
-    ? libraryVideos.find((video) => video.id === selectedVideo)
+    ? artistLibraryVideos.find((video) => video.id === selectedVideo)
     : null;
   const selectedVideoSectionsWithCandidates = useMemo(
     () => mergeSections(selectedVideoData?.sections ?? [], autoDetectedSections),
@@ -3335,8 +3361,8 @@ export default function App() {
       (selectedVideoCategory ? expandedVideoCategories[selectedVideoCategory] : false)
     : false;
   const displayableVideos = useMemo(
-    () => libraryVideos.filter((video) => !hiddenVideoIdSet.has(video.id)),
-    [libraryVideos, hiddenVideoIdSet]
+    () => artistLibraryVideos.filter((video) => !hiddenVideoIdSet.has(video.id)),
+    [artistLibraryVideos, hiddenVideoIdSet]
   );
   const categorizedVideos = useMemo(() => {
     const groups: Record<VideoCategoryKey, VideoResponse[]> = {
@@ -3409,7 +3435,7 @@ export default function App() {
 
     const parentVideo =
       (selectedVideoData && selectedVideoData.id === clip.videoId ? selectedVideoData : null) ??
-      libraryVideos.find((video) => video.id === clip.videoId) ??
+      artistLibraryVideos.find((video) => video.id === clip.videoId) ??
       null;
     const isEditingClip = clipEditForm.clipId === clip.id;
     const editedStartSec = isEditingClip
@@ -3767,10 +3793,8 @@ export default function App() {
           video.artistDisplayName || video.artistName || video.artistYoutubeChannelTitle || null;
         const summary = formatVideoMetaSummary(video, { includeDuration: false });
         const subtitleParts = [artistLabel, summary].filter((part): part is string => Boolean(part));
-        const durationLabel =
-          typeof video.durationSec === 'number' && Number.isFinite(video.durationSec)
-            ? formatSeconds(video.durationSec)
-            : null;
+        const durationSec = parseDurationSeconds(video.durationSec);
+        const durationLabel = durationSec !== null ? formatSeconds(durationSec) : null;
         const title =
           formatSongTitle(video.title, { fallback: video.youtubeVideoId || '제목 없는 영상' }) ||
           video.title ||
@@ -3786,10 +3810,7 @@ export default function App() {
           thumbnailUrl: video.thumbnailUrl ?? null,
           youtubeVideoId: hasYoutube ? youtubeVideoId : null,
           startSec: 0,
-          endSec:
-            typeof video.durationSec === 'number' && Number.isFinite(video.durationSec)
-              ? video.durationSec
-              : undefined,
+          endSec: durationSec ?? undefined,
           durationLabel,
           isPlayable: hasYoutube,
           badgeLabel: '영상',
@@ -4189,8 +4210,9 @@ export default function App() {
     [clipForm.endHours, clipForm.endMinutes, clipForm.endSeconds]
   );
   const previewStartSec = Math.max(0, parsedPreviewStartSec || 0);
-  const fallbackEnd = selectedVideoData?.durationSec
-    ? Math.min(selectedVideoData.durationSec, previewStartSec + 30)
+  const selectedVideoDurationSec = parseDurationSeconds(selectedVideoData?.durationSec);
+  const fallbackEnd = selectedVideoDurationSec !== null
+    ? Math.min(selectedVideoDurationSec, previewStartSec + 30)
     : previewStartSec + 30;
   const previewEndSec = parsedPreviewEndSec > previewStartSec ? parsedPreviewEndSec : fallbackEnd;
 
@@ -5469,8 +5491,8 @@ export default function App() {
                                         youtubeVideoId={selectedVideoData.youtubeVideoId}
                                         startSec={0}
                                         endSec={
-                                          selectedVideoData.durationSec && selectedVideoData.durationSec > 0
-                                            ? selectedVideoData.durationSec
+                                          selectedVideoDurationSec && selectedVideoDurationSec > 0
+                                            ? selectedVideoDurationSec
                                             : undefined
                                         }
                                       />
