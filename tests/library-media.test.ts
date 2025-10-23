@@ -176,16 +176,32 @@ class FakeD1Database implements D1Database {
       return { success: true, meta: { duration: 0, changes: 0 }, results: rows };
     }
 
-    if (normalized.startsWith("select id, youtube_video_id, title, original_composer from videos where id in")) {
+    if (
+      normalized.startsWith("select v.id, v.youtube_video_id") &&
+      normalized.includes("from videos v join artists a on a.id = v.artist_id")
+    ) {
       const ids = new Set((values as number[]) ?? []);
       const rows = this.videos
         .filter((video) => ids.has(video.id))
-        .map((video) => ({
-          id: video.id,
-          youtube_video_id: video.youtube_video_id,
-          title: video.title,
-          original_composer: video.original_composer
-        } as unknown as T));
+        .map((video) => {
+          const artist = this.artists.find((item) => item.id === video.artist_id);
+          if (!artist) {
+            return null;
+          }
+          return {
+            id: video.id,
+            youtube_video_id: video.youtube_video_id,
+            title: video.title,
+            original_composer: video.original_composer,
+            artist_id: video.artist_id,
+            artist_name: artist.name,
+            artist_display_name: artist.display_name,
+            artist_youtube_channel_id: artist.youtube_channel_id,
+            artist_youtube_channel_title: artist.youtube_channel_title,
+            artist_profile_image_url: artist.profile_image_url
+          } as unknown as T;
+        })
+        .filter((row): row is T => row !== null);
       return { success: true, meta: { duration: 0, changes: 0 }, results: rows };
     }
 
@@ -345,6 +361,10 @@ test("listMediaLibrary returns media and clips for requesting user", async () =>
   assert(chorusClip);
   assert.equal(chorusClip?.artistId, 10);
   assert.equal(chorusClip?.artistName, "Artist One");
+  assert.equal(chorusClip?.artistDisplayName, "Artist 1");
+  assert.equal(chorusClip?.artistYoutubeChannelId, "chan-1");
+  assert.equal(chorusClip?.artistYoutubeChannelTitle, "Channel One");
+  assert.equal(chorusClip?.artistProfileImageUrl, "https://example.com/artist1.png");
   assert.equal(chorusClip?.youtubeVideoId, "videobbbbbbb2");
   assert.equal(chorusClip?.videoTitle, "Second Video");
   assert.deepEqual(chorusClip?.tags, ["tag-c"]);
@@ -353,6 +373,10 @@ test("listMediaLibrary returns media and clips for requesting user", async () =>
   assert(otherClip);
   assert.equal(otherClip?.artistId, 20);
   assert.equal(otherClip?.artistName, "Other Artist");
+  assert.equal(otherClip?.artistDisplayName, "Other");
+  assert.equal(otherClip?.artistYoutubeChannelId, "chan-2");
+  assert.equal(otherClip?.artistYoutubeChannelTitle, "Channel Two");
+  assert.equal(otherClip?.artistProfileImageUrl, "https://example.com/artist2.png");
   assert.equal(otherClip?.youtubeVideoId, "videoccccccc3");
   assert.equal(otherClip?.videoTitle, "Third Video");
   assert.deepEqual(otherClip?.tags, ["tag-x"]);

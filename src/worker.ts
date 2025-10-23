@@ -1812,7 +1812,9 @@ async function createVideo(
     ...(originalComposerValue !== undefined ? { originalComposer: originalComposerValue } : {})
   });
 
-  return jsonResponse(toVideoResponse(row), created ? 201 : 200, cors);
+  const hydrated = await hydrateVideoRow(env, row);
+
+  return jsonResponse(hydrated, created ? 201 : 200, cors);
 }
 
 async function suggestClipCandidates(
@@ -1838,7 +1840,7 @@ async function suggestClipCandidates(
 
   return jsonResponse(
     {
-      video: toVideoResponse(row),
+      video: await hydrateVideoRow(env, row),
       candidates
     },
     200,
@@ -1865,19 +1867,43 @@ async function listVideos(
 
   const requestedContentType = normalizeVideoContentType(url.searchParams.get("contentType"));
 
+  const baseQuery = `SELECT
+        v.id,
+        v.artist_id,
+        v.youtube_video_id,
+        v.title,
+        v.duration_sec,
+        v.thumbnail_url,
+        v.channel_id,
+        v.description,
+        v.captions_json,
+        v.category,
+        v.content_type,
+        v.hidden,
+        v.original_composer,
+        a.name AS artist_name,
+        a.display_name AS artist_display_name,
+        a.youtube_channel_id AS artist_youtube_channel_id,
+        a.youtube_channel_title AS artist_youtube_channel_title,
+        a.profile_image_url AS artist_profile_image_url
+      FROM videos v
+      JOIN artists a ON a.id = v.artist_id
+     WHERE v.artist_id = ?
+       AND COALESCE(v.hidden, 0) = 0
+       AND LOWER(COALESCE(v.category, '')) != 'live'`;
+
   let statement: D1PreparedStatement;
   if (requestedContentType) {
-    statement = env.DB.prepare(
-      `SELECT * FROM videos WHERE artist_id = ? AND content_type = ? AND hidden = 0 AND LOWER(COALESCE(category, '')) != 'live' ORDER BY id DESC`
-    ).bind(artistId, requestedContentType);
+    statement = env.DB.prepare(`${baseQuery}
+       AND v.content_type = ?
+     ORDER BY v.id DESC`).bind(artistId, requestedContentType);
   } else {
-    statement = env.DB.prepare(
-      `SELECT * FROM videos WHERE artist_id = ? AND hidden = 0 AND LOWER(COALESCE(category, '')) != 'live' ORDER BY id DESC`
-    ).bind(artistId);
+    statement = env.DB.prepare(`${baseQuery}
+     ORDER BY v.id DESC`).bind(artistId);
   }
 
-  const { results } = await statement.all<VideoRow>();
-  const videos = (results ?? []).map(toVideoResponse);
+  const { results } = await statement.all<VideoLibraryRow>();
+  const videos = (results ?? []).map(toVideoLibraryResponse);
   return jsonResponse(videos, 200, cors);
 }
 
@@ -1967,20 +1993,7 @@ async function loadMediaLibrary(
     .bind(...videoIds)
     .all<ClipRow>();
 
-  const clipResponses = await attachTags(env, clipRows ?? [], { includeVideoMeta: true });
-  const videoMap = new Map(videos.map((video) => [video.id, video]));
-  const clips = clipResponses.map((clip) => {
-    const video = videoMap.get(clip.videoId);
-    return {
-      ...clip,
-      artistId: video?.artistId,
-      artistName: video?.artistName,
-      artistDisplayName: video?.artistDisplayName,
-      artistYoutubeChannelId: video?.artistYoutubeChannelId,
-      artistYoutubeChannelTitle: video?.artistYoutubeChannelTitle ?? null,
-      artistProfileImageUrl: video?.artistProfileImageUrl ?? null
-    } satisfies ClipResponse;
-  });
+  const clips = await attachTags(env, clipRows ?? [], { includeVideoMeta: true });
 
   return { videos, clips, songVideos };
 }
@@ -2993,6 +3006,41 @@ function toVideoLibraryResponse(row: VideoLibraryRow): VideoResponse {
   };
 }
 
+async function hydrateVideoRow(env: Env, row: VideoRow): Promise<VideoResponse> {
+  const hydrated = await env.DB.prepare(
+    `SELECT
+        v.id,
+        v.artist_id,
+        v.youtube_video_id,
+        v.title,
+        v.duration_sec,
+        v.thumbnail_url,
+        v.channel_id,
+        v.description,
+        v.captions_json,
+        v.category,
+        v.content_type,
+        v.hidden,
+        v.original_composer,
+        a.name AS artist_name,
+        a.display_name AS artist_display_name,
+        a.youtube_channel_id AS artist_youtube_channel_id,
+        a.youtube_channel_title AS artist_youtube_channel_title,
+        a.profile_image_url AS artist_profile_image_url
+      FROM videos v
+      JOIN artists a ON a.id = v.artist_id
+     WHERE v.id = ?`
+  )
+    .bind(row.id)
+    .first<VideoLibraryRow>();
+
+  if (!hydrated) {
+    return toVideoResponse(row);
+  }
+
+  return toVideoLibraryResponse(hydrated);
+}
+
 interface AttachTagsOptions {
   includeVideoMeta?: boolean;
 }
@@ -3020,23 +3068,66 @@ async function attachTags(
   }
 
   let videoMeta:
-    | Map<number, { youtubeVideoId: string | null; title: string | null; originalComposer: string | null }>
+    | Map<
+        number,
+        {
+          youtubeVideoId: string | null;
+          title: string | null;
+          originalComposer: string | null;
+          artistId: number | null;
+          artistName: string | null;
+          artistDisplayName: string | null;
+          artistYoutubeChannelId: string | null;
+          artistYoutubeChannelTitle: string | null;
+          artistProfileImageUrl: string | null;
+        }
+      >
     | null = null;
   if (options.includeVideoMeta) {
     const videoIds = Array.from(new Set(clips.map((clip) => clip.video_id)));
     if (videoIds.length > 0) {
       const videoPlaceholders = videoIds.map(() => "?").join(", ");
       const { results: videoRows } = await env.DB.prepare(
-        `SELECT id, youtube_video_id, title, original_composer FROM videos WHERE id IN (${videoPlaceholders})`
+        `SELECT
+            v.id,
+            v.youtube_video_id,
+            v.title,
+            v.original_composer,
+            v.artist_id,
+            a.name AS artist_name,
+            a.display_name AS artist_display_name,
+            a.youtube_channel_id AS artist_youtube_channel_id,
+            a.youtube_channel_title AS artist_youtube_channel_title,
+            a.profile_image_url AS artist_profile_image_url
+          FROM videos v
+          JOIN artists a ON a.id = v.artist_id
+         WHERE v.id IN (${videoPlaceholders})`
       )
         .bind(...videoIds)
-        .all<{ id: number; youtube_video_id: string | null; title: string | null; original_composer: string | null }>();
+        .all<{
+          id: number;
+          youtube_video_id: string | null;
+          title: string | null;
+          original_composer: string | null;
+          artist_id: number;
+          artist_name: string | null;
+          artist_display_name: string | null;
+          artist_youtube_channel_id: string | null;
+          artist_youtube_channel_title: string | null;
+          artist_profile_image_url: string | null;
+        }>();
       videoMeta = new Map();
       for (const row of videoRows ?? []) {
         videoMeta.set(row.id, {
           youtubeVideoId: row.youtube_video_id ?? null,
           title: row.title ?? null,
-          originalComposer: row.original_composer ?? null
+          originalComposer: row.original_composer ?? null,
+          artistId: row.artist_id ?? null,
+          artistName: row.artist_name ?? null,
+          artistDisplayName: row.artist_display_name ?? null,
+          artistYoutubeChannelId: row.artist_youtube_channel_id ?? null,
+          artistYoutubeChannelTitle: row.artist_youtube_channel_title ?? null,
+          artistProfileImageUrl: row.artist_profile_image_url ?? null
         });
       }
     }
@@ -3054,7 +3145,13 @@ async function attachTags(
       originalComposer: clip.original_composer ?? null,
       youtubeVideoId: meta?.youtubeVideoId ?? undefined,
       videoTitle: meta?.title ?? null,
-      videoOriginalComposer: meta?.originalComposer ?? null
+      videoOriginalComposer: meta?.originalComposer ?? null,
+      artistId: meta?.artistId ?? undefined,
+      artistName: meta?.artistName ?? undefined,
+      artistDisplayName: meta?.artistDisplayName ?? undefined,
+      artistYoutubeChannelId: meta?.artistYoutubeChannelId ?? undefined,
+      artistYoutubeChannelTitle: meta?.artistYoutubeChannelTitle ?? null,
+      artistProfileImageUrl: meta?.artistProfileImageUrl ?? null
     } satisfies ClipResponse;
   });
 }

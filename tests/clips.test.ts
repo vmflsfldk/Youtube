@@ -29,6 +29,11 @@ interface D1Database {
 type ArtistRow = {
   id: number;
   created_by: number;
+  name: string;
+  display_name: string | null;
+  youtube_channel_id: string;
+  youtube_channel_title: string | null;
+  profile_image_url: string | null;
 };
 
 type VideoRow = {
@@ -118,6 +123,28 @@ class FakeD1Database implements D1Database {
       const video = this.videos.find((row) => row.id === videoId);
       return (video ? ({ id: video.id } as unknown as T) : null);
     }
+    if (
+      normalized.startsWith("select v.id, v.artist_id") &&
+      normalized.includes("from videos v join artists a on a.id = v.artist_id where v.id = ?")
+    ) {
+      const [videoId] = values as [number];
+      const video = this.videos.find((row) => row.id === videoId);
+      if (!video) {
+        return null;
+      }
+      const artist = this.artists.find((row) => row.id === video.artist_id);
+      if (!artist) {
+        return null;
+      }
+      return {
+        ...video,
+        artist_name: artist.name,
+        artist_display_name: artist.display_name,
+        artist_youtube_channel_id: artist.youtube_channel_id,
+        artist_youtube_channel_title: artist.youtube_channel_title,
+        artist_profile_image_url: artist.profile_image_url
+      } as unknown as T;
+    }
     return null;
   }
 
@@ -152,11 +179,28 @@ class FakeD1Database implements D1Database {
         .map((row) => ({ ...row } as unknown as T));
       return { success: true, meta: { duration: 0, changes: 0 }, results: rows };
     }
-    if (normalized.startsWith("select id, youtube_video_id, title, original_composer")) {
+    if (
+      normalized.startsWith("select v.id, v.youtube_video_id") &&
+      normalized.includes("from videos v join artists a on a.id = v.artist_id")
+    ) {
       const videoIds = values as number[];
       const rows = this.videos
         .filter((video) => videoIds.includes(video.id))
-        .map((video) => ({ ...video } as unknown as T));
+        .map((video) => {
+          const artist = this.artists.find((item) => item.id === video.artist_id);
+          if (!artist) {
+            return null;
+          }
+          return {
+            ...video,
+            artist_name: artist.name,
+            artist_display_name: artist.display_name,
+            artist_youtube_channel_id: artist.youtube_channel_id,
+            artist_youtube_channel_title: artist.youtube_channel_title,
+            artist_profile_image_url: artist.profile_image_url
+          } as unknown as T;
+        })
+        .filter((row): row is T => row !== null);
       return { success: true, meta: { duration: 0, changes: 0 }, results: rows };
     }
     return { success: true, meta: { duration: 0, changes: 0 }, results: [] };
@@ -174,8 +218,24 @@ test("listClips allows access to clips for another user's artist", async (t) => 
   t.after(() => __resetWorkerTestState());
 
   const artists: ArtistRow[] = [
-    { id: 1, created_by: 1 },
-    { id: 2, created_by: 2 }
+    {
+      id: 1,
+      created_by: 1,
+      name: "Artist One",
+      display_name: "One",
+      youtube_channel_id: "chan-1",
+      youtube_channel_title: "Channel One",
+      profile_image_url: "https://example.com/artist1.png"
+    },
+    {
+      id: 2,
+      created_by: 2,
+      name: "Artist Two",
+      display_name: "Two",
+      youtube_channel_id: "chan-2",
+      youtube_channel_title: "Channel Two",
+      profile_image_url: "https://example.com/artist2.png"
+    }
   ];
   const videos: VideoRow[] = [
     { id: 201, artist_id: 2, youtube_video_id: "video201", title: "Collab", original_composer: "Composer Clip" }
@@ -208,6 +268,12 @@ test("listClips allows access to clips for another user's artist", async (t) => 
   assert.equal(payload[0].videoId, 201);
   assert.deepEqual(payload[0].tags, ["chorus"]);
   assert.equal(payload[0].youtubeVideoId, "video201");
+  assert.equal(payload[0].artistId, 2);
+  assert.equal(payload[0].artistName, "Artist Two");
+  assert.equal(payload[0].artistDisplayName, "Two");
+  assert.equal(payload[0].artistYoutubeChannelId, "chan-2");
+  assert.equal(payload[0].artistYoutubeChannelTitle, "Channel Two");
+  assert.equal(payload[0].artistProfileImageUrl, "https://example.com/artist2.png");
   assert.equal(payload[0].originalComposer, "Composer Clip");
 });
 
@@ -215,7 +281,17 @@ test("listClips allows unauthenticated access by artist", async (t) => {
   __resetWorkerTestState();
   t.after(() => __resetWorkerTestState());
 
-  const artists: ArtistRow[] = [{ id: 3, created_by: 3 }];
+  const artists: ArtistRow[] = [
+    {
+      id: 3,
+      created_by: 3,
+      name: "Solo Artist",
+      display_name: "Solo",
+      youtube_channel_id: "chan-3",
+      youtube_channel_title: "Channel Three",
+      profile_image_url: "https://example.com/artist3.png"
+    }
+  ];
   const videos: VideoRow[] = [
     { id: 301, artist_id: 3, youtube_video_id: "vid301", title: "Solo", original_composer: null }
   ];
@@ -237,6 +313,12 @@ test("listClips allows unauthenticated access by artist", async (t) => {
 
   const payload = (await response.json()) as any[];
   assert.equal(payload.length, 2);
+  assert(payload.every((clip) => clip.artistId === 3));
+  assert(payload.every((clip) => clip.artistName === "Solo Artist"));
+  assert(payload.every((clip) => clip.artistDisplayName === "Solo"));
+  assert(payload.every((clip) => clip.artistYoutubeChannelId === "chan-3"));
+  assert(payload.every((clip) => clip.artistYoutubeChannelTitle === "Channel Three"));
+  assert(payload.every((clip) => clip.artistProfileImageUrl === "https://example.com/artist3.png"));
   assert.deepEqual(
     payload.map((clip) => ({ id: clip.id, tags: clip.tags, originalComposer: clip.originalComposer })),
     [
@@ -251,8 +333,24 @@ test("listClips allows access to clips for another user's video", async (t) => {
   t.after(() => __resetWorkerTestState());
 
   const artists: ArtistRow[] = [
-    { id: 1, created_by: 1 },
-    { id: 2, created_by: 2 }
+    {
+      id: 1,
+      created_by: 1,
+      name: "Artist One",
+      display_name: "One",
+      youtube_channel_id: "chan-1",
+      youtube_channel_title: "Channel One",
+      profile_image_url: "https://example.com/artist1.png"
+    },
+    {
+      id: 2,
+      created_by: 2,
+      name: "Artist Two",
+      display_name: "Two",
+      youtube_channel_id: "chan-2",
+      youtube_channel_title: "Channel Two",
+      profile_image_url: "https://example.com/artist2.png"
+    }
   ];
   const videos: VideoRow[] = [
     { id: 202, artist_id: 2, youtube_video_id: "video202", title: "Duet", original_composer: "Composer Highlight" }
@@ -282,5 +380,11 @@ test("listClips allows access to clips for another user's video", async (t) => {
   assert.equal(payload[0].id, 601);
   assert.equal(payload[0].videoId, 202);
   assert.equal(payload[0].youtubeVideoId, "video202");
+  assert.equal(payload[0].artistId, 2);
+  assert.equal(payload[0].artistName, "Artist Two");
+  assert.equal(payload[0].artistDisplayName, "Two");
+  assert.equal(payload[0].artistYoutubeChannelId, "chan-2");
+  assert.equal(payload[0].artistYoutubeChannelTitle, "Channel Two");
+  assert.equal(payload[0].artistProfileImageUrl, "https://example.com/artist2.png");
   assert.equal(payload[0].originalComposer, "Composer Highlight");
 });
