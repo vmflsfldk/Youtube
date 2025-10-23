@@ -33,6 +33,11 @@ interface D1Database {
 type ArtistTableRow = {
   id: number;
   created_by: number;
+  name: string;
+  display_name: string | null;
+  youtube_channel_id: string;
+  youtube_channel_title: string | null;
+  profile_image_url: string | null;
 };
 
 type VideoTableRow = {
@@ -96,37 +101,62 @@ class FakeD1Database implements D1Database {
       const artist = this.artists.find((row) => row.id === artistId);
       return (artist ? ({ id: artist.id } as unknown as T) : null);
     }
+    if (
+      normalized.startsWith("select v.id, v.artist_id") &&
+      normalized.includes("from videos v join artists a on a.id = v.artist_id where v.id = ?")
+    ) {
+      const [videoId] = values as [number];
+      const video = this.videos.find((row) => row.id === videoId);
+      if (!video) {
+        return null;
+      }
+      const artist = this.artists.find((row) => row.id === video.artist_id);
+      if (!artist) {
+        return null;
+      }
+      return {
+        ...video,
+        artist_name: artist.name,
+        artist_display_name: artist.display_name,
+        artist_youtube_channel_id: artist.youtube_channel_id,
+        artist_youtube_channel_title: artist.youtube_channel_title,
+        artist_profile_image_url: artist.profile_image_url
+      } as unknown as T;
+    }
     return null;
   }
 
   async handleAll<T>(query: string, values: unknown[]): Promise<D1Result<T>> {
     const normalized = query.replace(/\s+/g, " ").trim().toLowerCase();
     if (
-      normalized.startsWith(
-        "select * from videos where artist_id = ? and content_type = ? and hidden = 0 and lower(coalesce(category, '')) != 'live' order by id desc"
-      )
+      normalized.startsWith("select v.id, v.artist_id") &&
+      normalized.includes("from videos v join artists a on a.id = v.artist_id")
     ) {
-      const [artistId, contentType] = values as [number, string];
-      const rows = this.videos
-        .filter((row) => row.artist_id === artistId && (row.content_type ?? "") === contentType)
-        .filter((row) => Number(row.hidden ?? 0) === 0)
-        .filter((row) => (row.category ?? "").toLowerCase() !== "live")
-        .sort((a, b) => b.id - a.id)
-        .map((row) => ({ ...row } as unknown as T));
-      return { success: true, meta: { duration: 0, changes: 0 }, results: rows };
-    }
-    if (
-      normalized.startsWith(
-        "select * from videos where artist_id = ? and hidden = 0 and lower(coalesce(category, '')) != 'live' order by id desc"
-      )
-    ) {
-      const [artistId] = values as [number];
+      const filterByContentType = normalized.includes("and v.content_type = ?");
+      const [artistId, maybeContentType] = values as [number, string?];
       const rows = this.videos
         .filter((row) => row.artist_id === artistId)
         .filter((row) => Number(row.hidden ?? 0) === 0)
         .filter((row) => (row.category ?? "").toLowerCase() !== "live")
-        .sort((a, b) => b.id - a.id)
-        .map((row) => ({ ...row } as unknown as T));
+        .filter((row) =>
+          !filterByContentType || (row.content_type ?? "").toUpperCase() === (maybeContentType ?? "").toUpperCase()
+        )
+        .map((row) => {
+          const artist = this.artists.find((item) => item.id === row.artist_id);
+          if (!artist) {
+            return null;
+          }
+          return {
+            ...row,
+            artist_name: artist.name,
+            artist_display_name: artist.display_name,
+            artist_youtube_channel_id: artist.youtube_channel_id,
+            artist_youtube_channel_title: artist.youtube_channel_title,
+            artist_profile_image_url: artist.profile_image_url
+          } as unknown as T;
+        })
+        .filter((row): row is T => row !== null)
+        .sort((a, b) => (b as unknown as { id: number }).id - (a as unknown as { id: number }).id);
       return { success: true, meta: { duration: 0, changes: 0 }, results: rows };
     }
     return { success: true, meta: { duration: 0, changes: 0 }, results: [] };
@@ -185,7 +215,17 @@ test("listVideos allows unauthenticated access", async (t) => {
   __setHasEnsuredVideoColumnsForTests(true);
   t.after(() => __resetWorkerTestState());
 
-  const artists: ArtistTableRow[] = [{ id: 3, created_by: 3 }];
+  const artists: ArtistTableRow[] = [
+    {
+      id: 3,
+      created_by: 3,
+      name: "Public Artist",
+      display_name: "Public",
+      youtube_channel_id: "chan-3",
+      youtube_channel_title: "Channel Public",
+      profile_image_url: "https://example.com/artist3.png"
+    }
+  ];
   const videos: VideoTableRow[] = [
     {
       id: 301,
@@ -213,6 +253,12 @@ test("listVideos allows unauthenticated access", async (t) => {
 
   const payload = (await response.json()) as any[];
   assert.equal(payload.length, 1);
+  assert.equal(payload[0].artistId, 3);
+  assert.equal(payload[0].artistName, "Public Artist");
+  assert.equal(payload[0].artistDisplayName, "Public");
+  assert.equal(payload[0].artistYoutubeChannelId, "chan-3");
+  assert.equal(payload[0].artistYoutubeChannelTitle, "Channel Public");
+  assert.equal(payload[0].artistProfileImageUrl, "https://example.com/artist3.png");
   assert.equal(payload[0].youtubeVideoId, "unauthvid");
   assert.equal(payload[0].originalComposer, null);
 });
@@ -222,7 +268,17 @@ test("listVideos excludes live videos", async (t) => {
   __setHasEnsuredVideoColumnsForTests(true);
   t.after(() => __resetWorkerTestState());
 
-  const artists: ArtistTableRow[] = [{ id: 4, created_by: 4 }];
+  const artists: ArtistTableRow[] = [
+    {
+      id: 4,
+      created_by: 4,
+      name: "Live Artist",
+      display_name: "Performer",
+      youtube_channel_id: "chan-4",
+      youtube_channel_title: "Channel Four",
+      profile_image_url: "https://example.com/artist4.png"
+    }
+  ];
   const videos: VideoTableRow[] = [
     {
       id: 401,
@@ -267,6 +323,7 @@ test("listVideos excludes live videos", async (t) => {
     defaultPayload.map((video) => video.youtubeVideoId),
     ["coverallowed"]
   );
+  assert(defaultPayload.every((video) => video.artistName === "Live Artist"));
 
   const filteredUrl = new URL("https://example.com/api/videos?artistId=4&contentType=OFFICIAL");
   const filteredResponse = await listVideos(filteredUrl, env, null, corsConfig);
@@ -276,4 +333,5 @@ test("listVideos excludes live videos", async (t) => {
     filteredPayload.map((video) => video.youtubeVideoId),
     ["coverallowed"]
   );
+  assert(filteredPayload.every((video) => video.artistDisplayName === "Performer"));
 });
