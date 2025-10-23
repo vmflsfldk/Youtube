@@ -1250,6 +1250,11 @@ async function handleApi(
         return await listVideos(url, env, user, cors);
       }
     }
+    const updateVideoCategoryMatch = path.match(/^\/api\/videos\/(\d+)\/category$/);
+    if (request.method === "PATCH" && updateVideoCategoryMatch) {
+      const videoId = Number(updateVideoCategoryMatch[1]);
+      return await updateVideoCategory(request, env, requireUser(user), cors, videoId);
+    }
     if (request.method === "POST" && path === "/api/videos/clip-suggestions") {
       return await suggestClipCandidates(request, env, requireUser(user), cors);
     }
@@ -1648,6 +1653,7 @@ interface VideoUrlResolutionParams {
   description?: string | null;
   captionsJson?: string | null;
   originalComposer?: string | null;
+  category?: string | null;
 }
 
 async function getOrCreateVideoByUrl(
@@ -1670,6 +1676,20 @@ async function getOrCreateVideoByUrl(
   const metadata = await testOverrides.fetchVideoMetadata(env, videoId);
 
   const derivedCategory = deriveVideoCategoryFromTitle(metadata.title);
+
+  const hasCategory = Object.prototype.hasOwnProperty.call(params, "category");
+  let providedCategory: string | null | undefined = undefined;
+  if (hasCategory) {
+    const rawCategory = (params as { category?: unknown }).category;
+    if (typeof rawCategory === "string") {
+      const sanitized = sanitizeOptionalText(rawCategory);
+      providedCategory = sanitized === null ? null : sanitized.toLowerCase();
+    } else if (rawCategory === null) {
+      providedCategory = null;
+    } else if (rawCategory !== undefined) {
+      throw new HttpError(400, "category must be a string or null");
+    }
+  }
 
   let description = params.description ?? null;
   if (!description && metadata.description) {
@@ -1703,6 +1723,9 @@ async function getOrCreateVideoByUrl(
     }
 
     const nextOriginalComposer = sanitizedOriginalComposer ?? existing.original_composer ?? null;
+    const nextCategory =
+      providedCategory === undefined ? existing.category ?? derivedCategory : providedCategory;
+
     const updateResult = await env.DB.prepare(
       `UPDATE videos
           SET artist_id = ?,
@@ -1726,7 +1749,7 @@ async function getOrCreateVideoByUrl(
         metadata.channelId,
         description,
         captionsJson,
-        derivedCategory,
+        nextCategory,
         nextOriginalComposer,
         "OFFICIAL",
         0,
@@ -1748,6 +1771,7 @@ async function getOrCreateVideoByUrl(
   }
 
   const insertOriginalComposer = sanitizedOriginalComposer ?? null;
+  const insertCategory = providedCategory === undefined ? derivedCategory : providedCategory;
   const insertResult = await env.DB.prepare(
     `INSERT INTO videos (artist_id, youtube_video_id, title, duration_sec, thumbnail_url, channel_id, description, captions_json, category, original_composer, content_type, hidden)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
@@ -1761,7 +1785,7 @@ async function getOrCreateVideoByUrl(
       metadata.channelId,
       description,
       captionsJson,
-      derivedCategory,
+      insertCategory,
       insertOriginalComposer,
       "OFFICIAL",
       0
@@ -1804,17 +1828,101 @@ async function createVideo(
         ? null
         : undefined;
 
+  let categoryValue: string | null | undefined = undefined;
+  const hasCategory = Object.prototype.hasOwnProperty.call(body, "category");
+  if (hasCategory) {
+    const rawCategory = (body as { category?: unknown }).category;
+    if (typeof rawCategory === "string") {
+      const sanitized = sanitizeOptionalText(rawCategory);
+      categoryValue = sanitized === null ? null : sanitized.toLowerCase();
+    } else if (rawCategory === null) {
+      categoryValue = null;
+    } else if (rawCategory !== undefined) {
+      throw new HttpError(400, "category must be a string or null");
+    }
+  }
+
   const { row, created } = await getOrCreateVideoByUrl(env, user, {
     artistId,
     videoUrl,
     description,
     captionsJson,
-    ...(originalComposerValue !== undefined ? { originalComposer: originalComposerValue } : {})
+    ...(originalComposerValue !== undefined ? { originalComposer: originalComposerValue } : {}),
+    ...(hasCategory ? { category: categoryValue ?? null } : {})
   });
 
   const hydrated = await hydrateVideoRow(env, row);
 
   return jsonResponse(hydrated, created ? 201 : 200, cors);
+}
+
+async function updateVideoCategory(
+  request: Request,
+  env: Env,
+  user: UserContext,
+  cors: CorsConfig,
+  videoIdParam: number
+): Promise<Response> {
+  const videoId = Number(videoIdParam);
+  if (!Number.isFinite(videoId)) {
+    throw new HttpError(400, "videoId must be a number");
+  }
+
+  const existing = await env.DB.prepare(
+    `SELECT v.*, a.created_by
+       FROM videos v
+       JOIN artists a ON a.id = v.artist_id
+      WHERE v.id = ?`
+  )
+    .bind(videoId)
+    .first<(VideoRow & { created_by: number }) | null>();
+
+  if (!existing) {
+    throw new HttpError(404, `Video not found: ${videoId}`);
+  }
+
+  if (existing.created_by !== user.id) {
+    throw new HttpError(403, "이 영상에 접근할 권한이 없습니다.");
+  }
+
+  const body = await readJson(request);
+  if (!Object.prototype.hasOwnProperty.call(body, "category")) {
+    throw new HttpError(400, "category must be provided");
+  }
+
+  const rawCategory = (body as { category?: unknown }).category;
+  let providedCategory: string | null | undefined = undefined;
+  if (typeof rawCategory === "string") {
+    const sanitized = sanitizeOptionalText(rawCategory);
+    providedCategory = sanitized === null ? null : sanitized.toLowerCase();
+  } else if (rawCategory === null) {
+    providedCategory = null;
+  } else if (rawCategory === undefined) {
+    providedCategory = undefined;
+  } else {
+    throw new HttpError(400, "category must be a string or null");
+  }
+
+  const resolvedCategory =
+    providedCategory === undefined ? deriveVideoCategoryFromTitle(existing.title) : providedCategory;
+
+  const updateResult = await env.DB.prepare("UPDATE videos SET category = ? WHERE id = ?")
+    .bind(resolvedCategory, videoId)
+    .run();
+
+  if (!updateResult.success) {
+    throw new HttpError(500, updateResult.error ?? "Failed to update video category");
+  }
+
+  const row = await env.DB.prepare("SELECT * FROM videos WHERE id = ?")
+    .bind(videoId)
+    .first<VideoRow>();
+
+  if (!row) {
+    throw new HttpError(500, "Failed to load updated video");
+  }
+
+  return jsonResponse(await hydrateVideoRow(env, row), 200, cors);
 }
 
 async function suggestClipCandidates(
@@ -1831,9 +1939,24 @@ async function suggestClipCandidates(
 
   const videoUrl = typeof body.videoUrl === "string" ? body.videoUrl : "";
 
+  let categoryValue: string | null | undefined = undefined;
+  const hasCategory = Object.prototype.hasOwnProperty.call(body, "category");
+  if (hasCategory) {
+    const rawCategory = (body as { category?: unknown }).category;
+    if (typeof rawCategory === "string") {
+      const sanitized = sanitizeOptionalText(rawCategory);
+      categoryValue = sanitized === null ? null : sanitized.toLowerCase();
+    } else if (rawCategory === null) {
+      categoryValue = null;
+    } else if (rawCategory !== undefined) {
+      throw new HttpError(400, "category must be a string or null");
+    }
+  }
+
   const { row } = await getOrCreateVideoByUrl(env, user, {
     artistId,
-    videoUrl
+    videoUrl,
+    ...(hasCategory ? { category: categoryValue ?? null } : {})
   });
 
   const candidates = await detectClipCandidatesForVideo(env, row, "chapters");
@@ -4660,6 +4783,7 @@ export function __setHasEnsuredVideoColumnsForTests(value: boolean): void {
 export {
   suggestClipCandidates as __suggestClipCandidatesForTests,
   getOrCreateVideoByUrl as __getOrCreateVideoByUrlForTests,
+  updateVideoCategory as __updateVideoCategoryForTests,
   listClips as __listClipsForTests,
   listMediaLibrary as __listMediaLibraryForTests,
   listVideos as __listVideosForTests,

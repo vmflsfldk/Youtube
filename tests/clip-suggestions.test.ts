@@ -250,7 +250,11 @@ test("clip suggestions inserts new video when url is fresh", async (t) => {
   const request = new Request("https://example.com/api/videos/clip-suggestions", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ artistId: 1, videoUrl: "https://www.youtube.com/watch?v=abcdefghijk" })
+    body: JSON.stringify({
+      artistId: 1,
+      videoUrl: "https://www.youtube.com/watch?v=abcdefghijk",
+      category: "Cover"
+    })
   });
   const user = { id: 42, email: "user@example.com", displayName: null };
 
@@ -259,9 +263,11 @@ test("clip suggestions inserts new video when url is fresh", async (t) => {
   const payload = (await response.json()) as any;
   assert.equal(payload.video.youtubeVideoId, "abcdefghijk");
   assert.equal(payload.video.title, "New Title");
+  assert.equal(payload.video.category, "cover");
   assert.equal(payload.candidates.length, 1);
   assert.equal(db.videos.length, 1);
   assert.equal(db.videos[0].description, "Auto description");
+  assert.equal(db.videos[0].category, "cover");
 });
 
 test("clip suggestions allows registering videos for artists created by other users", async (t) => {
@@ -344,6 +350,59 @@ test("clip suggestions returns existing video without creating duplicates", asyn
   assert.equal(payload.candidates.length, 1);
   assert.equal(db.videos.length, 1);
   assert.equal(db.videos[0].title, "Updated Title");
+});
+
+test("clip suggestions updates category when provided", async (t) => {
+  __resetWorkerTestState();
+  __setHasEnsuredVideoColumnsForTests(true);
+  __setWorkerTestOverrides({
+    fetchVideoMetadata: async () => ({
+      title: "Cover Song",
+      durationSec: 180,
+      thumbnailUrl: "thumb",
+      channelId: "channel",
+      description: null
+    }),
+    ...baseOverrides
+  });
+  t.after(() => __resetWorkerTestState());
+
+  const youtubeVideoId = "covervideo1";
+
+  const existingVideo: VideoTableRow = {
+    id: 20,
+    artist_id: 3,
+    youtube_video_id: youtubeVideoId,
+    title: "Old Title",
+    duration_sec: 150,
+    thumbnail_url: "thumb-old",
+    channel_id: "channel-old",
+    description: null,
+    captions_json: null,
+    category: "live",
+    content_type: "OFFICIAL",
+    hidden: 0,
+    original_composer: null
+  };
+
+  const db = new FakeD1Database([{ id: 3, created_by: 7 }], [existingVideo]);
+  const env: Env = { DB: db };
+  const request = new Request("https://example.com/api/videos/clip-suggestions", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      artistId: 3,
+      videoUrl: `https://www.youtube.com/watch?v=${youtubeVideoId}`,
+      category: "cover"
+    })
+  });
+  const user = { id: 7, email: "owner@example.com", displayName: null };
+
+  const response = await suggestClipCandidates(request, env, user, corsConfig);
+  assert.equal(response.status, 200);
+  const payload = (await response.json()) as any;
+  assert.equal(payload.video.category, "cover");
+  assert.equal(db.videos[0].category, "cover");
 });
 
 test("clip suggestions rejects invalid urls", async () => {

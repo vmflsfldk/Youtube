@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   __listVideosForTests as listVideos,
+  __updateVideoCategoryForTests as updateVideoCategory,
   __resetWorkerTestState,
   __setHasEnsuredVideoColumnsForTests
 } from "../src/worker";
@@ -102,6 +103,21 @@ class FakeD1Database implements D1Database {
       return (artist ? ({ id: artist.id } as unknown as T) : null);
     }
     if (
+      normalized.startsWith("select v.*, a.created_by from videos") &&
+      normalized.includes("where v.id = ?")
+    ) {
+      const [videoId] = values as [number];
+      const video = this.videos.find((row) => row.id === videoId);
+      if (!video) {
+        return null;
+      }
+      const artist = this.artists.find((row) => row.id === video.artist_id);
+      if (!artist) {
+        return null;
+      }
+      return ({ ...video, created_by: artist.created_by } as unknown as T);
+    }
+    if (
       normalized.startsWith("select v.id, v.artist_id") &&
       normalized.includes("from videos v join artists a on a.id = v.artist_id where v.id = ?")
     ) {
@@ -122,6 +138,11 @@ class FakeD1Database implements D1Database {
         artist_youtube_channel_title: artist.youtube_channel_title,
         artist_profile_image_url: artist.profile_image_url
       } as unknown as T;
+    }
+    if (normalized.startsWith("select * from videos where id = ?")) {
+      const [videoId] = values as [number];
+      const video = this.videos.find((row) => row.id === videoId);
+      return (video ? ({ ...video } as unknown as T) : null);
     }
     return null;
   }
@@ -162,7 +183,17 @@ class FakeD1Database implements D1Database {
     return { success: true, meta: { duration: 0, changes: 0 }, results: [] };
   }
 
-  async handleRun<T>(_query: string, _values: unknown[]): Promise<D1Result<T>> {
+  async handleRun<T>(query: string, values: unknown[]): Promise<D1Result<T>> {
+    const normalized = query.replace(/\s+/g, " ").trim().toLowerCase();
+    if (normalized.startsWith("update videos set category = ? where id = ?")) {
+      const [category, videoId] = values as [string | null, number];
+      const video = this.videos.find((row) => row.id === videoId);
+      if (!video) {
+        return { success: false, error: "Video not found", meta: { duration: 0, changes: 0 } };
+      }
+      video.category = category ?? null;
+      return { success: true, meta: { duration: 0, changes: 1 } };
+    }
     return { success: true, meta: { duration: 0, changes: 0 } };
   }
 }
@@ -334,4 +365,67 @@ test("listVideos excludes live videos", async (t) => {
     ["coverallowed"]
   );
   assert(filteredPayload.every((video) => video.artistDisplayName === "Performer"));
+});
+
+test("updateVideoCategory updates and clears categories", async (t) => {
+  __resetWorkerTestState();
+  __setHasEnsuredVideoColumnsForTests(true);
+  t.after(() => __resetWorkerTestState());
+
+  const artists: ArtistTableRow[] = [
+    {
+      id: 5,
+      created_by: 11,
+      name: "Category Artist",
+      display_name: "Category Artist",
+      youtube_channel_id: "chan-5",
+      youtube_channel_title: "Channel Five",
+      profile_image_url: null
+    }
+  ];
+  const videos: VideoTableRow[] = [
+    {
+      id: 501,
+      artist_id: 5,
+      youtube_video_id: "videocat",
+      title: "Original Song",
+      duration_sec: 200,
+      thumbnail_url: "thumb",
+      channel_id: "channel",
+      description: null,
+      captions_json: null,
+      category: "live",
+      content_type: "OFFICIAL",
+      hidden: 0,
+      original_composer: null
+    }
+  ];
+
+  const db = new FakeD1Database(artists, videos);
+  const env: Env = { DB: db };
+  const user = { id: 11, email: "owner@example.com", displayName: null };
+
+  const request = new Request("https://example.com/api/videos/501/category", {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ category: "cover" })
+  });
+
+  const response = await updateVideoCategory(request, env, user, corsConfig, 501);
+  assert.equal(response.status, 200);
+  const payload = (await response.json()) as any;
+  assert.equal(payload.category, "cover");
+  assert.equal(db.videos[0].category, "cover");
+
+  const clearRequest = new Request("https://example.com/api/videos/501/category", {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ category: null })
+  });
+
+  const clearResponse = await updateVideoCategory(clearRequest, env, user, corsConfig, 501);
+  assert.equal(clearResponse.status, 200);
+  const cleared = (await clearResponse.json()) as any;
+  assert.equal(cleared.category, null);
+  assert.equal(db.videos[0].category, null);
 });

@@ -3,6 +3,7 @@ package com.example.youtube.service;
 import com.example.youtube.dto.ClipCandidateResponse;
 import com.example.youtube.dto.LocalizedTextRequest;
 import com.example.youtube.dto.LocalizedTextResponse;
+import com.example.youtube.dto.VideoCategoryUpdateRequest;
 import com.example.youtube.dto.VideoClipSuggestionsRequest;
 import com.example.youtube.dto.VideoClipSuggestionsResponse;
 import com.example.youtube.dto.VideoCreateRequest;
@@ -72,6 +73,7 @@ public class VideoService {
                 request.artistId(),
                 null,
                 null,
+                request.category(),
                 null,
                 composers);
 
@@ -145,6 +147,9 @@ public class VideoService {
             video.setOriginalComposer(null);
         }
 
+        String resolvedCategory = resolveCategory(request.category(), video.getTitle());
+        video.setCategory(resolvedCategory);
+
         List<YouTubeVideoSectionProvider.VideoSectionData> sectionData = sectionProvider.fetch(videoId, description,
                 metadata.durationSec());
 
@@ -203,10 +208,20 @@ public class VideoService {
                 video.getDurationSec(),
                 video.getThumbnailUrl(),
                 video.getChannelId(),
+                video.getCategory(),
                 video.getOriginalComposer(),
                 mapSongTitles(video.getTitles()),
                 mapComposerNames(video.getComposerNames()),
                 sectionResponses);
+    }
+
+    @Transactional
+    public VideoResponse updateCategory(Long videoId, VideoCategoryUpdateRequest request) {
+        Video video = getVideo(videoId);
+        String resolvedCategory = resolveCategory(request.category(), video.getTitle());
+        video.setCategory(resolvedCategory);
+        Video saved = videoRepository.save(video);
+        return map(saved);
     }
 
     private Optional<String> extractVideoId(String url) {
@@ -289,5 +304,45 @@ public class VideoService {
             return "und";
         }
         return trimmed.toLowerCase(Locale.ROOT);
+    }
+
+    private String resolveCategory(String requestedCategory, String titleForDerivation) {
+        String normalized = normalizeCategory(requestedCategory);
+        if (normalized != null) {
+            return normalized;
+        }
+        return deriveCategoryFromTitle(titleForDerivation);
+    }
+
+    private String normalizeCategory(String category) {
+        if (category == null) {
+            return null;
+        }
+        String trimmed = category.trim();
+        if (trimmed.isEmpty()) {
+            return null;
+        }
+        String lower = trimmed.toLowerCase(Locale.ROOT);
+        if ("live".equals(lower) || "cover".equals(lower) || "original".equals(lower)) {
+            return lower;
+        }
+        return trimmed;
+    }
+
+    private String deriveCategoryFromTitle(String title) {
+        if (title == null) {
+            return null;
+        }
+        String normalized = title.toLowerCase(Locale.ROOT);
+        if (normalized.contains("歌枠") || normalized.contains("live")) {
+            return "live";
+        }
+        if (normalized.contains("cover")) {
+            return "cover";
+        }
+        if (normalized.contains("original")) {
+            return "original";
+        }
+        return null;
     }
 }

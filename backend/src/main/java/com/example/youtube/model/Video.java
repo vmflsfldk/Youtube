@@ -36,6 +36,9 @@ public class Video {
     @Column(name = "captions_json")
     private String captionsJson;
 
+    @Column(name = "category")
+    private String category;
+
     @Column(name = "original_composer")
     private String originalComposer;
 
@@ -120,6 +123,14 @@ public class Video {
 
     public void setCaptionsJson(String captionsJson) {
         this.captionsJson = captionsJson;
+    }
+
+    public String getCategory() {
+        return category;
+    }
+
+    public void setCategory(String category) {
+        this.category = category;
     }
 
     public String getOriginalComposer() {

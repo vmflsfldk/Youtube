@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -11,6 +12,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.example.youtube.dto.ClipCandidateResponse;
 import com.example.youtube.model.Artist;
 import com.example.youtube.model.UserAccount;
+import com.example.youtube.model.Video;
 import com.example.youtube.repository.ArtistRepository;
 import com.example.youtube.repository.UserAccountRepository;
 import com.example.youtube.repository.VideoRepository;
@@ -74,7 +76,8 @@ class VideoControllerIntegrationTest {
         Map<String, Object> payload = Map.of(
                 "artistId", artist.getId(),
                 "videoUrl", "https://www.youtube.com/watch?v=mockvideo11",
-                "originalComposer", "Composer Name");
+                "originalComposer", "Composer Name",
+                "category", "cover");
 
         mockMvc.perform(post("/api/videos/clip-suggestions")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -83,6 +86,7 @@ class VideoControllerIntegrationTest {
                 .andExpect(jsonPath("$.video").exists())
                 .andExpect(jsonPath("$.video.youtubeVideoId").value("mockvideo11"))
                 .andExpect(jsonPath("$.video.artistId").value(artist.getId()))
+                .andExpect(jsonPath("$.video.category").value("cover"))
                 .andExpect(jsonPath("$.candidates[0].startSec").value(5))
                 .andExpect(jsonPath("$.candidates[0].endSec").value(35))
                 .andExpect(jsonPath("$.candidates[0].label").value("Hook"))
@@ -90,5 +94,26 @@ class VideoControllerIntegrationTest {
                 .andExpect(jsonPath("$.created").value(true))
                 .andExpect(jsonPath("$.reused").value(false))
                 .andExpect(jsonPath("$.message").doesNotExist());
+    }
+
+    @Test
+    void updateCategoryUpdatesExistingVideo() throws Exception {
+        Video video = new Video(artist, "existingvideo1", "Existing Title");
+        video.setCategory("live");
+        videoRepository.save(video);
+
+        Map<String, Object> payload = Map.of("category", "cover");
+
+        mockMvc.perform(patch("/api/videos/{id}/category", video.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(payload)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(video.getId()))
+                .andExpect(jsonPath("$.category").value("cover"));
+
+        assertThat(videoRepository.findById(video.getId()))
+                .get()
+                .extracting(Video::getCategory)
+                .isEqualTo("cover");
     }
 }

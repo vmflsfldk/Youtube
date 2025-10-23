@@ -10,6 +10,7 @@ public record VideoCreateRequest(
         @NotNull Long artistId,
         String description,
         String captionsJson,
+        String category,
         List<@Valid LocalizedTextRequest> titles,
         List<@Valid LocalizedTextRequest> originalComposers
 ) {

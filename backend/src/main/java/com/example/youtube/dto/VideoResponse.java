@@ -10,6 +10,7 @@ public record VideoResponse(
         Integer durationSec,
         String thumbnailUrl,
         String channelId,
+        String category,
         String originalComposer,
         List<LocalizedTextResponse> titles,
         List<LocalizedTextResponse> originalComposers,

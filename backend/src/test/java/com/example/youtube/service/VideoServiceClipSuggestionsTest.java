@@ -65,7 +65,8 @@ class VideoServiceClipSuggestionsTest {
         VideoClipSuggestionsRequest request = new VideoClipSuggestionsRequest(
                 "https://www.youtube.com/watch?v=clipcreate1",
                 artist.getId(),
-                "Primary Composer");
+                "Primary Composer",
+                null);
 
         VideoClipSuggestionsResponse response = videoService.registerAndSuggest(request);
 
