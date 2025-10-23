@@ -1889,8 +1889,7 @@ async function listVideos(
       FROM videos v
       JOIN artists a ON a.id = v.artist_id
      WHERE v.artist_id = ?
-       AND COALESCE(v.hidden, 0) = 0
-       AND LOWER(COALESCE(v.category, '')) != 'live'`;
+       AND COALESCE(v.hidden, 0) = 0`;
 
   let statement: D1PreparedStatement;
   if (requestedContentType) {
@@ -1932,7 +1931,7 @@ async function loadMediaLibrary(
   await ensureVideoOriginalComposerColumn(env.DB);
   await ensureClipOriginalComposerColumn(env.DB);
 
-  const predicates = ["LOWER(COALESCE(v.category, '')) != 'live'"];
+  const predicates: string[] = [];
   if (!options.includeHidden) {
     predicates.push("COALESCE(v.hidden, 0) = 0");
   }
