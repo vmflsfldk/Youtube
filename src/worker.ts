@@ -1656,7 +1656,7 @@ async function getOrCreateVideoByUrl(
   params: VideoUrlResolutionParams
 ): Promise<{ row: VideoRow; created: boolean }> {
   const { artistId, videoUrl } = params;
-  await ensureArtist(env, artistId, user.id);
+  await ensureArtistExists(env, artistId);
   await ensureVideoContentTypeColumn(env.DB);
   await ensureVideoHiddenColumn(env.DB);
   await ensureVideoCategoryColumn(env.DB);
