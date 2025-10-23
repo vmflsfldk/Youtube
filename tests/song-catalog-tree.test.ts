@@ -1,7 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { buildCatalogRecords, filterCatalogRecords } from '../frontend/src/components/SongCatalogTable';
+import {
+  buildCatalogRecords,
+  filterCatalogRecords,
+  sortCatalogRecords
+} from '../frontend/src/components/SongCatalogTable';
 
 test('buildCatalogRecords merges clips and songs while filtering unsupported media', () => {
   const clips = [
@@ -176,4 +180,60 @@ test('filterCatalogRecords applies case-insensitive partial matches across field
 
   const noMatch = filterCatalogRecords(records, { artist: 'unknown' });
   assert.equal(noMatch.length, 0);
+});
+
+test('sortCatalogRecords orders rows by selected column and toggles direction', () => {
+  const records = [
+    {
+      id: 1,
+      artist: 'Beta Artist',
+      composer: 'Composer B',
+      songTitle: 'Alpha Song',
+      clipTitle: 'Alpha Clip',
+      artistValue: 'Beta Artist',
+      composerValue: 'Composer B',
+      songValue: 'Alpha Song',
+      clipValue: 'Alpha Clip'
+    },
+    {
+      id: 2,
+      artist: 'Alpha Artist',
+      composer: 'Composer A',
+      songTitle: 'Delta Song',
+      clipTitle: 'Delta Clip',
+      artistValue: 'Alpha Artist',
+      composerValue: 'Composer A',
+      songValue: 'Delta Song',
+      clipValue: 'Delta Clip'
+    },
+    {
+      id: 3,
+      artist: 'Gamma Artist',
+      composer: 'Composer C',
+      songTitle: 'Beta Song',
+      clipTitle: 'Beta Clip',
+      artistValue: 'Gamma Artist',
+      composerValue: 'Composer C',
+      songValue: 'Beta Song',
+      clipValue: 'Beta Clip'
+    }
+  ];
+
+  const byArtistAsc = sortCatalogRecords(records, { key: 'artist', direction: 'asc' });
+  assert.deepEqual(
+    byArtistAsc.map((record) => record.id),
+    [2, 1, 3]
+  );
+
+  const byArtistDesc = sortCatalogRecords(records, { key: 'artist', direction: 'desc' });
+  assert.deepEqual(
+    byArtistDesc.map((record) => record.id),
+    [3, 1, 2]
+  );
+
+  const bySongAsc = sortCatalogRecords(records, { key: 'song', direction: 'asc' });
+  assert.deepEqual(
+    bySongAsc.map((record) => record.songTitle),
+    ['Alpha Song', 'Beta Song', 'Delta Song']
+  );
 });
