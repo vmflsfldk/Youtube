@@ -27,7 +27,14 @@ interface SongCatalogTableProps {
   songs?: SongCatalogVideo[];
 }
 
-export type CatalogGrouping = 'artist' | 'composer' | 'title';
+export type CatalogGrouping =
+  | 'artist'
+  | 'composer'
+  | 'title'
+  | 'artist-composer'
+  | 'artist-song'
+  | 'song-artist'
+  | 'composer-song';
 
 export type CatalogDisplayRecord = {
   id: number;
@@ -54,7 +61,11 @@ export type CatalogTreeNode = {
 const GROUP_OPTIONS: Array<{ key: CatalogGrouping; label: string }> = [
   { key: 'artist', label: '아티스트' },
   { key: 'composer', label: '원곡자' },
-  { key: 'title', label: '곡 제목' }
+  { key: 'title', label: '곡 제목' },
+  { key: 'artist-composer', label: '아티스트 → 원곡자' },
+  { key: 'artist-song', label: '아티스트 → 곡 제목' },
+  { key: 'song-artist', label: '곡 제목 → 아티스트' },
+  { key: 'composer-song', label: '원곡자 → 곡 제목' }
 ];
 
 const FALLBACK_ARTIST = '표기되지 않은 아티스트';
@@ -69,7 +80,11 @@ const localeCompare = (a: string, b: string) => a.localeCompare(b, 'ko', { sensi
 const GROUP_ORDER: Record<CatalogGrouping, NodeType[]> = {
   artist: ['artist', 'composer', 'song', 'clip'],
   composer: ['composer', 'artist', 'song', 'clip'],
-  title: ['song', 'artist', 'composer', 'clip']
+  title: ['song', 'artist', 'composer', 'clip'],
+  'artist-composer': ['artist', 'composer', 'clip'],
+  'artist-song': ['artist', 'song', 'clip'],
+  'song-artist': ['song', 'artist', 'clip'],
+  'composer-song': ['composer', 'song', 'clip']
 };
 
 const sanitizeKey = (value: string): string => value.replace(/[^a-z0-9]+/gi, '-');
