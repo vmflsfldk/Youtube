@@ -3256,6 +3256,7 @@ interface YouTubeCommentThreadItem {
 
 interface YouTubeCommentThreadsResponse {
   items?: YouTubeCommentThreadItem[];
+  nextPageToken?: string;
 }
 
 const ISO_8601_DURATION_PATTERN = /^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$/i;
@@ -3470,46 +3471,62 @@ async function fetchVideoSectionsFromComments(
     return [];
   }
 
-  const url = new URL("https://www.googleapis.com/youtube/v3/commentThreads");
-  url.searchParams.set("part", "snippet");
-  url.searchParams.set("videoId", videoId);
-  url.searchParams.set("maxResults", "20");
-  url.searchParams.set("order", "relevance");
-  url.searchParams.set("textFormat", "plainText");
-  url.searchParams.set("key", apiKey);
+  const MAX_RESULTS_PER_PAGE = 100;
+  const MAX_COMMENT_PAGES = 5;
 
-  let response: Response;
-  try {
-    response = await fetch(url.toString(), { method: "GET" });
-  } catch (error) {
-    console.warn(`[yt-clip] Failed to fetch YouTube comments for ${videoId}`, error);
-    return [];
-  }
+  let pageToken: string | undefined;
 
-  if (!response.ok) {
-    console.warn(`[yt-clip] YouTube comments API responded with status ${response.status} for video ${videoId}`);
-    return [];
-  }
-
-  let payload: YouTubeCommentThreadsResponse;
-  try {
-    payload = (await response.json()) as YouTubeCommentThreadsResponse;
-  } catch (error) {
-    console.warn(`[yt-clip] Failed to parse YouTube comments response for ${videoId}`, error);
-    return [];
-  }
-
-  const items = Array.isArray(payload.items) ? payload.items : [];
-  for (const item of items) {
-    const snippet = item?.snippet?.topLevelComment?.snippet;
-    const text = normalizeCommentText(snippet);
-    if (!text) {
-      continue;
+  for (let page = 0; page < MAX_COMMENT_PAGES; page += 1) {
+    const url = new URL("https://www.googleapis.com/youtube/v3/commentThreads");
+    url.searchParams.set("part", "snippet");
+    url.searchParams.set("videoId", videoId);
+    url.searchParams.set("maxResults", String(MAX_RESULTS_PER_PAGE));
+    url.searchParams.set("order", "relevance");
+    url.searchParams.set("textFormat", "plainText");
+    url.searchParams.set("key", apiKey);
+    if (pageToken) {
+      url.searchParams.set("pageToken", pageToken);
     }
-    const sections = extractSectionsFromText(text, durationSec, "COMMENT");
-    if (sections.length >= 2) {
-      return sections;
+
+    let response: Response;
+    try {
+      response = await fetch(url.toString(), { method: "GET" });
+    } catch (error) {
+      console.warn(`[yt-clip] Failed to fetch YouTube comments for ${videoId}`, error);
+      return [];
     }
+
+    if (!response.ok) {
+      console.warn(`[yt-clip] YouTube comments API responded with status ${response.status} for video ${videoId}`);
+      return [];
+    }
+
+    let payload: YouTubeCommentThreadsResponse;
+    try {
+      payload = (await response.json()) as YouTubeCommentThreadsResponse;
+    } catch (error) {
+      console.warn(`[yt-clip] Failed to parse YouTube comments response for ${videoId}`, error);
+      return [];
+    }
+
+    const items = Array.isArray(payload.items) ? payload.items : [];
+    for (const item of items) {
+      const snippet = item?.snippet?.topLevelComment?.snippet;
+      const text = normalizeCommentText(snippet);
+      if (!text) {
+        continue;
+      }
+      const sections = extractSectionsFromText(text, durationSec, "COMMENT");
+      if (sections.length >= 2) {
+        return sections;
+      }
+    }
+
+    const nextToken = typeof payload.nextPageToken === "string" ? payload.nextPageToken.trim() : "";
+    if (!nextToken) {
+      break;
+    }
+    pageToken = nextToken;
   }
 
   return [];
@@ -4647,5 +4664,7 @@ export {
   listMediaLibrary as __listMediaLibraryForTests,
   listVideos as __listVideosForTests,
   createArtist as __createArtistForTests,
-  listArtists as __listArtistsForTests
+  listArtists as __listArtistsForTests,
+  fetchVideoSectionsFromComments as __fetchVideoSectionsFromCommentsForTests,
+  extractSectionsFromText as __extractSectionsFromTextForTests
 };
