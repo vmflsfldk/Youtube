@@ -1,5 +1,7 @@
 package com.example.youtube.controller;
 
+import com.example.youtube.dto.VideoClipSuggestionsRequest;
+import com.example.youtube.dto.VideoClipSuggestionsResponse;
 import com.example.youtube.dto.VideoCreateRequest;
 import com.example.youtube.dto.VideoResponse;
 import com.example.youtube.service.VideoService;
@@ -25,6 +27,12 @@ public class VideoController {
     @PostMapping
     public VideoResponse createVideo(@Valid @RequestBody VideoCreateRequest request) {
         return videoService.create(request);
+    }
+
+    @PostMapping("/clip-suggestions")
+    public VideoClipSuggestionsResponse suggestClips(
+            @Valid @RequestBody VideoClipSuggestionsRequest request) {
+        return videoService.registerAndSuggest(request);
     }
 
     @GetMapping

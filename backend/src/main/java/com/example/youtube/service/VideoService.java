@@ -1,7 +1,10 @@
 package com.example.youtube.service;
 
+import com.example.youtube.dto.ClipCandidateResponse;
 import com.example.youtube.dto.LocalizedTextRequest;
 import com.example.youtube.dto.LocalizedTextResponse;
+import com.example.youtube.dto.VideoClipSuggestionsRequest;
+import com.example.youtube.dto.VideoClipSuggestionsResponse;
 import com.example.youtube.dto.VideoCreateRequest;
 import com.example.youtube.dto.VideoResponse;
 import com.example.youtube.dto.VideoSectionResponse;
@@ -26,6 +29,7 @@ import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -41,17 +45,61 @@ public class VideoService {
     private final VideoSectionRepository videoSectionRepository;
     private final YouTubeMetadataProvider metadataProvider;
     private final YouTubeVideoSectionProvider sectionProvider;
+    private final ObjectProvider<ClipAutoDetectionService> clipAutoDetectionServiceProvider;
 
     public VideoService(ArtistRepository artistRepository,
                         VideoRepository videoRepository,
                         VideoSectionRepository videoSectionRepository,
                         YouTubeMetadataProvider metadataProvider,
-                        YouTubeVideoSectionProvider sectionProvider) {
+                        YouTubeVideoSectionProvider sectionProvider,
+                        ObjectProvider<ClipAutoDetectionService> clipAutoDetectionServiceProvider) {
         this.artistRepository = artistRepository;
         this.videoRepository = videoRepository;
         this.videoSectionRepository = videoSectionRepository;
         this.metadataProvider = metadataProvider;
         this.sectionProvider = sectionProvider;
+        this.clipAutoDetectionServiceProvider = clipAutoDetectionServiceProvider;
+    }
+
+    @Transactional
+    public VideoClipSuggestionsResponse registerAndSuggest(VideoClipSuggestionsRequest request) {
+        String videoId = extractVideoId(request.videoUrl())
+                .orElseThrow(() -> new ValidationException("Unable to parse videoId from URL"));
+
+        List<LocalizedTextRequest> composers = normalizeComposerRequest(request.originalComposer());
+        VideoCreateRequest createRequest = new VideoCreateRequest(
+                request.videoUrl(),
+                request.artistId(),
+                null,
+                null,
+                null,
+                composers);
+
+        boolean created = false;
+        VideoResponse videoResponse;
+        try {
+            videoResponse = create(createRequest);
+            created = true;
+        } catch (ResponseStatusException ex) {
+            if (!HttpStatus.CONFLICT.equals(ex.getStatusCode())) {
+                throw ex;
+            }
+            Video existing = videoRepository.findByYoutubeVideoId(videoId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                            "Video exists but could not be loaded: " + videoId));
+            videoResponse = map(existing);
+        }
+
+        List<ClipCandidateResponse> candidates = clipAutoDetectionServiceProvider.getObject()
+                .detect(videoResponse.id(), "combined");
+
+        return new VideoClipSuggestionsResponse(
+                videoResponse,
+                candidates,
+                created ? "created" : "existing",
+                created ? null : "Video already registered",
+                created,
+                created ? Boolean.FALSE : Boolean.TRUE);
     }
 
     @Transactional
@@ -203,6 +251,13 @@ public class VideoService {
                 .map(composer -> new ComposerName(video, null,
                         normalizeLanguageCode(composer.languageCode()), composer.value().trim()))
                 .collect(Collectors.toList());
+    }
+
+    private List<LocalizedTextRequest> normalizeComposerRequest(String originalComposer) {
+        if (originalComposer == null || originalComposer.isBlank()) {
+            return null;
+        }
+        return List.of(new LocalizedTextRequest("und", originalComposer.trim()));
     }
 
     private List<LocalizedTextResponse> mapSongTitles(List<SongTitle> titles) {
