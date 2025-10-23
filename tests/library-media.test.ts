@@ -119,7 +119,21 @@ class FakeD1Database implements D1Database {
     const normalized = query.replace(/\s+/g, " ").trim().toLowerCase();
 
     if (normalized.startsWith("select v.id, v.artist_id") && normalized.includes("from videos v join artists a")) {
-      const rows = this.videos
+      const filteredVideos = this.videos.filter((video) => {
+        if (normalized.includes("lower(coalesce(v.category, '')) != 'live'")) {
+          const category = (video.category ?? "").toLowerCase();
+          if (category === "live") {
+            return false;
+          }
+        }
+        if (normalized.includes("coalesce(v.hidden, 0) = 0")) {
+          if ((video.hidden ?? 0) !== 0) {
+            return false;
+          }
+        }
+        return true;
+      });
+      const rows = filteredVideos
         .map((video) => {
           const artist = this.artists.find((item) => item.id === video.artist_id);
           if (!artist) {
@@ -302,26 +316,31 @@ test("listMediaLibrary returns media and clips for requesting user", async () =>
       youtubeVideoId?: string;
       videoTitle?: string | null;
     }>;
+    songVideos: Array<{
+      id: number;
+    }>;
   };
 
-  assert.equal(payload.videos.length, 3);
+  assert.equal(payload.videos.length, 2);
   assert.deepEqual(
     payload.videos.map((video) => video.id),
-    [3, 2, 1],
+    [3, 2],
     "videos should be ordered by id desc"
   );
   assert.deepEqual(
     payload.videos.map((video) => video.artistName),
-    ["Other Artist", "Artist One", "Artist One"]
+    ["Other Artist", "Artist One"]
   );
   assert.deepEqual(
     payload.videos.map((video) => video.artistYoutubeChannelId),
-    ["chan-2", "chan-1", "chan-1"]
+    ["chan-2", "chan-1"]
   );
+  assert(!payload.videos.some((video) => video.id === 1), "live videos should be excluded");
 
-  assert.equal(payload.clips.length, 3);
+  assert.equal(payload.clips.length, 2);
   const clipIds = payload.clips.map((clip) => clip.id).sort((a, b) => a - b);
-  assert.deepEqual(clipIds, [101, 102, 103]);
+  assert.deepEqual(clipIds, [102, 103]);
+  assert(!payload.clips.some((clip) => clip.videoId === 1), "clips from live videos should be excluded");
   const chorusClip = payload.clips.find((clip) => clip.id === 102);
   assert(chorusClip);
   assert.equal(chorusClip?.artistId, 10);
@@ -337,6 +356,12 @@ test("listMediaLibrary returns media and clips for requesting user", async () =>
   assert.equal(otherClip?.youtubeVideoId, "videoccccccc3");
   assert.equal(otherClip?.videoTitle, "Third Video");
   assert.deepEqual(otherClip?.tags, ["tag-x"]);
+
+  assert.deepEqual(
+    payload.songVideos.map((video) => video.id),
+    [3],
+    "songVideos should exclude live videos and clip sources"
+  );
 });
 
 test("listMediaLibrary throws for unauthenticated requests", async () => {

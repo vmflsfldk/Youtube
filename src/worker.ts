@@ -1906,7 +1906,11 @@ async function loadMediaLibrary(
   await ensureVideoOriginalComposerColumn(env.DB);
   await ensureClipOriginalComposerColumn(env.DB);
 
-  const visibilityPredicate = options.includeHidden ? "" : "WHERE COALESCE(v.hidden, 0) = 0";
+  const predicates = ["LOWER(COALESCE(v.category, '')) != 'live'"];
+  if (!options.includeHidden) {
+    predicates.push("COALESCE(v.hidden, 0) = 0");
+  }
+  const visibilityPredicate = predicates.length > 0 ? `WHERE ${predicates.join(" AND ")}` : "";
 
   const { results } = await env.DB.prepare(
     `SELECT
