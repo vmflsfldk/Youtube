@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { buildCatalogRecords, buildCatalogTree, type CatalogTreeNode } from '../frontend/src/components/SongCatalogTable';
+import { buildCatalogRecords, filterCatalogRecords } from '../frontend/src/components/SongCatalogTable';
 
 test('buildCatalogRecords merges clips and songs while filtering unsupported media', () => {
   const clips = [
@@ -98,49 +98,46 @@ test('buildCatalogRecords merges clips and songs while filtering unsupported med
   assert.equal(songRecord?.artist, 'Artist A');
 });
 
-const flattenLabels = (nodes: CatalogTreeNode[]): string[] =>
-  nodes.flatMap((node) => [node.label, ...flattenLabels(node.children)]);
-
-test('buildCatalogTree nests records by grouping with stable ordering', () => {
+test('filterCatalogRecords applies case-insensitive partial matches across fields', () => {
   const clips = [
     {
-      id: 201,
-      title: 'Night Cut',
-      videoId: 21,
+      id: 301,
+      title: 'Midnight Clip',
+      videoId: 41,
       videoTitle: 'Midnight Dream',
-      originalComposer: 'Composer Z',
+      originalComposer: 'Composer X',
       videoOriginalComposer: null,
-      artistDisplayName: 'Artist Z',
+      artistDisplayName: 'Artist X',
       artistName: null
     },
     {
-      id: 202,
-      title: 'Studio Take',
-      videoId: 22,
-      videoTitle: 'Studio Track',
-      originalComposer: null,
+      id: 302,
+      title: 'Sunrise Version',
+      videoId: 42,
+      videoTitle: 'Sunrise Melody',
+      originalComposer: 'Composer Y',
       videoOriginalComposer: null,
-      artistDisplayName: null,
-      artistName: 'Artist Y'
+      artistDisplayName: 'Artist Y',
+      artistName: null
     }
   ];
 
   const videos = [
     {
-      id: 21,
+      id: 41,
       title: 'Midnight Dream',
-      originalComposer: 'Composer Z',
-      artistDisplayName: 'Artist Z',
+      originalComposer: 'Composer X',
+      artistDisplayName: 'Artist X',
       artistName: null,
       contentType: 'OFFICIAL',
       category: 'cover'
     },
     {
-      id: 22,
-      title: 'Studio Track',
-      originalComposer: null,
-      artistDisplayName: null,
-      artistName: 'Artist Y',
+      id: 42,
+      title: 'Sunrise Melody',
+      originalComposer: 'Composer Y',
+      artistDisplayName: 'Artist Y',
+      artistName: null,
       contentType: 'OFFICIAL',
       category: 'original'
     }
@@ -148,10 +145,10 @@ test('buildCatalogTree nests records by grouping with stable ordering', () => {
 
   const songs = [
     {
-      id: 31,
-      title: 'Ballad',
-      originalComposer: null,
-      artistDisplayName: 'Artist Z',
+      id: 51,
+      title: 'Moonlight Sonata',
+      originalComposer: 'Composer Classical',
+      artistDisplayName: 'Artist X',
       artistName: null,
       contentType: 'OFFICIAL',
       category: 'original'
@@ -159,32 +156,24 @@ test('buildCatalogTree nests records by grouping with stable ordering', () => {
   ];
 
   const records = buildCatalogRecords(clips, videos, songs);
-  const { nodes: artistTree, nonLeafIds } = buildCatalogTree(records, 'artist');
-  assert.equal(artistTree.length, 2);
-  assert(nonLeafIds.every((id) => typeof id === 'string'));
+  assert.equal(records.length, 3);
 
-  const artistZ = artistTree.find((node) => node.label === 'Artist Z');
-  assert(artistZ);
-  assert.equal(artistZ?.count, 2);
-  const composerLabels = artistZ?.children.map((child) => child.label).sort();
-  assert.deepEqual(composerLabels, ['Composer Z', '표기되지 않은 원곡자']);
-  const midnightSong = artistZ?.children
-    .find((child) => child.label === 'Composer Z')
-    ?.children.find((child) => child.label === 'Midnight Dream');
-  assert(midnightSong);
-  const midnightClip = midnightSong?.children.find((child) => child.label === 'Night Cut');
-  assert(midnightClip);
-  assert.equal(midnightClip?.record?.clipTitle, 'Night Cut');
+  const byArtist = filterCatalogRecords(records, { artist: 'artist x' });
+  assert.equal(byArtist.length, 2);
+  assert(byArtist.every((record) => record.artist === 'Artist X'));
 
-  const { nodes: composerTree } = buildCatalogTree(records, 'composer');
-  assert.equal(composerTree[0]?.type, 'composer');
-  assert(flattenLabels(composerTree).includes('Artist Z'));
+  const byComposer = filterCatalogRecords(records, { composer: 'composer y' });
+  assert.equal(byComposer.length, 1);
+  assert.equal(byComposer[0]?.composer, 'Composer Y');
 
-  const { nodes: titleTree } = buildCatalogTree(records, 'title');
-  assert(titleTree.some((node) => node.label === 'Ballad'));
-  const balladNode = titleTree.find((node) => node.label === 'Ballad');
-  assert(balladNode);
-  const balladChildren = flattenLabels(balladNode.children);
-  assert(balladChildren.includes('Artist Z'));
-  assert(balladChildren.includes('표기되지 않은 원곡자'));
+  const bySong = filterCatalogRecords(records, { song: 'moon' });
+  assert.equal(bySong.length, 1);
+  assert.equal(bySong[0]?.songTitle, 'Moonlight Sonata');
+
+  const combined = filterCatalogRecords(records, { song: 'midnight', artist: 'artist x' });
+  assert.equal(combined.length, 1);
+  assert.equal(combined[0]?.songTitle, 'Midnight Dream');
+
+  const noMatch = filterCatalogRecords(records, { artist: 'unknown' });
+  assert.equal(noMatch.length, 0);
 });
