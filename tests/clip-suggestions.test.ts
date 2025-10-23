@@ -89,8 +89,13 @@ class FakeD1Database implements D1Database {
   async handleFirst<T>(query: string, values: unknown[]): Promise<T | null> {
     const normalized = query.replace(/\s+/g, " ").trim().toLowerCase();
     if (normalized.startsWith("select id from artists")) {
-      const [artistId, createdBy] = values as [number, number];
-      const artist = this.artists.find((row) => row.id === artistId && row.created_by === createdBy);
+      if (normalized.includes("created_by = ?")) {
+        const [artistId, createdBy] = values as [number, number];
+        const artist = this.artists.find((row) => row.id === artistId && row.created_by === createdBy);
+        return (artist ? ({ id: artist.id } as unknown as T) : null);
+      }
+      const [artistId] = values as [number];
+      const artist = this.artists.find((row) => row.id === artistId);
       return (artist ? ({ id: artist.id } as unknown as T) : null);
     }
     if (normalized.startsWith("select v.*, a.created_by from videos") && normalized.includes("youtube_video_id")) {
@@ -257,6 +262,39 @@ test("clip suggestions inserts new video when url is fresh", async (t) => {
   assert.equal(payload.candidates.length, 1);
   assert.equal(db.videos.length, 1);
   assert.equal(db.videos[0].description, "Auto description");
+});
+
+test("clip suggestions allows registering videos for artists created by other users", async (t) => {
+  __resetWorkerTestState();
+  __setHasEnsuredVideoColumnsForTests(true);
+  __setWorkerTestOverrides({
+    fetchVideoMetadata: async () => ({
+      title: "Collab Song",
+      durationSec: 210,
+      thumbnailUrl: "thumb",
+      channelId: "channel-2",
+      description: "Auto description"
+    }),
+    ...baseOverrides
+  });
+  t.after(() => __resetWorkerTestState());
+
+  const db = new FakeD1Database([{ id: 2, created_by: 99 }]);
+  const env: Env = { DB: db };
+  const request = new Request("https://example.com/api/videos/clip-suggestions", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ artistId: 2, videoUrl: "https://www.youtube.com/watch?v=zyxwvutsrqp" })
+  });
+  const user = { id: 42, email: "user@example.com", displayName: null };
+
+  const response = await suggestClipCandidates(request, env, user, corsConfig);
+  assert.equal(response.status, 200);
+  const payload = (await response.json()) as any;
+  assert.equal(payload.video.youtubeVideoId, "zyxwvutsrqp");
+  assert.equal(payload.video.title, "Collab Song");
+  assert.equal(db.videos.length, 1);
+  assert.equal(db.videos[0].artist_id, 2);
 });
 
 test("clip suggestions returns existing video without creating duplicates", async (t) => {
