@@ -755,6 +755,7 @@ type LocalizedTextInput = {
 
 type ClipCreationPayload = {
   videoId: number;
+  title: string;
   titles: LocalizedTextInput[];
   startSec: number;
   endSec: number;
@@ -2242,6 +2243,7 @@ export default function App() {
 
       const buildPayload = (videoId: number): ClipCreationPayload => ({
         videoId,
+        title: normalizedTitle,
         titles,
         startSec: section.startSec,
         endSec: section.endSec,
@@ -2715,6 +2717,7 @@ export default function App() {
 
     const payload: ClipCreationPayload = {
       videoId: resolvedVideoId,
+      title: trimmedTitle,
       titles,
       startSec,
       endSec,
