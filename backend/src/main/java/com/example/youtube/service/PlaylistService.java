@@ -185,6 +185,7 @@ public class PlaylistService {
                 video.getDurationSec(),
                 video.getThumbnailUrl(),
                 video.getChannelId(),
+                video.getCategory(),
                 video.getOriginalComposer(),
                 mapSongTitles(video.getTitles()),
                 mapComposerNames(video.getComposerNames()),

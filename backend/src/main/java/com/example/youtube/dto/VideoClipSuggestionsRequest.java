@@ -6,6 +6,7 @@ import jakarta.validation.constraints.NotNull;
 public record VideoClipSuggestionsRequest(
         @NotBlank String videoUrl,
         @NotNull Long artistId,
-        String originalComposer
+        String originalComposer,
+        String category
 ) {
 }
