@@ -1896,7 +1896,7 @@ async function listPublicLibrary(env: Env, cors: CorsConfig): Promise<Response> 
 async function loadMediaLibrary(
   env: Env,
   options: { includeHidden: boolean }
-): Promise<{ videos: VideoResponse[]; clips: ClipResponse[] }> {
+): Promise<{ videos: VideoResponse[]; clips: ClipResponse[]; songVideos: VideoResponse[] }> {
   await ensureArtistDisplayNameColumn(env.DB);
   await ensureArtistProfileImageColumn(env.DB);
   await ensureArtistChannelTitleColumn(env.DB);
@@ -1936,8 +1936,20 @@ async function loadMediaLibrary(
 
   const videos = (results ?? []).map(toVideoLibraryResponse);
 
+  const songVideos = videos.filter((video) => {
+    const contentType = (video.contentType ?? "").toUpperCase();
+    if (contentType === "CLIP_SOURCE") {
+      return false;
+    }
+    const category = (video.category ?? "").toLowerCase();
+    if (category === "live") {
+      return false;
+    }
+    return true;
+  });
+
   if (videos.length === 0) {
-    return { videos, clips: [] };
+    return { videos, clips: [], songVideos };
   }
 
   const videoIds = videos.map((video) => video.id);
@@ -1966,7 +1978,7 @@ async function loadMediaLibrary(
     } satisfies ClipResponse;
   });
 
-  return { videos, clips };
+  return { videos, clips, songVideos };
 }
 
 async function createClip(

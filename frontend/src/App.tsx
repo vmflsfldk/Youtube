@@ -1241,6 +1241,8 @@ export default function App() {
   const [artists, setArtists] = useState<PreparedArtist[]>([]);
   const [videos, setVideos] = useState<VideoResponse[]>([]);
   const [publicVideos, setPublicVideos] = useState<VideoResponse[]>([]);
+  const [songVideos, setSongVideos] = useState<VideoResponse[]>([]);
+  const [publicSongVideos, setPublicSongVideos] = useState<VideoResponse[]>([]);
   const isAuthenticated = Boolean(authToken && currentUser);
   const [hiddenVideoIds, setHiddenVideoIds] = useState<number[]>([]);
   const hiddenVideoIdSet = useMemo(() => new Set(hiddenVideoIds), [hiddenVideoIds]);
@@ -1267,6 +1269,7 @@ export default function App() {
   const [selectedVideo, setSelectedVideo] = useState<number | null>(null);
   const [clipCandidates, setClipCandidates] = useState<ClipCandidateResponse[]>([]);
   const libraryVideos = isAuthenticated ? videos : publicVideos;
+  const librarySongVideos = isAuthenticated ? songVideos : publicSongVideos;
   const libraryClips = isAuthenticated ? clips : publicClips;
   const [videoSubmissionStatus, setVideoSubmissionStatus] = useState<
     { type: 'success' | 'info' | 'error'; message: string }
@@ -2503,6 +2506,7 @@ export default function App() {
         const response = await http.get<{
           videos?: MaybeArray<VideoResponse>;
           clips?: MaybeArray<ClipResponse>;
+          songVideos?: MaybeArray<VideoResponse>;
         }>('/public/library', {
           signal: controller.signal
         });
@@ -2512,6 +2516,8 @@ export default function App() {
         const fetchedVideos = ensureArray(response.data?.videos).map(normalizeVideo);
         const normalizedClips = ensureArray(response.data?.clips).map(normalizeClip);
         setPublicVideos(fetchedVideos);
+        const fetchedSongVideos = ensureArray(response.data?.songVideos).map(normalizeVideo);
+        setPublicSongVideos(fetchedSongVideos);
         setPublicClips(normalizedClips);
         setSelectedVideo((previous) =>
           previous && fetchedVideos.some((video) => video.id === previous) ? previous : null
@@ -2523,6 +2529,7 @@ export default function App() {
         console.error('Failed to load public media library', error);
         if (!cancelled) {
           setPublicVideos([]);
+          setPublicSongVideos([]);
           setPublicClips([]);
           setSelectedVideo(null);
         }
@@ -2545,6 +2552,7 @@ export default function App() {
   useEffect(() => {
     if (!isAuthenticated) {
       setVideos([]);
+      setSongVideos([]);
       setClips([]);
       setHiddenVideoIds([]);
       setSelectedVideo(null);
@@ -2553,6 +2561,7 @@ export default function App() {
     }
 
     setPublicVideos([]);
+    setPublicSongVideos([]);
     setPublicClips([]);
 
     const controller = new AbortController();
@@ -2561,7 +2570,11 @@ export default function App() {
     const loadMediaLibrary = async () => {
       setClipsLoading(true);
       try {
-        const response = await http.get<{ videos?: MaybeArray<VideoResponse>; clips?: MaybeArray<ClipResponse> }>(
+        const response = await http.get<{
+          videos?: MaybeArray<VideoResponse>;
+          clips?: MaybeArray<ClipResponse>;
+          songVideos?: MaybeArray<VideoResponse>;
+        }>(
           '/library/media',
           {
             headers: authHeaders,
@@ -2574,6 +2587,8 @@ export default function App() {
         const fetchedVideos = ensureArray(response.data?.videos).map(normalizeVideo);
         const normalizedClips = ensureArray(response.data?.clips).map(normalizeClip);
         setVideos(fetchedVideos);
+        const fetchedSongVideos = ensureArray(response.data?.songVideos).map(normalizeVideo);
+        setSongVideos(fetchedSongVideos);
         setClips(normalizedClips);
         setHiddenVideoIds((previous) =>
           previous.filter((id) => fetchedVideos.some((video) => video.id === id))
@@ -2591,6 +2606,7 @@ export default function App() {
         console.error('Failed to load media library', error);
         if (!cancelled) {
           setVideos([]);
+          setSongVideos([]);
           setClips([]);
           setHiddenVideoIds([]);
           setSelectedVideo(null);
@@ -5642,7 +5658,11 @@ export default function App() {
                   <p>영상이나 클립을 추가하면 이곳에서 곡별 데이터를 확인할 수 있어요.</p>
                 </div>
               ) : (
-                <SongCatalogTable clips={libraryClips} videos={libraryVideos} />
+                <SongCatalogTable
+                  clips={libraryClips}
+                  videos={libraryVideos}
+                  songs={librarySongVideos}
+                />
               )}
             </div>
           </section>

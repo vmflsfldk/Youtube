@@ -18,11 +18,13 @@ type SongCatalogVideo = {
   artistDisplayName?: string | null;
   artistName?: string | null;
   contentType?: 'OFFICIAL' | 'CLIP_SOURCE' | string;
+  category?: 'live' | 'cover' | 'original' | string | null;
 };
 
 interface SongCatalogTableProps {
   clips: SongCatalogClip[];
   videos: SongCatalogVideo[];
+  songs?: SongCatalogVideo[];
 }
 
 type CatalogGrouping = 'artist' | 'composer' | 'title';
@@ -59,7 +61,7 @@ const normalize = (value?: string | null): string => (typeof value === 'string' 
 
 const localeCompare = (a: string, b: string) => a.localeCompare(b, 'ko', { sensitivity: 'base', numeric: true });
 
-const SongCatalogTable = ({ clips, videos }: SongCatalogTableProps) => {
+const SongCatalogTable = ({ clips, videos, songs = [] }: SongCatalogTableProps) => {
   const [groupBy, setGroupBy] = useState<CatalogGrouping>('artist');
 
   const videoMap = useMemo(() => {
@@ -71,7 +73,7 @@ const SongCatalogTable = ({ clips, videos }: SongCatalogTableProps) => {
   }, [videos]);
 
   const records = useMemo<CatalogDisplayRecord[]>(() => {
-    return clips.map((clip) => {
+    const clipRecords = clips.map((clip) => {
       const video = videoMap.get(clip.videoId) ?? null;
       const artistValue =
         normalize(clip.artistDisplayName) ||
@@ -101,7 +103,38 @@ const SongCatalogTable = ({ clips, videos }: SongCatalogTableProps) => {
         songValue: primaryTitle
       };
     });
-  }, [clips, videoMap]);
+
+    const songRecords = songs
+      .filter((song) => {
+        const contentType = (song.contentType ?? '').toUpperCase();
+        if (contentType === 'CLIP_SOURCE') {
+          return false;
+        }
+        const category = (song.category ?? '').toLowerCase();
+        if (category === 'live') {
+          return false;
+        }
+        return true;
+      })
+      .map((song) => {
+        const artistValue = normalize(song.artistDisplayName) || normalize(song.artistName) || '';
+        const composerValue = normalize(song.originalComposer) || '';
+        const songTitleValue = normalize(song.title);
+
+        return {
+          id: -Math.abs(song.id),
+          artist: artistValue || FALLBACK_ARTIST,
+          composer: composerValue || FALLBACK_COMPOSER,
+          songTitle: songTitleValue || FALLBACK_SONG,
+          clipTitle: songTitleValue || FALLBACK_CLIP,
+          artistValue,
+          composerValue,
+          songValue: songTitleValue
+        } satisfies CatalogDisplayRecord;
+      });
+
+    return [...clipRecords, ...songRecords];
+  }, [clips, songs, videoMap]);
 
   const groupedRecords = useMemo(() => {
     const groups = new Map<
