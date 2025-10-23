@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import type { AriaAttributes } from 'react';
 
 type SongCatalogClip = {
   id: number;
@@ -36,6 +37,7 @@ export type CatalogDisplayRecord = {
   artistValue: string;
   composerValue: string;
   songValue: string;
+  clipValue: string;
 };
 
 const FALLBACK_ARTIST = '표기되지 않은 아티스트';
@@ -82,7 +84,8 @@ export const buildCatalogRecords = (
       clipTitle: secondaryTitle || primaryTitle || FALLBACK_CLIP,
       artistValue,
       composerValue,
-      songValue: primaryTitle
+      songValue: primaryTitle,
+      clipValue: secondaryTitle || primaryTitle || ''
     } satisfies CatalogDisplayRecord;
   });
 
@@ -111,7 +114,8 @@ export const buildCatalogRecords = (
         clipTitle: songTitleValue || FALLBACK_CLIP,
         artistValue,
         composerValue,
-        songValue: songTitleValue
+        songValue: songTitleValue,
+        clipValue: songTitleValue
       } satisfies CatalogDisplayRecord;
     });
 
@@ -149,17 +153,85 @@ export const filterCatalogRecords = (
   });
 };
 
+export type CatalogSortKey = 'song' | 'clip' | 'artist' | 'composer';
+
+export type CatalogSortDirection = 'asc' | 'desc';
+
+export type CatalogSort = {
+  key: CatalogSortKey;
+  direction: CatalogSortDirection;
+};
+
+const collator = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true });
+
+const getSortValue = (record: CatalogDisplayRecord, key: CatalogSortKey): string => {
+  switch (key) {
+    case 'clip':
+      return record.clipValue || record.clipTitle;
+    case 'artist':
+      return record.artistValue || record.artist;
+    case 'composer':
+      return record.composerValue || record.composer;
+    case 'song':
+    default:
+      return record.songValue || record.songTitle;
+  }
+};
+
+export const sortCatalogRecords = (
+  records: CatalogDisplayRecord[],
+  { key, direction }: CatalogSort
+): CatalogDisplayRecord[] => {
+  const factor = direction === 'asc' ? 1 : -1;
+  return [...records].sort((a, b) => {
+    const valueA = getSortValue(a, key);
+    const valueB = getSortValue(b, key);
+    const comparison = collator.compare(valueA, valueB);
+    if (comparison !== 0) {
+      return comparison * factor;
+    }
+    // Fall back to consistent ordering by song title then id to keep sort stable.
+    const songComparison = collator.compare(a.songValue || a.songTitle, b.songValue || b.songTitle);
+    if (songComparison !== 0) {
+      return songComparison * factor;
+    }
+    return (a.id - b.id) * factor;
+  });
+};
+
 const SongCatalogTable = ({ clips, videos, songs = [] }: SongCatalogTableProps) => {
   const records = useMemo(() => buildCatalogRecords(clips, videos, songs), [clips, songs, videos]);
 
   const [artistFilter, setArtistFilter] = useState('');
   const [composerFilter, setComposerFilter] = useState('');
   const [songFilter, setSongFilter] = useState('');
+  const [sortState, setSortState] = useState<CatalogSort>({ key: 'song', direction: 'asc' });
 
   const filteredRecords = useMemo(
     () => filterCatalogRecords(records, { artist: artistFilter, composer: composerFilter, song: songFilter }),
     [records, artistFilter, composerFilter, songFilter]
   );
+
+  const sortedRecords = useMemo(
+    () => sortCatalogRecords(filteredRecords, sortState),
+    [filteredRecords, sortState]
+  );
+
+  const updateSort = (key: CatalogSortKey) => {
+    setSortState((prev) => {
+      if (prev.key === key) {
+        return { key, direction: prev.direction === 'asc' ? 'desc' : 'asc' };
+      }
+      return { key, direction: 'asc' };
+    });
+  };
+
+  const getAriaSort = (key: CatalogSortKey): AriaAttributes['aria-sort'] => {
+    if (sortState.key !== key) {
+      return 'none';
+    }
+    return sortState.direction === 'asc' ? 'ascending' : 'descending';
+  };
 
   if (records.length === 0) {
     return (
@@ -221,14 +293,58 @@ const SongCatalogTable = ({ clips, videos, songs = [] }: SongCatalogTableProps) 
             <caption className="visually-hidden">곡 카탈로그</caption>
             <thead>
               <tr>
-                <th scope="col">곡 제목</th>
-                <th scope="col">클립/영상</th>
-                <th scope="col">아티스트</th>
-                <th scope="col">원곡자</th>
+                <th scope="col" aria-sort={getAriaSort('song')}>
+                  <button
+                    type="button"
+                    className="song-catalog__sort-button"
+                    onClick={() => updateSort('song')}
+                  >
+                    곡 제목
+                    <span aria-hidden="true" className="song-catalog__sort-indicator">
+                      {sortState.key === 'song' ? (sortState.direction === 'asc' ? '▲' : '▼') : '↕'}
+                    </span>
+                  </button>
+                </th>
+                <th scope="col" aria-sort={getAriaSort('clip')}>
+                  <button
+                    type="button"
+                    className="song-catalog__sort-button"
+                    onClick={() => updateSort('clip')}
+                  >
+                    클립/영상
+                    <span aria-hidden="true" className="song-catalog__sort-indicator">
+                      {sortState.key === 'clip' ? (sortState.direction === 'asc' ? '▲' : '▼') : '↕'}
+                    </span>
+                  </button>
+                </th>
+                <th scope="col" aria-sort={getAriaSort('artist')}>
+                  <button
+                    type="button"
+                    className="song-catalog__sort-button"
+                    onClick={() => updateSort('artist')}
+                  >
+                    아티스트
+                    <span aria-hidden="true" className="song-catalog__sort-indicator">
+                      {sortState.key === 'artist' ? (sortState.direction === 'asc' ? '▲' : '▼') : '↕'}
+                    </span>
+                  </button>
+                </th>
+                <th scope="col" aria-sort={getAriaSort('composer')}>
+                  <button
+                    type="button"
+                    className="song-catalog__sort-button"
+                    onClick={() => updateSort('composer')}
+                  >
+                    원곡자
+                    <span aria-hidden="true" className="song-catalog__sort-indicator">
+                      {sortState.key === 'composer' ? (sortState.direction === 'asc' ? '▲' : '▼') : '↕'}
+                    </span>
+                  </button>
+                </th>
               </tr>
             </thead>
             <tbody>
-              {filteredRecords.map((record) => (
+              {sortedRecords.map((record) => (
                 <tr key={record.id}>
                   <td data-title="곡 제목">{record.songTitle}</td>
                   <td data-title="클립/영상">{record.clipTitle}</td>
