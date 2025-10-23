@@ -748,16 +748,18 @@ type PlaylistLike = Omit<PlaylistResponse, 'items' | 'visibility'> & {
   items?: MaybeArray<PlaylistItemLike>;
 };
 
+type LocalizedTextInput = {
+  languageCode: string;
+  value: string;
+};
+
 type ClipCreationPayload = {
-  title: string;
+  videoId: number;
+  titles: LocalizedTextInput[];
   startSec: number;
   endSec: number;
   tags: string[];
-  videoId?: number;
-  videoUrl?: string;
-  artistId?: number;
-  videoHidden?: boolean;
-  originalComposer?: string | null;
+  originalComposers?: LocalizedTextInput[];
 };
 
 type ArtistFormState = {
@@ -2203,23 +2205,32 @@ export default function App() {
       const tags = parseTags(clipForm.tags);
       const normalizedClipOriginalComposer = clipForm.originalComposer.trim();
 
-      const payload: ClipCreationPayload = {
-        title: resolvedTitle,
-        startSec: section.startSec,
-        endSec: section.endSec,
-        tags,
-        originalComposer:
-          normalizedClipOriginalComposer.length > 0 ? normalizedClipOriginalComposer : null
-      };
+      const fallbackTitleTrimmed = fallbackTitle.trim();
+      const normalizedTitle = (() => {
+        const trimmedResolved = resolvedTitle.trim();
+        if (trimmedResolved.length > 0) {
+          return trimmedResolved;
+        }
+        if (fallbackTitleTrimmed.length > 0) {
+          return fallbackTitleTrimmed;
+        }
+        return resolvedTitle || fallbackTitle;
+      })();
 
+      const titles: LocalizedTextInput[] = [
+        { languageCode: 'und', value: normalizedTitle }
+      ];
+      const originalComposerEntries =
+        normalizedClipOriginalComposer.length > 0
+          ? [{ languageCode: 'und', value: normalizedClipOriginalComposer }]
+          : undefined;
+
+      let videoIdForCreation: number | null = null;
       let restoreVideoUrl: string | null = null;
 
       if (hasSelectedVideo) {
-        payload.videoId = selectedVideo;
+        videoIdForCreation = selectedVideo;
       } else if (canCreateWithVideoUrl) {
-        payload.videoUrl = trimmedVideoUrl;
-        payload.artistId = parsedArtistId;
-        payload.videoHidden = true;
         restoreVideoUrl = trimmedVideoUrl;
       } else {
         return;
@@ -2228,6 +2239,15 @@ export default function App() {
       const previousTags = clipForm.tags;
 
       const creationOptions = restoreVideoUrl ? { hiddenSource: true } : undefined;
+
+      const buildPayload = (videoId: number): ClipCreationPayload => ({
+        videoId,
+        titles,
+        startSec: section.startSec,
+        endSec: section.endSec,
+        tags,
+        ...(originalComposerEntries ? { originalComposers: originalComposerEntries } : {})
+      });
 
       void (async () => {
         try {
@@ -2241,7 +2261,7 @@ export default function App() {
                     ? normalizedClipOriginalComposer
                     : null
               });
-              payload.videoId = registration.video.id;
+              videoIdForCreation = registration.video.id;
               const candidateCount = registration.candidates.length;
               const infoMessage =
                 registration.message ??
@@ -2263,7 +2283,11 @@ export default function App() {
             }
           }
 
-          await createClip(payload, creationOptions);
+          if (videoIdForCreation == null) {
+            throw new Error('Video ID is required to create a clip.');
+          }
+
+          await createClip(buildPayload(videoIdForCreation), creationOptions);
         } catch (error) {
           if (axios.isAxiosError(error) && error.response?.status === 409) {
             const message = extractAxiosErrorMessage(error, '이미 동일한 구간의 클립이 존재합니다.');
@@ -2681,14 +2705,21 @@ export default function App() {
       return;
     }
 
+    const titles: LocalizedTextInput[] = [
+      { languageCode: 'und', value: trimmedTitle }
+    ];
+    const originalComposerEntries =
+      normalizedClipOriginalComposer.length > 0
+        ? [{ languageCode: 'und', value: normalizedClipOriginalComposer }]
+        : undefined;
+
     const payload: ClipCreationPayload = {
-      title: trimmedTitle,
+      videoId: resolvedVideoId,
+      titles,
       startSec,
       endSec,
       tags,
-      videoId: resolvedVideoId,
-      originalComposer:
-        normalizedClipOriginalComposer.length > 0 ? normalizedClipOriginalComposer : null
+      ...(originalComposerEntries ? { originalComposers: originalComposerEntries } : {})
     };
 
     try {
