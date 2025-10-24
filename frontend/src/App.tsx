@@ -1283,6 +1283,7 @@ export default function App() {
   const [activePlaybackKey, setActivePlaybackKey] = useState<string | null>(null);
   const [playbackActivationNonce, setPlaybackActivationNonce] = useState(0);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
+  const [isMobileAuthOverlayOpen, setMobileAuthOverlayOpen] = useState(false);
   const [selectedVideo, setSelectedVideo] = useState<number | null>(null);
   const [clipCandidates, setClipCandidates] = useState<ClipCandidateResponse[]>([]);
   const libraryVideos = isAuthenticated ? videos : publicVideos;
@@ -1343,6 +1344,8 @@ export default function App() {
   const autoDetectedVideoIdRef = useRef<number | null>(null);
   const videoListSectionRef = useRef<HTMLElement | null>(null);
   const clipListSectionRef = useRef<HTMLElement | null>(null);
+  const mobileAuthOverlayContentRef = useRef<HTMLDivElement | null>(null);
+  const previousFocusedElementRef = useRef<HTMLElement | null>(null);
   const handleArtistSearchQueryChange = useCallback((value: string) => {
     setArtistSearch((previous) => {
       if (previous.query === value) {
@@ -1369,6 +1372,109 @@ export default function App() {
       return { ...previous, query: '' };
     });
   }, []);
+
+  useEffect(() => {
+    if (!isMobileViewport && isMobileAuthOverlayOpen) {
+      setMobileAuthOverlayOpen(false);
+    }
+  }, [isMobileViewport, isMobileAuthOverlayOpen]);
+
+  useEffect(() => {
+    if (!isMobileAuthOverlayOpen) {
+      const previouslyFocused = previousFocusedElementRef.current;
+      if (previouslyFocused && typeof previouslyFocused.focus === 'function') {
+        previouslyFocused.focus({ preventScroll: true });
+      }
+      previousFocusedElementRef.current = null;
+      return;
+    }
+
+    if (typeof document === 'undefined') {
+      return;
+    }
+
+    const contentNode = mobileAuthOverlayContentRef.current;
+    if (!contentNode) {
+      return;
+    }
+
+    const selectors = [
+      'a[href]',
+      'button:not([disabled])',
+      'textarea:not([disabled])',
+      'input:not([disabled])',
+      'select:not([disabled])',
+      '[tabindex]:not([tabindex="-1"])'
+    ].join(', ');
+
+    const getFocusableElements = () =>
+      Array.from(contentNode.querySelectorAll<HTMLElement>(selectors)).filter(
+        (element) => !element.hasAttribute('aria-hidden')
+      );
+
+    const activeElement = document.activeElement;
+    if (activeElement instanceof HTMLElement) {
+      previousFocusedElementRef.current = activeElement;
+    } else {
+      previousFocusedElementRef.current = null;
+    }
+
+    const focusFirstElement = () => {
+      const focusableElements = getFocusableElements();
+      const firstElement = focusableElements[0] ?? contentNode;
+      firstElement.focus({ preventScroll: true });
+    };
+
+    const keydownHandler = (event: globalThis.KeyboardEvent) => {
+      if (!isMobileAuthOverlayOpen) {
+        return;
+      }
+
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setMobileAuthOverlayOpen(false);
+        return;
+      }
+
+      if (event.key !== 'Tab') {
+        return;
+      }
+
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) {
+        event.preventDefault();
+        contentNode.focus({ preventScroll: true });
+        return;
+      }
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+      const currentActive = document.activeElement as HTMLElement | null;
+
+      if (!event.shiftKey && currentActive === lastElement) {
+        event.preventDefault();
+        firstElement.focus({ preventScroll: true });
+        return;
+      }
+
+      if (event.shiftKey && currentActive === firstElement) {
+        event.preventDefault();
+        lastElement.focus({ preventScroll: true });
+      }
+    };
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const focusTimeout = window.setTimeout(focusFirstElement, 0);
+    document.addEventListener('keydown', keydownHandler);
+
+    return () => {
+      document.removeEventListener('keydown', keydownHandler);
+      window.clearTimeout(focusTimeout);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isMobileAuthOverlayOpen]);
   useEffect(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
       return;
@@ -4938,22 +5044,47 @@ export default function App() {
           </div>
         </header>
 
-        {isMobileViewport && (
-          <AuthPanel
-            className="auth-panel--mobile"
-            isAuthenticated={isAuthenticated}
-            greetingMessage={greetingMessage}
-            isLoadingUser={isLoadingUser}
-            nicknameInput={nicknameInput}
-            onNicknameInputChange={(value) => setNicknameInput(value)}
-            onNicknameSubmit={handleNicknameSubmit}
-            nicknameStatus={nicknameStatus}
-            nicknameError={nicknameError}
-            onSignOut={handleSignOut}
-            isGoogleReady={isGoogleReady}
-            onGoogleCredential={handleGoogleCredential}
-            shouldAutoPromptGoogle={shouldAutoPromptGoogle}
-          />
+        {isMobileViewport && isMobileAuthOverlayOpen && (
+          <div className="mobile-auth-overlay">
+            <div
+              className="mobile-auth-overlay__backdrop"
+              role="presentation"
+              onClick={() => setMobileAuthOverlayOpen(false)}
+            />
+            <div
+              className="mobile-auth-overlay__content"
+              role="dialog"
+              aria-modal="true"
+              aria-label={isAuthenticated ? '계정 관리' : '로그인'}
+              id="mobileAuthDialog"
+              ref={mobileAuthOverlayContentRef}
+              tabIndex={-1}
+            >
+              <button
+                type="button"
+                className="mobile-auth-overlay__close"
+                onClick={() => setMobileAuthOverlayOpen(false)}
+                aria-label="로그인 창 닫기"
+              >
+                <span aria-hidden="true">×</span>
+              </button>
+              <AuthPanel
+                className="auth-panel--mobile"
+                isAuthenticated={isAuthenticated}
+                greetingMessage={greetingMessage}
+                isLoadingUser={isLoadingUser}
+                nicknameInput={nicknameInput}
+                onNicknameInputChange={(value) => setNicknameInput(value)}
+                onNicknameSubmit={handleNicknameSubmit}
+                nicknameStatus={nicknameStatus}
+                nicknameError={nicknameError}
+                onSignOut={handleSignOut}
+                isGoogleReady={isGoogleReady}
+                onGoogleCredential={handleGoogleCredential}
+                shouldAutoPromptGoogle={shouldAutoPromptGoogle}
+              />
+            </div>
+          </div>
         )}
 
         <div className="content-panels">
@@ -4975,9 +5106,19 @@ export default function App() {
                       <div className="artist-library__mobile-logo" aria-hidden="true">
                         <img src={utahubLogo} alt="" />
                       </div>
-                      <div className="artist-library__mobile-icon" aria-hidden="true">
-                        <span aria-hidden="true">⋮</span>
-                      </div>
+                      <button
+                        type="button"
+                        className="mobile-auth-trigger"
+                        aria-label={isAuthenticated ? '계정 관리 열기' : '로그인 패널 열기'}
+                        aria-haspopup="dialog"
+                        aria-expanded={isMobileAuthOverlayOpen}
+                        aria-controls="mobileAuthDialog"
+                        onClick={() => setMobileAuthOverlayOpen(true)}
+                      >
+                        <span aria-hidden="true" className="mobile-auth-trigger__icon">
+                          🔐
+                        </span>
+                      </button>
                     </div>
                     <div className="artist-library__mobile-tabs" role="group" aria-label="콘텐츠 전환">
                       {mobileArtistTabs.map((tab) => {
