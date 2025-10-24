@@ -28,6 +28,7 @@ interface ArtistLibraryCardProps {
   focusMode?: boolean;
   onSelect?: () => void;
   cardData: ArtistLibraryCardData;
+  showTags?: boolean;
 }
 
 const ArtistLibraryCardComponent = ({
@@ -36,7 +37,8 @@ const ArtistLibraryCardComponent = ({
   interactive = true,
   focusMode = false,
   onSelect,
-  cardData
+  cardData,
+  showTags = true
 }: ArtistLibraryCardProps) => {
   const classNames = ['artist-library__card'];
   if (isActive) {
@@ -68,6 +70,9 @@ const ArtistLibraryCardComponent = ({
     tags,
     displayName
   } = cardData;
+
+  const shouldShowTags = showTags && tags.length > 0;
+  const hasMetaContent = Boolean(agency || shouldShowTags);
 
   const resolvedName = displayName || artist.displayName || artist.name;
 
@@ -109,10 +114,10 @@ const ArtistLibraryCardComponent = ({
           {artist.youtubeChannelTitle || artist.youtubeChannelId}
         </span>
       </div>
-      {(agency || tags.length > 0) && (
+      {hasMetaContent && (
         <div className="artist-library__meta">
           {agency && <span className="artist-library__agency">{agency}</span>}
-          {tags.length > 0 && (
+          {shouldShowTags && (
             <div className="artist-library__tags">
               {tags.map((tag) => (
                 <span key={tag} className="artist-tag">
