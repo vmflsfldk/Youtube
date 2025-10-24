@@ -560,9 +560,9 @@ const ARTIST_COUNTRY_METADATA: ReadonlyArray<{
   code: string;
   label: string;
 }> = [
-  { key: 'availableKo', code: 'KO', label: '한국' },
-  { key: 'availableEn', code: 'EN', label: '영어권' },
-  { key: 'availableJp', code: 'JP', label: '일본' }
+  { key: 'availableKo', code: 'KR', label: 'KR' },
+  { key: 'availableJp', code: 'JP', label: 'JP' },
+  { key: 'availableEn', code: 'EN', label: 'EN' }
 ];
 
 const AUTH_TOKEN_STORAGE_KEY = 'yt-clip.auth-token';
@@ -4633,25 +4633,7 @@ export default function App() {
               disabled={creationDisabled}
             />
             <span className="artist-registration__country-label">
-              <span className="artist-registration__country-code">KO</span>
-              한국
-            </span>
-          </label>
-          <label className="artist-registration__country-option">
-            <input
-              type="checkbox"
-              checked={artistForm.countries.en}
-              onChange={(event) =>
-                setArtistForm((prev) => ({
-                  ...prev,
-                  countries: { ...prev.countries, en: event.target.checked }
-                }))
-              }
-              disabled={creationDisabled}
-            />
-            <span className="artist-registration__country-label">
-              <span className="artist-registration__country-code">EN</span>
-              영어권
+              <span className="artist-registration__country-code">KR</span>
             </span>
           </label>
           <label className="artist-registration__country-option">
@@ -4668,7 +4650,22 @@ export default function App() {
             />
             <span className="artist-registration__country-label">
               <span className="artist-registration__country-code">JP</span>
-              일본
+            </span>
+          </label>
+          <label className="artist-registration__country-option">
+            <input
+              type="checkbox"
+              checked={artistForm.countries.en}
+              onChange={(event) =>
+                setArtistForm((prev) => ({
+                  ...prev,
+                  countries: { ...prev.countries, en: event.target.checked }
+                }))
+              }
+              disabled={creationDisabled}
+            />
+            <span className="artist-registration__country-label">
+              <span className="artist-registration__country-code">EN</span>
             </span>
           </label>
         </div>
