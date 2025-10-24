@@ -182,6 +182,9 @@ const ArtistLibraryCardComponent = ({
           ))}
         </div>
       )}
+      <div className="artist-library__card-cta" aria-hidden="true">
+        <span>+</span>
+      </div>
       {artist.youtubeChannelId && (
         <a
           className="artist-library__link"
