@@ -4624,24 +4624,6 @@ export default function App() {
     ? `${greetingName} 님, 환영합니다!`
     : '닉네임을 설정해주세요.';
 
-  const mobileAuthPanel = isMobileViewport ? (
-    <AuthPanel
-      className="auth-panel--mobile"
-      isAuthenticated={isAuthenticated}
-      greetingMessage={greetingMessage}
-      isLoadingUser={isLoadingUser}
-      nicknameInput={nicknameInput}
-      onNicknameInputChange={(value) => setNicknameInput(value)}
-      onNicknameSubmit={handleNicknameSubmit}
-      nicknameStatus={nicknameStatus}
-      nicknameError={nicknameError}
-      onSignOut={handleSignOut}
-      isGoogleReady={isGoogleReady}
-      onGoogleCredential={handleGoogleCredential}
-      shouldAutoPromptGoogle={shouldAutoPromptGoogle}
-    />
-  ) : null;
-
   const artistOptionalFields = (
     <>
       <div className="artist-registration__field-grid">
@@ -4984,12 +4966,6 @@ export default function App() {
                           <span aria-hidden="true">⋮</span>
                         </button>
                       </div>
-                      <p className="artist-library__mobile-hero-description">
-                        좋아하는 버튜버와 새로운 노래를 쉽게 찾아보세요.
-                      </p>
-                      {mobileAuthPanel && (
-                        <div className="artist-library__mobile-auth">{mobileAuthPanel}</div>
-                      )}
                       <div className="artist-library__mobile-tabs" role="group" aria-label="콘텐츠 전환">
                         {mobileArtistTabs.map((tab) => {
                           const isActiveTab = activeSection === tab.id;
@@ -5009,14 +4985,11 @@ export default function App() {
                       </div>
                       <div className="artist-library__mobile-context">
                         <span className="artist-library__mobile-context-label">VTUBERS</span>
-                        <div className="artist-library__mobile-context-button" aria-hidden="true">
-                          <span className="artist-library__mobile-context-value">
-                            {selectedArtist
-                              ? `${selectedArtist.displayName || selectedArtist.name} 선택됨`
-                              : '전체 아티스트'}
-                          </span>
-                          <span className="artist-library__mobile-context-icon">▾</span>
-                        </div>
+                        <span className="artist-library__mobile-context-value">
+                          {selectedArtist
+                            ? `${selectedArtist.displayName || selectedArtist.name} 선택됨`
+                            : '전체 아티스트'}
+                        </span>
                       </div>
                     </div>
                     <h3 id="artist-library-heading" className="artist-library__mobile-title visually-hidden">
