@@ -4624,6 +4624,24 @@ export default function App() {
     ? `${greetingName} 님, 환영합니다!`
     : '닉네임을 설정해주세요.';
 
+  const mobileAuthPanel = isMobileViewport ? (
+    <AuthPanel
+      className="auth-panel--mobile"
+      isAuthenticated={isAuthenticated}
+      greetingMessage={greetingMessage}
+      isLoadingUser={isLoadingUser}
+      nicknameInput={nicknameInput}
+      onNicknameInputChange={(value) => setNicknameInput(value)}
+      onNicknameSubmit={handleNicknameSubmit}
+      nicknameStatus={nicknameStatus}
+      nicknameError={nicknameError}
+      onSignOut={handleSignOut}
+      isGoogleReady={isGoogleReady}
+      onGoogleCredential={handleGoogleCredential}
+      shouldAutoPromptGoogle={shouldAutoPromptGoogle}
+    />
+  ) : null;
+
   const artistOptionalFields = (
     <>
       <div className="artist-registration__field-grid">
@@ -4924,12 +4942,14 @@ export default function App() {
       <main className="content-area">
         <header className="content-header">
           <div className="mobile-appbar" aria-hidden="true">
-            <div className="mobile-appbar__action-slot mobile-appbar__action-slot--leading" />
-            <div className="mobile-appbar__title">
+            <div className="mobile-appbar__brand-mark" role="img" aria-label="UtaHub">
+              <img src={utahubLogo} alt="" />
+            </div>
+            <div className="mobile-appbar__title-group">
               <span className="mobile-appbar__brand">UtaHub</span>
               <span className="mobile-appbar__section">{activeSidebarTab.label}</span>
             </div>
-            <div className="mobile-appbar__action-slot mobile-appbar__action-slot--trailing" />
+            <div className="mobile-appbar__decor" aria-hidden="true">✦</div>
           </div>
           <div className="content-header__body">
             <p className="content-header__eyebrow">UtaHub</p>
@@ -4937,24 +4957,6 @@ export default function App() {
             <p className="content-header__description">{activeSidebarTab.description}</p>
           </div>
         </header>
-
-        {isMobileViewport && (
-          <AuthPanel
-            className="auth-panel--mobile"
-            isAuthenticated={isAuthenticated}
-            greetingMessage={greetingMessage}
-            isLoadingUser={isLoadingUser}
-            nicknameInput={nicknameInput}
-            onNicknameInputChange={(value) => setNicknameInput(value)}
-            onNicknameSubmit={handleNicknameSubmit}
-            nicknameStatus={nicknameStatus}
-            nicknameError={nicknameError}
-            onSignOut={handleSignOut}
-            isGoogleReady={isGoogleReady}
-            onGoogleCredential={handleGoogleCredential}
-            shouldAutoPromptGoogle={shouldAutoPromptGoogle}
-          />
-        )}
 
         <div className="content-panels">
 
@@ -4985,6 +4987,9 @@ export default function App() {
                       <p className="artist-library__mobile-hero-description">
                         좋아하는 버튜버와 새로운 노래를 쉽게 찾아보세요.
                       </p>
+                      {mobileAuthPanel && (
+                        <div className="artist-library__mobile-auth">{mobileAuthPanel}</div>
+                      )}
                       <div className="artist-library__mobile-tabs" role="group" aria-label="콘텐츠 전환">
                         {mobileArtistTabs.map((tab) => {
                           const isActiveTab = activeSection === tab.id;
