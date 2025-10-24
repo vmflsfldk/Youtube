@@ -40,6 +40,20 @@ type MaybeArray<T> =
   | null
   | undefined;
 
+const VIDEO_CATEGORY_ORDER = ['cover', 'live', 'original'] as const;
+
+type VideoCategoryKey = (typeof VIDEO_CATEGORY_ORDER)[number];
+type VideoCategorySelection = '' | VideoCategoryKey;
+
+const VIDEO_CATEGORY_LABELS: Record<VideoCategoryKey, string> = {
+  cover: '커버',
+  live: '라이브',
+  original: '오리지널'
+};
+
+const isRecognizedVideoCategoryValue = (value: string): value is VideoCategoryKey =>
+  (VIDEO_CATEGORY_ORDER as readonly string[]).includes(value);
+
 type ClipTimeField =
   | 'startHours'
   | 'startMinutes'
@@ -93,6 +107,29 @@ const createInitialClipEditFormState = (): ClipEditFormState => ({
   endMinutes: '00',
   endSeconds: '00'
 });
+
+type VideoFormState = {
+  url: string;
+  artistId: string;
+  description: string;
+  captionsJson: string;
+  originalComposer: string;
+  category: VideoCategorySelection;
+};
+
+const createInitialVideoFormState = (): VideoFormState => ({
+  url: '',
+  artistId: '',
+  description: '',
+  captionsJson: '',
+  originalComposer: '',
+  category: ''
+});
+
+type VideoCategoryMutationStatus =
+  | { state: 'saving' }
+  | { state: 'success'; message: string }
+  | { state: 'error'; message: string };
 
 export type ArtistSearchMode = 'all' | 'name' | 'tag';
 
@@ -258,16 +295,14 @@ const describeVideoContentType = (contentType?: string): string => {
 };
 
 const describeVideoCategory = (category?: string | null): string | null => {
-  switch ((category ?? '').toLowerCase()) {
-    case 'cover':
-      return '커버';
-    case 'live':
-      return '라이브';
-    case 'original':
-      return '오리지널';
-    default:
-      return null;
+  if (!category) {
+    return null;
   }
+  const normalized = category.trim().toLowerCase();
+  if (isRecognizedVideoCategoryValue(normalized)) {
+    return VIDEO_CATEGORY_LABELS[normalized];
+  }
+  return null;
 };
 
 type MediaRegistrationType = 'video' | 'clip';
@@ -293,13 +328,15 @@ const resolveMediaRegistrationType = (
 
 const VIDEO_FILTER_KEYWORDS = ['cover', 'original', 'official'];
 
-type VideoCategoryKey = 'cover' | 'live' | 'original';
+const VIDEO_CATEGORY_METADATA: ReadonlyArray<{ key: VideoCategoryKey; label: string }> =
+  VIDEO_CATEGORY_ORDER.map((key) => ({ key, label: VIDEO_CATEGORY_LABELS[key] }));
 
-const VIDEO_CATEGORY_METADATA: ReadonlyArray<{ key: VideoCategoryKey; label: string }> = [
-  { key: 'cover', label: '커버' },
-  { key: 'live', label: '라이브' },
-  { key: 'original', label: '오리지널' }
+const VIDEO_CATEGORY_OPTIONS: ReadonlyArray<{ value: VideoCategorySelection; label: string }> = [
+  { value: '', label: '자동 분류 (제목 기반)' },
+  ...VIDEO_CATEGORY_ORDER.map((key) => ({ value: key, label: VIDEO_CATEGORY_LABELS[key] }))
 ];
+
+const VIDEO_CATEGORY_CUSTOM_VALUE = '__custom' as const;
 
 const VIDEO_CATEGORY_KEYWORDS: Record<VideoCategoryKey, string[]> = {
   cover: ['cover', '커버', 'カバー'],
@@ -311,11 +348,7 @@ const normalizeText = (value?: string | null): string => (value ?? '').toLowerCa
 
 const categorizeVideo = (video: VideoResponse): VideoCategoryKey => {
   const normalizedCategory = normalizeText(video.category);
-  if (
-    normalizedCategory === 'cover' ||
-    normalizedCategory === 'live' ||
-    normalizedCategory === 'original'
-  ) {
+  if (isRecognizedVideoCategoryValue(normalizedCategory)) {
     return normalizedCategory;
   }
   const normalizedTitle = normalizeText(video.title);
@@ -1297,17 +1330,14 @@ export default function App() {
     [artistProfileForm.tags]
   );
   const [isArtistProfileSaving, setArtistProfileSaving] = useState(false);
-  const [videoForm, setVideoForm] = useState({
-    url: '',
-    artistId: '',
-    description: '',
-    captionsJson: '',
-    originalComposer: ''
-  });
+  const [videoForm, setVideoForm] = useState<VideoFormState>(() => createInitialVideoFormState());
   const [clipForm, setClipForm] = useState<ClipFormState>(() => createInitialClipFormState());
   const [clipEditForm, setClipEditForm] = useState<ClipEditFormState>(() => createInitialClipEditFormState());
   const [isClipUpdateSaving, setClipUpdateSaving] = useState(false);
   const [clipEditStatus, setClipEditStatus] = useState<ClipEditStatus | null>(null);
+  const [videoCategoryStatusMap, setVideoCategoryStatusMap] = useState<
+    Record<number, VideoCategoryMutationStatus>
+  >({});
   const autoDetectInFlightRef = useRef(false);
   const autoDetectedVideoIdRef = useRef<number | null>(null);
   const videoListSectionRef = useRef<HTMLElement | null>(null);
@@ -1673,11 +1703,12 @@ export default function App() {
     setPlaylistSearchQuery('');
     setClipCandidates([]);
     setSelectedVideo(null);
-    setVideoForm({ url: '', artistId: '', description: '', captionsJson: '', originalComposer: '' });
+    setVideoForm(createInitialVideoFormState());
     setClipForm(createInitialClipFormState());
     setNicknameInput('');
     setNicknameStatus(null);
     setNicknameError(null);
+    setVideoCategoryStatusMap({});
   }, []);
 
   useEffect(() => {
@@ -2078,9 +2109,8 @@ export default function App() {
     [videoForm.artistId, authHeaders]
   );
 
-  const applyVideoRegistrationResult = useCallback(
-    (video: VideoResponse, candidates: MaybeArray<ClipCandidateResponse>) => {
-      const normalizedCandidates = ensureArray(candidates);
+  const applyVideoUpdate = useCallback(
+    (video: VideoResponse) => {
       const mergeResult = mergeVideoIntoCollections(
         { videos: videosRef.current, songVideos: songVideosRef.current },
         video
@@ -2090,27 +2120,44 @@ export default function App() {
       songVideosRef.current = mergeResult.songVideos;
       setVideos(mergeResult.videos);
       setSongVideos(mergeResult.songVideos);
+      return mergeResult;
+    },
+    [setVideos, setSongVideos]
+  );
+
+  const applyVideoRegistrationResult = useCallback(
+    (video: VideoResponse, candidates: MaybeArray<ClipCandidateResponse>) => {
+      const normalizedCandidates = ensureArray(candidates);
+      const mergeResult = applyVideoUpdate(video);
+
       setSelectedVideo(mergeResult.normalizedVideo.id);
       setClipCandidates(normalizedCandidates);
       autoDetectedVideoIdRef.current = mergeResult.normalizedVideo.id;
       return { existed: mergeResult.existed, candidates: normalizedCandidates };
     },
-    [setVideos, setSongVideos, setSelectedVideo, setClipCandidates]
+    [applyVideoUpdate, setSelectedVideo, setClipCandidates]
   );
 
   const requestVideoRegistration = useCallback(
     async ({
       artistId,
       videoUrl,
-      originalComposer
+      originalComposer,
+      category
     }: {
       artistId: number;
       videoUrl: string;
       originalComposer?: string | null;
+      category?: VideoCategorySelection;
     }) => {
       const response = await http.post<VideoClipSuggestionsResponse>(
         '/videos/clip-suggestions',
-        { artistId, videoUrl, originalComposer: originalComposer ?? null },
+        {
+          artistId,
+          videoUrl,
+          originalComposer: originalComposer ?? null,
+          category: category && category.length > 0 ? category : null
+        },
         { headers: authHeaders }
       );
 
@@ -2141,6 +2188,54 @@ export default function App() {
       };
     },
     [authHeaders, http, applyVideoRegistrationResult]
+  );
+
+  const updateVideoCategory = useCallback(
+    async (videoId: number, category: VideoCategorySelection) => {
+      if (creationDisabled) {
+        return;
+      }
+
+      setVideoCategoryStatusMap((prev) => ({
+        ...prev,
+        [videoId]: { state: 'saving' }
+      }));
+
+      try {
+        const response = await http.patch<VideoResponse>(
+          `/videos/${videoId}/category`,
+          { category: category && category.length > 0 ? category : null },
+          { headers: authHeaders }
+        );
+
+        applyVideoUpdate(response.data);
+
+        setVideoCategoryStatusMap((prev) => ({
+          ...prev,
+          [videoId]: { state: 'success', message: '분류가 저장되었습니다.' }
+        }));
+
+        window.setTimeout(() => {
+          setVideoCategoryStatusMap((prev) => {
+            const current = prev[videoId];
+            if (!current || current.state !== 'success') {
+              return prev;
+            }
+            const next = { ...prev };
+            delete next[videoId];
+            return next;
+          });
+        }, 2400);
+      } catch (error) {
+        const message = extractAxiosErrorMessage(error, '영상 분류를 저장하지 못했습니다.');
+        console.error('Failed to update video category', error);
+        setVideoCategoryStatusMap((prev) => ({
+          ...prev,
+          [videoId]: { state: 'error', message }
+        }));
+      }
+    },
+    [creationDisabled, http, authHeaders, applyVideoUpdate]
   );
 
   const createClip = useCallback(
@@ -2261,7 +2356,8 @@ export default function App() {
                 originalComposer:
                   normalizedClipOriginalComposer.length > 0
                     ? normalizedClipOriginalComposer
-                    : null
+                    : null,
+                category: videoForm.category
               });
               videoIdForCreation = registration.video.id;
               const candidateCount = registration.candidates.length;
@@ -2355,7 +2451,8 @@ export default function App() {
         artistId: parsedArtistId,
         videoUrl: trimmedUrl,
         originalComposer:
-          normalizedVideoOriginalComposer.length > 0 ? normalizedVideoOriginalComposer : null
+          normalizedVideoOriginalComposer.length > 0 ? normalizedVideoOriginalComposer : null,
+        category: videoForm.category
       });
       const candidateCount = result.candidates.length;
       const defaultMessage =
@@ -2374,7 +2471,8 @@ export default function App() {
         url: '',
         description: '',
         captionsJson: '',
-        originalComposer: ''
+        originalComposer: '',
+        category: ''
       }));
       setClipForm((prev) => ({ ...prev, videoUrl: '' }));
       reloadArtistVideos().catch((error) => console.error('Failed to refresh videos after save', error));
@@ -2390,6 +2488,7 @@ export default function App() {
     videoForm.url,
     videoForm.artistId,
     videoForm.originalComposer,
+    videoForm.category,
     requestVideoRegistration,
     reloadArtistVideos
   ]);
@@ -2680,7 +2779,8 @@ export default function App() {
           artistId: parsedArtistId,
           videoUrl: trimmedVideoUrl,
           originalComposer:
-            normalizedClipOriginalComposer.length > 0 ? normalizedClipOriginalComposer : null
+            normalizedClipOriginalComposer.length > 0 ? normalizedClipOriginalComposer : null,
+          category: videoForm.category
         });
         resolvedVideoId = registration.video.id;
         const candidateCount = registration.candidates.length;
@@ -2748,6 +2848,7 @@ export default function App() {
     clipForm.originalComposer,
     selectedVideo,
     videoForm.artistId,
+    videoForm.category,
     requestVideoRegistration,
     createClip
   ]);
@@ -4257,6 +4358,19 @@ export default function App() {
     const isVideoQueued = playlistVideoItem !== null;
     const canModifyPlaylist = Boolean(isAuthenticated && activePlaylist);
     const videoCategory = categorizeVideo(video);
+    const normalizedVideoCategory = normalizeText(video.category);
+    const isKnownCategory = isRecognizedVideoCategoryValue(normalizedVideoCategory);
+    const currentCategorySelection: VideoCategorySelection = isKnownCategory
+      ? (normalizedVideoCategory as VideoCategorySelection)
+      : '';
+    const customCategoryLabel = !isKnownCategory && normalizedVideoCategory.length > 0
+      ? (video.category ?? '').trim() || normalizedVideoCategory
+      : null;
+    const categorySelectValue: VideoCategorySelection | typeof VIDEO_CATEGORY_CUSTOM_VALUE = customCategoryLabel
+      ? VIDEO_CATEGORY_CUSTOM_VALUE
+      : currentCategorySelection;
+    const categoryStatus = videoCategoryStatusMap[video.id];
+    const categorySelectId = `video-category-${video.id}`;
     const videoThumbnail =
       video.thumbnailUrl ||
       (video.youtubeVideoId ? `https://img.youtube.com/vi/${video.youtubeVideoId}/hqdefault.jpg` : null);
@@ -4342,6 +4456,64 @@ export default function App() {
               >
                 {isVideoQueued ? '재생목록 추가됨' : '재생목록에 추가'}
               </button>
+            </div>
+            <div
+              className="artist-library__video-category-field"
+              onClick={(event) => event.stopPropagation()}
+              onKeyDown={(event) => event.stopPropagation()}
+            >
+              <label htmlFor={categorySelectId}>분류 편집</label>
+              <select
+                id={categorySelectId}
+                className="artist-library__video-category-select"
+                value={categorySelectValue}
+                onChange={(event) => {
+                  const { value } = event.target;
+                  if (value === VIDEO_CATEGORY_CUSTOM_VALUE) {
+                    return;
+                  }
+                  const nextValue = value as VideoCategorySelection;
+                  if (nextValue === currentCategorySelection) {
+                    return;
+                  }
+                  void updateVideoCategory(video.id, nextValue);
+                }}
+                onClick={(event) => event.stopPropagation()}
+                onKeyDown={(event) => event.stopPropagation()}
+                disabled={creationDisabled || categoryStatus?.state === 'saving'}
+              >
+                {VIDEO_CATEGORY_OPTIONS.map(({ value, label }) => (
+                  <option key={value || 'auto'} value={value}>
+                    {label}
+                  </option>
+                ))}
+                {customCategoryLabel && (
+                  <option value={VIDEO_CATEGORY_CUSTOM_VALUE} disabled>
+                    기타 ({customCategoryLabel})
+                  </option>
+                )}
+              </select>
+              {categoryStatus?.state === 'saving' && (
+                <span className="artist-library__video-category-status" role="status">
+                  저장 중...
+                </span>
+              )}
+              {categoryStatus?.state === 'success' && (
+                <span
+                  className="artist-library__video-category-status artist-library__video-category-status--success"
+                  role="status"
+                >
+                  {categoryStatus.message}
+                </span>
+              )}
+              {categoryStatus?.state === 'error' && (
+                <span
+                  className="artist-library__video-category-status artist-library__video-category-status--error"
+                  role="alert"
+                >
+                  {categoryStatus.message}
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -5174,6 +5346,25 @@ export default function App() {
                                 />
                               </>
                             )}
+                            <label htmlFor="libraryVideoCategory">영상 분류</label>
+                            <select
+                              id="libraryVideoCategory"
+                              value={videoForm.category}
+                              onChange={(event) =>
+                                setVideoForm((prev) => ({
+                                  ...prev,
+                                  category: event.target.value as VideoCategorySelection
+                                }))
+                              }
+                              disabled={creationDisabled}
+                            >
+                              {VIDEO_CATEGORY_OPTIONS.map(({ value, label }) => (
+                                <option key={value || 'auto'} value={value}>
+                                  {label}
+                                </option>
+                              ))}
+                            </select>
+                            <p className="form-hint">선택하지 않으면 제목을 기준으로 자동 분류합니다.</p>
                             {!isClipRegistration && (
                               <p className="artist-preview__hint">
                                 영상 등록을 완료하면 아래 <strong>자동 감지된 클립 제안</strong>에서 추천 구간을 확인할 수 있습니다.

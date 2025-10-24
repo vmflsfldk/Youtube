@@ -65,4 +65,28 @@ test('registering a video updates song catalog without reloading library', () =>
   );
   const updatedSong = secondMerge.songVideos.find((video) => video.id === updatedVideo.id);
   assert.equal(updatedSong?.title, 'Updated Title', 'song catalog should reflect latest metadata');
+
+  const liveVideoUpdate: VideoResponse = {
+    ...updatedVideo,
+    category: 'live'
+  };
+
+  const thirdMerge = mergeVideoIntoCollections(
+    { videos: secondMerge.videos, songVideos: secondMerge.songVideos },
+    liveVideoUpdate
+  );
+
+  assert.equal(thirdMerge.existed, true, 'category updates should apply to existing videos');
+  assert.equal(
+    thirdMerge.videos.length,
+    secondMerge.videos.length,
+    'video library should remain deduplicated after category change'
+  );
+  assert.equal(
+    thirdMerge.songVideos.some((video) => video.id === liveVideoUpdate.id),
+    false,
+    'song catalog should exclude videos reclassified as live'
+  );
+  const libraryVideo = thirdMerge.videos.find((video) => video.id === liveVideoUpdate.id);
+  assert.equal(libraryVideo?.category, 'live', 'video library should reflect updated category');
 });

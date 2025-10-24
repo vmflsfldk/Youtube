@@ -351,6 +351,11 @@ test("listMediaLibrary returns media and clips for requesting user", async () =>
     payload.videos.map((video) => video.artistYoutubeChannelId),
     ["chan-2", "chan-1", "chan-1"]
   );
+  assert.deepEqual(
+    payload.videos.map((video) => video.category ?? null),
+    [null, "cover", "live"],
+    "video categories should preserve stored values"
+  );
   assert(payload.videos.some((video) => video.id === 1), "live videos should be included");
 
   assert.equal(payload.clips.length, 3);
