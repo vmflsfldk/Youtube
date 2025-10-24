@@ -12,7 +12,7 @@ import {
 import { FixedSizeList, ListChildComponentProps } from 'react-window';
 
 const DESKTOP_ROW_GAP = 12;
-const MOBILE_ROW_GAP = 12;
+const MOBILE_ROW_GAP = 16;
 const getRowGap = (containerWidth: number): number => {
   if (containerWidth > 0 && containerWidth <= 640) {
     return MOBILE_ROW_GAP;
@@ -23,12 +23,13 @@ const getRowGap = (containerWidth: number): number => {
   return DESKTOP_ROW_GAP;
 };
 const DEFAULT_CARD_HEIGHT = 320;
+const MOBILE_CARD_HEIGHT = 120;
 const MAX_VISIBLE_ROWS = 4;
-const MIN_CARD_HEIGHT = 200;
+const MIN_CARD_HEIGHT = 96;
 
 const getMinCardWidth = (containerWidth: number): number => {
-  if (containerWidth <= 480) {
-    return 140;
+  if (containerWidth <= 560) {
+    return 180;
   }
   if (containerWidth <= 768) {
     return 200;
@@ -37,8 +38,8 @@ const getMinCardWidth = (containerWidth: number): number => {
 };
 
 const getEstimatedCardHeight = (containerWidth: number): number => {
-  if (containerWidth <= 480) {
-    return 280;
+  if (containerWidth <= 560) {
+    return MOBILE_CARD_HEIGHT;
   }
   return DEFAULT_CARD_HEIGHT;
 };
@@ -216,6 +217,9 @@ const ArtistLibraryGrid = <T,>({
 
   const columns = useMemo(() => {
     if (containerWidth <= 0) {
+      return 1;
+    }
+    if (containerWidth <= 560) {
       return 1;
     }
     const minCardWidth = getMinCardWidth(containerWidth);
