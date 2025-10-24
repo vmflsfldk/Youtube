@@ -2665,6 +2665,30 @@ button:disabled:hover {
   margin-top: 6px;
 }
 
+.artist-library__video-category-field {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.artist-library__video-category-select {
+  width: 100%;
+}
+
+.artist-library__video-category-status {
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+}
+
+.artist-library__video-category-status--success {
+  color: var(--accent-success);
+}
+
+.artist-library__video-category-status--error {
+  color: #f87171;
+}
+
 .artist-library__video-action {
   border: 1px solid rgba(148, 163, 184, 0.32);
   background: rgba(15, 23, 42, 0.52);
