@@ -4968,43 +4968,50 @@ export default function App() {
               <div className={`artist-library${isMobileViewport ? ' artist-library--mobile' : ''}`}>
                 {isMobileViewport ? (
                   <div className="artist-library__mobile-header">
-                    <div className="artist-library__mobile-topbar">
-                      <div className="artist-library__mobile-icon" aria-hidden="true">
-                        <span aria-hidden="true">☰</span>
+                    <div className="artist-library__mobile-hero">
+                      <div className="artist-library__mobile-hero-top">
+                        <div className="artist-library__mobile-logo" role="img" aria-label="UtaHub">
+                          <span className="artist-library__mobile-logo-glyph" aria-hidden="true">✦</span>
+                          <span className="visually-hidden">UtaHub</span>
+                        </div>
+                        <div className="artist-library__mobile-hero-copy">
+                          <span className="artist-library__mobile-hero-eyebrow">UTAHUB</span>
+                          <span className="artist-library__mobile-hero-title">아티스트</span>
+                        </div>
+                        <button type="button" className="artist-library__mobile-icon" aria-label="추가 옵션">
+                          <span aria-hidden="true">⋮</span>
+                        </button>
                       </div>
-                      <div className="artist-library__mobile-logo" aria-hidden="true">
-                        <img src={utahubLogo} alt="" />
+                      <p className="artist-library__mobile-hero-description">
+                        좋아하는 버튜버와 새로운 노래를 쉽게 찾아보세요.
+                      </p>
+                      <div className="artist-library__mobile-tabs" role="group" aria-label="콘텐츠 전환">
+                        {mobileArtistTabs.map((tab) => {
+                          const isActiveTab = activeSection === tab.id;
+                          const tabLabel = tab.id === 'library' ? '아티스트' : '노래';
+                          return (
+                            <button
+                              key={`mobile-switch-${tab.id}`}
+                              type="button"
+                              aria-pressed={isActiveTab}
+                              className={`artist-library__mobile-tab${isActiveTab ? ' is-active' : ''}`}
+                              onClick={() => setActiveSection(tab.id)}
+                            >
+                              {tabLabel}
+                            </button>
+                          );
+                        })}
                       </div>
-                      <div className="artist-library__mobile-icon" aria-hidden="true">
-                        <span aria-hidden="true">⋮</span>
-                      </div>
-                    </div>
-                    <div className="artist-library__mobile-tabs" role="group" aria-label="콘텐츠 전환">
-                      {mobileArtistTabs.map((tab) => {
-                        const isActiveTab = activeSection === tab.id;
-                        const tabLabel = tab.id === 'library' ? '아티스트' : '노래';
-                        return (
-                          <button
-                            key={`mobile-switch-${tab.id}`}
-                            type="button"
-                            aria-pressed={isActiveTab}
-                            className={`artist-library__mobile-tab${isActiveTab ? ' is-active' : ''}`}
-                            onClick={() => setActiveSection(tab.id)}
-                          >
-                            {tabLabel}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    <div className="artist-library__mobile-context">
-                      <span className="artist-library__mobile-context-label">VTUBERS</span>
-                      <div className="artist-library__mobile-context-button" aria-hidden="true">
-                        <span className="artist-library__mobile-context-value">
-                          {selectedArtist
-                            ? `${selectedArtist.displayName || selectedArtist.name} 선택됨`
-                            : '전체 아티스트'}
-                        </span>
-                        <span className="artist-library__mobile-context-icon">▾</span>
+                      <div className="artist-library__mobile-context">
+                        <span className="artist-library__mobile-context-label">VTUBERS</span>
+                        <div className="artist-library__mobile-context-button" aria-hidden="true">
+                          <span className="artist-library__mobile-context-value">
+                            {selectedArtist
+                              ? `${selectedArtist.displayName || selectedArtist.name} 선택됨`
+                              : '전체 아티스트'}
+                          </span>
+                          <span className="artist-library__mobile-context-icon">▾</span>
+                        </div>
                       </div>
                     </div>
                     <h3 id="artist-library-heading" className="artist-library__mobile-title visually-hidden">
