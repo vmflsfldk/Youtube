@@ -4968,6 +4968,17 @@ export default function App() {
               <div className={`artist-library${isMobileViewport ? ' artist-library--mobile' : ''}`}>
                 {isMobileViewport ? (
                   <div className="artist-library__mobile-header">
+                    <div className="artist-library__mobile-topbar">
+                      <div className="artist-library__mobile-icon" aria-hidden="true">
+                        <span aria-hidden="true">☰</span>
+                      </div>
+                      <div className="artist-library__mobile-logo" aria-hidden="true">
+                        <img src={utahubLogo} alt="" />
+                      </div>
+                      <div className="artist-library__mobile-icon" aria-hidden="true">
+                        <span aria-hidden="true">⋮</span>
+                      </div>
+                    </div>
                     <div className="artist-library__mobile-tabs" role="group" aria-label="콘텐츠 전환">
                       {mobileArtistTabs.map((tab) => {
                         const isActiveTab = activeSection === tab.id;
@@ -4987,16 +4998,19 @@ export default function App() {
                     </div>
                     <div className="artist-library__mobile-context">
                       <span className="artist-library__mobile-context-label">VTUBERS</span>
-                      <span className="artist-library__mobile-context-value">
-                        {selectedArtist
-                          ? `${selectedArtist.displayName || selectedArtist.name} 선택됨`
-                          : '전체 아티스트 탐색'}
-                      </span>
+                      <div className="artist-library__mobile-context-button" aria-hidden="true">
+                        <span className="artist-library__mobile-context-value">
+                          {selectedArtist
+                            ? `${selectedArtist.displayName || selectedArtist.name} 선택됨`
+                            : '전체 아티스트'}
+                        </span>
+                        <span className="artist-library__mobile-context-icon">▾</span>
+                      </div>
                     </div>
-                    <h3 id="artist-library-heading" className="artist-library__mobile-title">
+                    <h3 id="artist-library-heading" className="artist-library__mobile-title visually-hidden">
                       아티스트 디렉토리
                     </h3>
-                    <p className="artist-library__mobile-description">
+                    <p className="artist-library__mobile-description visually-hidden">
                       전체 이용자가 확인할 수 있는 공개 목록입니다.
                     </p>
                   </div>
