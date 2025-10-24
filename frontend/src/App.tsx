@@ -744,6 +744,7 @@ interface ClipListItemData {
   canModifyPlaylist: boolean;
   playlistClipItemMap: Map<number, PlaylistItemResponse>;
   handleClipPlaylistToggle: (clipId: number) => Promise<void>;
+  getParentVideo: (clip: ClipResponse) => VideoResponse | null;
 }
 
 interface ClipPreviewData {
@@ -3455,6 +3456,13 @@ export default function App() {
     () => mergeSections(selectedVideoData?.sections ?? [], autoDetectedSections),
     [selectedVideoData, autoDetectedSections]
   );
+  const artistLibraryVideoMap = useMemo(() => {
+    const map = new Map<number, VideoResponse>();
+    artistLibraryVideos.forEach((video) => {
+      map.set(video.id, video);
+    });
+    return map;
+  }, [artistLibraryVideos]);
   useEffect(() => {
     if (!isLibraryClipFormOpen || !isClipRegistration) {
       return;
@@ -3519,11 +3527,6 @@ export default function App() {
     () => displayableVideos.filter((video) => !isClipSourceVideo(video)),
     [displayableVideos]
   );
-  const selectedVideoClips = useMemo(
-    () => (selectedVideo ? libraryClips.filter((clip) => clip.videoId === selectedVideo) : []),
-    [libraryClips, selectedVideo]
-  );
-
   const canModifyActivePlaylist = Boolean(isAuthenticated && activePlaylist);
 
   const clipListItemData = useMemo<ClipListItemData>(
@@ -3536,7 +3539,8 @@ export default function App() {
       isClipUpdateSaving,
       canModifyPlaylist: canModifyActivePlaylist,
       playlistClipItemMap,
-      handleClipPlaylistToggle
+      handleClipPlaylistToggle,
+      getParentVideo: (clip: ClipResponse) => artistLibraryVideoMap.get(clip.videoId) ?? null
     }),
     [
       activeClipId,
@@ -3547,7 +3551,8 @@ export default function App() {
       isClipUpdateSaving,
       canModifyActivePlaylist,
       playlistClipItemMap,
-      handleClipPlaylistToggle
+      handleClipPlaylistToggle,
+      artistLibraryVideoMap
     ]
   );
 
@@ -3659,7 +3664,8 @@ export default function App() {
         isClipUpdateSaving: currentClipUpdateSaving,
         canModifyPlaylist,
         playlistClipItemMap: currentPlaylistClipItemMap,
-        handleClipPlaylistToggle: toggleClipPlaylist
+        handleClipPlaylistToggle: toggleClipPlaylist,
+        getParentVideo
       } = itemData;
 
       const isActive = currentActiveClipId === clip.id;
@@ -3667,14 +3673,15 @@ export default function App() {
       const isEditingClip = currentClipEditForm.clipId === clip.id;
       const clipOriginalComposerTag =
         typeof clip.originalComposer === 'string' ? clip.originalComposer.trim() : '';
+      const parentVideo = getParentVideo(clip);
       const clipArtistName = (
         clip.artistDisplayName ??
         clip.artistName ??
-        currentSelectedVideo?.artistDisplayName ??
-        currentSelectedVideo?.artistName ??
+        parentVideo?.artistDisplayName ??
+        parentVideo?.artistName ??
         ''
       ).trim();
-      const clipCategory = categorizeClip(clip, currentSelectedVideo ?? null);
+      const clipCategory = categorizeClip(clip, parentVideo ?? null);
       const clipVocalTag =
         clipCategory && clipCategory !== 'live' && clipArtistName ? `보컬:${clipArtistName}` : null;
       const clipTagValues = buildTagList(
@@ -4322,9 +4329,9 @@ export default function App() {
   }, [expandedPlaylistEntryId, filteredPlaylistEntries, resolvePlaylistEntryKey]);
   useEffect(() => {
     setActiveClipId((previous) =>
-      previous && selectedVideoClips.some((clip) => clip.id === previous) ? previous : null
+      previous && libraryClips.some((clip) => clip.id === previous) ? previous : null
     );
-  }, [selectedVideoClips]);
+  }, [libraryClips]);
   const playlistHeading = isAuthenticated ? '내 영상·클립 모음' : '공개 영상·클립 모음';
   const playlistSubtitle = isAuthenticated
     ? '저장한 영상과 클립을 검색하고 바로 재생해 보세요.'
@@ -5777,15 +5784,11 @@ export default function App() {
                             </span>
                           )}
                         </div>
-                        {selectedVideoClips.length === 0 ? (
-                          selectedVideoData ? (
-                            <p className="artist-library__empty">클립 목록이 비어 있습니다.</p>
-                          ) : (
-                            <p className="artist-library__empty">영상을 선택하면 클립 목록을 확인할 수 있습니다.</p>
-                          )
+                        {libraryClips.length === 0 ? (
+                          <p className="artist-library__empty">클립 목록이 비어 있습니다.</p>
                         ) : (
                           <>
-                            {selectedVideoIsHidden && (
+                            {selectedVideoData && selectedVideoIsHidden && (
                               <p className="artist-preview__hint">
                                 댓글 구간에서 자동 저장된 클립입니다. 영상은 라이브러리에 등록되지 않습니다.
                               </p>
@@ -5819,7 +5822,7 @@ export default function App() {
                               </ClipPreviewPanel>
                             )}
                             <ClipList
-                              clips={selectedVideoClips}
+                              clips={libraryClips}
                               getItemKey={(clip) => clip.id}
                               renderItem={renderClipListItem}
                               itemData={clipListItemData}
