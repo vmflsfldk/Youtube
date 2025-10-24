@@ -71,6 +71,32 @@ const ArtistLibraryCardComponent = ({
     displayName
   } = cardData;
 
+  const channelHandle = artist.youtubeChannelId.startsWith('@')
+    ? artist.youtubeChannelId
+    : artist.youtubeChannelTitle || artist.youtubeChannelId;
+  const agencyLabel = agency && agency.trim().length > 0 ? agency : '독립';
+  const languageLabel = countryBadges.length > 0
+    ? countryBadges.map((badge) => badge.code).join(' · ')
+    : 'GLOBAL';
+  const formatTagsSummary = (values: string[]): string => {
+    if (values.length === 0) {
+      return '태그 없음';
+    }
+    if (values.length <= 2) {
+      return values.join(' · ');
+    }
+    const remaining = values.length - 2;
+    return `${values.slice(0, 2).join(' · ')} 외 ${remaining}`;
+  };
+  const tagsSummary = formatTagsSummary(tags);
+  const mobileStats: { key: string; label: string; value: string }[] = [
+    { key: 'agency', label: '소속', value: agencyLabel },
+    { key: 'language', label: '언어', value: languageLabel }
+  ];
+  if (tags.length > 0) {
+    mobileStats.push({ key: 'tags', label: '태그', value: tagsSummary });
+  }
+
   const shouldShowTags = showTags && tags.length > 0;
   const hasMetaContent = Boolean(agency || shouldShowTags);
 
@@ -110,9 +136,15 @@ const ArtistLibraryCardComponent = ({
       </div>
       <div className="artist-library__info">
         <span className="artist-library__name">{artist.displayName || artist.name}</span>
-        <span className="artist-library__channel">
-          {artist.youtubeChannelTitle || artist.youtubeChannelId}
-        </span>
+        <span className="artist-library__channel">{channelHandle}</span>
+        <div className="artist-library__mobile-stats">
+          {mobileStats.map((stat) => (
+            <div key={stat.key} className="artist-library__stat" aria-label={`${stat.label} ${stat.value}`}>
+              <span className="artist-library__stat-label">{stat.label}</span>
+              <span className="artist-library__stat-value">{stat.value}</span>
+            </div>
+          ))}
+        </div>
       </div>
       {hasMetaContent && (
         <div className="artist-library__meta">
