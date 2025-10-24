@@ -5167,6 +5167,7 @@ export default function App() {
                         focusMode
                         interactive={false}
                         cardData={selectedArtist.cardData}
+                        showTags
                       />
                     </div>
                     <div className="artist-library__detail-panel">
@@ -5845,6 +5846,7 @@ export default function App() {
                         isActive={isActive}
                         onSelect={onSelect}
                         cardData={artist.cardData}
+                        showTags={false}
                       />
                     )}
                   />
