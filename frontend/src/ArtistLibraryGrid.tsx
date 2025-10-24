@@ -23,7 +23,7 @@ const getRowGap = (containerWidth: number): number => {
   return DESKTOP_ROW_GAP;
 };
 const DEFAULT_CARD_HEIGHT = 320;
-const MOBILE_CARD_HEIGHT = 156;
+const MOBILE_CARD_HEIGHT = 200;
 const MAX_VISIBLE_ROWS = 4;
 const MIN_CARD_HEIGHT = 132;
 

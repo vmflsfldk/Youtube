@@ -4969,11 +4969,9 @@ export default function App() {
                 {isMobileViewport ? (
                   <div className="artist-library__mobile-header">
                     <div className="artist-library__mobile-topbar">
-                      <div className="artist-library__mobile-icon" aria-hidden="true">
-                        <span aria-hidden="true">☰</span>
-                      </div>
-                      <div className="artist-library__mobile-logo" aria-hidden="true">
-                        <img src={utahubLogo} alt="" />
+                      <div className="artist-library__mobile-logo" role="img" aria-label="UtaHub">
+                        <span className="artist-library__mobile-logo-glyph" aria-hidden="true">✦</span>
+                        <span className="visually-hidden">UtaHub</span>
                       </div>
                       <div className="artist-library__mobile-icon" aria-hidden="true">
                         <span aria-hidden="true">⋮</span>

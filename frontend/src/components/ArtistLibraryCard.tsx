@@ -70,10 +70,21 @@ const ArtistLibraryCardComponent = ({
     tags,
     displayName
   } = cardData;
+  const resolvedName = displayName || artist.displayName || artist.name;
 
-  const channelHandle = artist.youtubeChannelId.startsWith('@')
-    ? artist.youtubeChannelId
-    : artist.youtubeChannelTitle || artist.youtubeChannelId;
+  const normalizedChannelHandle = (() => {
+    const candidate = artist.youtubeChannelId.startsWith('@')
+      ? artist.youtubeChannelId
+      : artist.youtubeChannelTitle || artist.youtubeChannelId || '';
+    if (candidate.startsWith('@')) {
+      return candidate;
+    }
+    const compact = candidate.replace(/\s+/g, '');
+    if (/^UC[0-9A-Za-z_-]{22}$/.test(compact)) {
+      return `@${resolvedName.replace(/\s+/g, '')}`;
+    }
+    return compact.length > 0 ? `@${compact}` : `@${resolvedName.replace(/\s+/g, '')}`;
+  })();
   const agencyLabel = agency && agency.trim().length > 0 ? agency : '독립';
   const languageLabel = countryBadges.length > 0
     ? countryBadges.map((badge) => badge.code).join(' · ')
@@ -91,16 +102,15 @@ const ArtistLibraryCardComponent = ({
   const tagsSummary = formatTagsSummary(tags);
   const mobileStats: { key: string; label: string; value: string }[] = [
     { key: 'agency', label: '소속', value: agencyLabel },
-    { key: 'language', label: '언어', value: languageLabel }
+    { key: 'language', label: '언어', value: languageLabel },
+    { key: 'tags', label: '태그', value: tagsSummary }
   ];
   if (tags.length > 0) {
-    mobileStats.push({ key: 'tags', label: '태그', value: tagsSummary });
+    mobileStats.push({ key: 'tagCount', label: '태그 수', value: `${tags.length}개` });
   }
 
   const shouldShowTags = showTags && tags.length > 0;
   const hasMetaContent = Boolean(agency || shouldShowTags);
-
-  const resolvedName = displayName || artist.displayName || artist.name;
 
   return (
     <div
@@ -135,8 +145,10 @@ const ArtistLibraryCardComponent = ({
         )}
       </div>
       <div className="artist-library__info">
-        <span className="artist-library__name">{artist.displayName || artist.name}</span>
-        <span className="artist-library__channel">{channelHandle}</span>
+        <div className="artist-library__primary">
+          <span className="artist-library__name">{resolvedName}</span>
+          <span className="artist-library__channel">{normalizedChannelHandle}</span>
+        </div>
         <div className="artist-library__mobile-stats">
           {mobileStats.map((stat) => (
             <div key={stat.key} className="artist-library__stat" aria-label={`${stat.label} ${stat.value}`}>
