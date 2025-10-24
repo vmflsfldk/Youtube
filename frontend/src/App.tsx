@@ -3241,6 +3241,27 @@ export default function App() {
     }
     return libraryVideos.filter((video) => video.artistId === selectedArtistId);
   }, [libraryVideos, selectedArtistId]);
+  const artistLibraryVideoIdSet = useMemo(() => {
+    if (selectedArtistId === null) {
+      return null;
+    }
+    const ids = new Set<number>();
+    artistLibraryVideos.forEach((video) => {
+      ids.add(video.id);
+    });
+    return ids;
+  }, [artistLibraryVideos, selectedArtistId]);
+  const artistLibraryClips = useMemo(() => {
+    if (selectedArtistId === null) {
+      return libraryClips;
+    }
+    return libraryClips.filter((clip) => {
+      if (typeof clip.artistId === 'number') {
+        return clip.artistId === selectedArtistId;
+      }
+      return artistLibraryVideoIdSet?.has(clip.videoId) ?? false;
+    });
+  }, [artistLibraryVideoIdSet, libraryClips, selectedArtistId]);
 
   useEffect(() => {
     setSelectedVideo((previous) => {
@@ -3564,7 +3585,7 @@ export default function App() {
       return null;
     }
 
-    const clip = libraryClips.find((candidate) => candidate.id === activeClipId);
+    const clip = artistLibraryClips.find((candidate) => candidate.id === activeClipId);
     if (!clip) {
       return null;
     }
@@ -3638,7 +3659,7 @@ export default function App() {
   }, [
     activeSection,
     activeClipId,
-    clips,
+    artistLibraryClips,
     clipEditForm.clipId,
     clipEditForm.startHours,
     clipEditForm.startMinutes,
@@ -3647,7 +3668,7 @@ export default function App() {
     clipEditForm.endMinutes,
     clipEditForm.endSeconds,
     selectedVideoData,
-    videos
+    artistLibraryVideos
   ]);
 
   const renderClipListItem = useCallback(
@@ -4329,9 +4350,9 @@ export default function App() {
   }, [expandedPlaylistEntryId, filteredPlaylistEntries, resolvePlaylistEntryKey]);
   useEffect(() => {
     setActiveClipId((previous) =>
-      previous && libraryClips.some((clip) => clip.id === previous) ? previous : null
+      previous && artistLibraryClips.some((clip) => clip.id === previous) ? previous : null
     );
-  }, [libraryClips]);
+  }, [artistLibraryClips]);
   const playlistHeading = isAuthenticated ? '내 영상·클립 모음' : '공개 영상·클립 모음';
   const playlistSubtitle = isAuthenticated
     ? '저장한 영상과 클립을 검색하고 바로 재생해 보세요.'
@@ -5784,7 +5805,7 @@ export default function App() {
                             </span>
                           )}
                         </div>
-                        {libraryClips.length === 0 ? (
+                        {artistLibraryClips.length === 0 ? (
                           <p className="artist-library__empty">클립 목록이 비어 있습니다.</p>
                         ) : (
                           <>
@@ -5822,7 +5843,7 @@ export default function App() {
                               </ClipPreviewPanel>
                             )}
                             <ClipList
-                              clips={libraryClips}
+                              clips={artistLibraryClips}
                               getItemKey={(clip) => clip.id}
                               renderItem={renderClipListItem}
                               itemData={clipListItemData}
@@ -5870,14 +5891,14 @@ export default function App() {
                 <div className="catalog-panel__status" role="status" aria-live="polite">
                   곡 정보를 불러오는 중입니다…
                 </div>
-              ) : libraryClips.length === 0 ? (
+              ) : artistLibraryClips.length === 0 ? (
                 <div className="catalog-panel__empty-state">
                   <h3>아직 등록된 곡 정보가 없습니다.</h3>
                   <p>영상이나 클립을 추가하면 이곳에서 곡별 데이터를 확인할 수 있어요.</p>
                 </div>
               ) : (
                 <SongCatalogTable
-                  clips={libraryClips}
+                  clips={artistLibraryClips}
                   videos={libraryVideos}
                   songs={librarySongVideos}
                 />
