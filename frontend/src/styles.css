@@ -616,8 +616,8 @@ body {
     padding: 28px 18px 160px;
     gap: 24px;
     grid-template-columns: minmax(0, 1fr);
-    max-width: 480px;
-    margin: 0 auto;
+    width: 100%;
+    margin: 0;
   }
 
   .sidebar {
