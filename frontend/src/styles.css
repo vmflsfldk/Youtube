@@ -2382,16 +2382,49 @@ button:disabled:hover {
     text-align: center;
     gap: 10px;
   }
+
+  .artist-library--mobile .artist-library__controls {
+    padding: 0 16px 20px;
+    gap: 18px;
+  }
+
+  .artist-library--mobile .artist-directory__search-group,
+  .artist-library--mobile .artist-directory__filter-group {
+    gap: 14px;
+  }
+
+  .artist-library--mobile .artist-search-controls__input-row {
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .artist-library--mobile .artist-directory__search-input-wrapper input,
+  .artist-library--mobile .artist-directory__filter select {
+    min-height: 48px;
+    padding: 0.75rem 1rem;
+  }
 }
 
 .artist-library--mobile .artist-library__selection {
   display: none;
 }
 
-.artist-library--mobile .artist-library__controls,
-.artist-library--mobile .artist-directory__search-group,
+.artist-library--mobile .artist-library__controls {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 0 20px 20px;
+}
+
+.artist-library--mobile .artist-directory__search-group {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
 .artist-library--mobile .artist-directory__filter-group {
-  display: none;
+  display: grid;
+  gap: 16px;
 }
 
 .artist-library--mobile .artist-library__grid,
