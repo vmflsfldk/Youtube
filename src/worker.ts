@@ -144,6 +144,8 @@ interface VideoResponse {
   contentType: VideoContentType;
   category: VideoCategory | null;
   hidden?: boolean;
+  createdAt?: string | null;
+  updatedAt?: string | null;
   originalComposer?: string | null;
   artistName?: string;
   artistDisplayName?: string;
@@ -169,6 +171,8 @@ interface ClipResponse {
   artistYoutubeChannelId?: string;
   artistYoutubeChannelTitle?: string | null;
   artistProfileImageUrl?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
 }
 
 interface ClipCandidateResponse {
@@ -1036,6 +1040,8 @@ interface VideoRow {
   content_type: string | null;
   hidden: number | null;
   original_composer: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 interface VideoLibraryRow extends VideoRow {
@@ -1053,6 +1059,8 @@ interface ClipRow {
   start_sec: number;
   end_sec: number;
   original_composer: string | null;
+  created_at: string;
+  updated_at?: string | null;
 }
 
 const DEFAULT_CLIP_LENGTH = 30;
@@ -2075,6 +2083,8 @@ async function loadMediaLibrary(
         v.content_type,
         v.hidden,
         v.original_composer,
+        v.created_at,
+        v.updated_at,
         a.name AS artist_name,
         a.display_name AS artist_display_name,
         a.youtube_channel_id AS artist_youtube_channel_id,
@@ -2107,7 +2117,7 @@ async function loadMediaLibrary(
   const videoIds = videos.map((video) => video.id);
   const placeholders = videoIds.map(() => "?").join(", ");
   const { results: clipRows } = await env.DB.prepare(
-    `SELECT id, video_id, title, start_sec, end_sec, original_composer
+    `SELECT id, video_id, title, start_sec, end_sec, original_composer, created_at
        FROM clips
       WHERE video_id IN (${placeholders})
       ORDER BY video_id, start_sec`
@@ -2271,7 +2281,9 @@ async function createClip(
   }
 
   const clipRow = await env.DB
-    .prepare("SELECT id, video_id, title, start_sec, end_sec, original_composer FROM clips WHERE id = ?")
+    .prepare(
+      "SELECT id, video_id, title, start_sec, end_sec, original_composer, created_at FROM clips WHERE id = ?"
+    )
     .bind(clipId)
     .first<ClipRow>();
   if (!clipRow) {
@@ -2293,7 +2305,7 @@ async function updateClip(
   }
 
   const existingClip = await env.DB.prepare(
-    `SELECT c.id, c.video_id, c.title, c.start_sec, c.end_sec, c.original_composer
+    `SELECT c.id, c.video_id, c.title, c.start_sec, c.end_sec, c.original_composer, c.created_at
        FROM clips c
        JOIN videos v ON v.id = c.video_id
        JOIN artists a ON a.id = v.artist_id
@@ -2363,7 +2375,9 @@ async function updateClip(
   }
 
   const updatedClipRow = await env.DB
-    .prepare("SELECT id, video_id, title, start_sec, end_sec, original_composer FROM clips WHERE id = ?")
+    .prepare(
+      "SELECT id, video_id, title, start_sec, end_sec, original_composer, created_at FROM clips WHERE id = ?"
+    )
     .bind(clipId)
     .first<ClipRow>();
 
@@ -2393,7 +2407,7 @@ async function listClips(
     }
     await ensureArtistExists(env, artistId);
     const { results } = await env.DB.prepare(
-      `SELECT c.id, c.video_id, c.title, c.start_sec, c.end_sec, c.original_composer
+      `SELECT c.id, c.video_id, c.title, c.start_sec, c.end_sec, c.original_composer, c.created_at
          FROM clips c
          JOIN videos v ON v.id = c.video_id
         WHERE v.artist_id = ?
@@ -2409,7 +2423,7 @@ async function listClips(
     }
     await ensureVideoExists(env, videoId);
     const { results } = await env.DB.prepare(
-      `SELECT id, video_id, title, start_sec, end_sec, original_composer
+      `SELECT id, video_id, title, start_sec, end_sec, original_composer, created_at
          FROM clips
         WHERE video_id = ?
         ORDER BY start_sec`
@@ -2861,7 +2875,7 @@ async function hydratePlaylists(
     const clipPlaceholders = clipIds.map(() => "?").join(", ");
     const { results: fetchedClipRows } = await env.DB
       .prepare(
-        `SELECT id, video_id, title, start_sec, end_sec, original_composer
+        `SELECT id, video_id, title, start_sec, end_sec, original_composer, created_at
            FROM clips
           WHERE id IN (${clipPlaceholders})`
       )
@@ -2900,6 +2914,8 @@ async function hydratePlaylists(
             v.content_type,
             v.hidden,
             v.original_composer,
+            v.created_at,
+            v.updated_at,
             a.name AS artist_name,
             a.display_name AS artist_display_name,
             a.youtube_channel_id AS artist_youtube_channel_id,
@@ -3095,6 +3111,8 @@ function toVideoResponse(row: VideoRow): VideoResponse {
     contentType: normalizeVideoContentType(row.content_type) ?? "OFFICIAL",
     category: normalizeVideoCategory(row.category),
     hidden: Number(row.hidden ?? 0) === 1,
+    createdAt: row.created_at ?? null,
+    updatedAt: row.updated_at ?? null,
     originalComposer: row.original_composer ?? null
   };
 }
@@ -3127,6 +3145,8 @@ async function hydrateVideoRow(env: Env, row: VideoRow): Promise<VideoResponse> 
         v.content_type,
         v.hidden,
         v.original_composer,
+        v.created_at,
+        v.updated_at,
         a.name AS artist_name,
         a.display_name AS artist_display_name,
         a.youtube_channel_id AS artist_youtube_channel_id,
@@ -3179,6 +3199,8 @@ async function attachTags(
           youtubeVideoId: string | null;
           title: string | null;
           originalComposer: string | null;
+          createdAt: string | null;
+          updatedAt: string | null;
           artistId: number | null;
           artistName: string | null;
           artistDisplayName: string | null;
@@ -3198,6 +3220,8 @@ async function attachTags(
             v.youtube_video_id,
             v.title,
             v.original_composer,
+            v.created_at,
+            v.updated_at,
             v.artist_id,
             a.name AS artist_name,
             a.display_name AS artist_display_name,
@@ -3227,6 +3251,8 @@ async function attachTags(
           youtubeVideoId: row.youtube_video_id ?? null,
           title: row.title ?? null,
           originalComposer: row.original_composer ?? null,
+          createdAt: row.created_at ?? null,
+          updatedAt: row.updated_at ?? null,
           artistId: row.artist_id ?? null,
           artistName: row.artist_name ?? null,
           artistDisplayName: row.artist_display_name ?? null,
@@ -3251,6 +3277,8 @@ async function attachTags(
       youtubeVideoId: meta?.youtubeVideoId ?? undefined,
       videoTitle: meta?.title ?? null,
       videoOriginalComposer: meta?.originalComposer ?? null,
+      createdAt: clip.created_at ?? null,
+      updatedAt: clip.updated_at ?? null,
       artistId: meta?.artistId ?? undefined,
       artistName: meta?.artistName ?? undefined,
       artistDisplayName: meta?.artistDisplayName ?? undefined,

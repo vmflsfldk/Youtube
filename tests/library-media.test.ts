@@ -58,6 +58,8 @@ type VideoRecord = {
   content_type: string | null;
   hidden: number | null;
   original_composer: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 type ClipRecord = {
@@ -67,6 +69,7 @@ type ClipRecord = {
   start_sec: number;
   end_sec: number;
   original_composer: string | null;
+  created_at: string;
 };
 
 type ClipTagRecord = {
@@ -153,7 +156,10 @@ class FakeD1Database implements D1Database {
       return { success: true, meta: { duration: 0, changes: 0 }, results: rows };
     }
 
-    if (normalized.startsWith("select id, video_id, title, start_sec, end_sec, original_composer from clips where video_id in")) {
+    if (
+      normalized.startsWith("select id, video_id, title, start_sec, end_sec, original_composer") &&
+      normalized.includes("from clips where video_id in")
+    ) {
       const ids = new Set((values as number[]) ?? []);
       const rows = this.clips
         .filter((clip) => ids.has(clip.video_id))
@@ -193,6 +199,8 @@ class FakeD1Database implements D1Database {
             youtube_video_id: video.youtube_video_id,
             title: video.title,
             original_composer: video.original_composer,
+            created_at: video.created_at,
+            updated_at: video.updated_at,
             artist_id: video.artist_id,
             artist_name: artist.name,
             artist_display_name: artist.display_name,
@@ -262,7 +270,9 @@ test("listMediaLibrary returns media and clips for requesting user", async () =>
         category: "live",
         content_type: "OFFICIAL",
         hidden: 0,
-        original_composer: "Composer One"
+        original_composer: "Composer One",
+        created_at: "2024-01-01T00:00:00.000Z",
+        updated_at: "2024-01-02T00:00:00.000Z"
       },
       {
         id: 2,
@@ -277,7 +287,9 @@ test("listMediaLibrary returns media and clips for requesting user", async () =>
         category: "cover",
         content_type: "CLIP_SOURCE",
         hidden: 0,
-        original_composer: null
+        original_composer: null,
+        created_at: "2024-01-03T00:00:00.000Z",
+        updated_at: "2024-01-04T00:00:00.000Z"
       },
       {
         id: 3,
@@ -292,13 +304,39 @@ test("listMediaLibrary returns media and clips for requesting user", async () =>
         category: null,
         content_type: "OFFICIAL",
         hidden: 0,
-        original_composer: "Composer Other"
+        original_composer: "Composer Other",
+        created_at: "2024-01-05T00:00:00.000Z",
+        updated_at: "2024-01-06T00:00:00.000Z"
       }
     ],
     [
-      { id: 101, video_id: 1, title: "Intro", start_sec: 0, end_sec: 30, original_composer: "Composer One" },
-      { id: 102, video_id: 2, title: "Chorus", start_sec: 45, end_sec: 75, original_composer: null },
-      { id: 103, video_id: 3, title: "Other Artist Clip", start_sec: 10, end_sec: 40, original_composer: "Composer Other" }
+      {
+        id: 101,
+        video_id: 1,
+        title: "Intro",
+        start_sec: 0,
+        end_sec: 30,
+        original_composer: "Composer One",
+        created_at: "2024-02-01T00:00:00.000Z"
+      },
+      {
+        id: 102,
+        video_id: 2,
+        title: "Chorus",
+        start_sec: 45,
+        end_sec: 75,
+        original_composer: null,
+        created_at: "2024-02-02T00:00:00.000Z"
+      },
+      {
+        id: 103,
+        video_id: 3,
+        title: "Other Artist Clip",
+        start_sec: 10,
+        end_sec: 40,
+        original_composer: "Composer Other",
+        created_at: "2024-02-03T00:00:00.000Z"
+      }
     ],
     [
       { clip_id: 101, tag: "tag-a" },

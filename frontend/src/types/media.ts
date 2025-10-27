@@ -26,3 +26,24 @@ export interface VideoResponse {
   artistYoutubeChannelTitle?: string | null;
   artistProfileImageUrl?: string | null;
 }
+
+export interface ClipResponse {
+  id: number;
+  videoId: number;
+  title: string;
+  startSec: number;
+  endSec: number;
+  tags: string[];
+  originalComposer?: string | null;
+  youtubeVideoId?: string | null;
+  videoTitle?: string | null;
+  videoOriginalComposer?: string | null;
+  artistId?: number | null;
+  artistName?: string | null;
+  artistDisplayName?: string | null;
+  artistYoutubeChannelId?: string | null;
+  artistYoutubeChannelTitle?: string | null;
+  artistProfileImageUrl?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
