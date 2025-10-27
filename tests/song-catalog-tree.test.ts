@@ -102,7 +102,7 @@ test('buildCatalogRecords merges clips and songs while filtering unsupported med
   assert.equal(songRecord?.artist, 'Artist A');
 });
 
-test('filterCatalogRecords applies case-insensitive partial matches across fields', () => {
+test('filterCatalogRecords matches records by exact display values', () => {
   const clips = [
     {
       id: 301,
@@ -162,23 +162,23 @@ test('filterCatalogRecords applies case-insensitive partial matches across field
   const records = buildCatalogRecords(clips, videos, songs);
   assert.equal(records.length, 3);
 
-  const byArtist = filterCatalogRecords(records, { artist: 'artist x' });
+  const byArtist = filterCatalogRecords(records, { artist: 'Artist X' });
   assert.equal(byArtist.length, 2);
   assert(byArtist.every((record) => record.artist === 'Artist X'));
 
-  const byComposer = filterCatalogRecords(records, { composer: 'composer y' });
+  const byComposer = filterCatalogRecords(records, { composer: 'Composer Y' });
   assert.equal(byComposer.length, 1);
   assert.equal(byComposer[0]?.composer, 'Composer Y');
 
-  const bySong = filterCatalogRecords(records, { song: 'moon' });
+  const bySong = filterCatalogRecords(records, { song: 'Moonlight Sonata' });
   assert.equal(bySong.length, 1);
   assert.equal(bySong[0]?.songTitle, 'Moonlight Sonata');
 
-  const combined = filterCatalogRecords(records, { song: 'midnight', artist: 'artist x' });
+  const combined = filterCatalogRecords(records, { song: 'Midnight Dream', artist: 'Artist X' });
   assert.equal(combined.length, 1);
   assert.equal(combined[0]?.songTitle, 'Midnight Dream');
 
-  const noMatch = filterCatalogRecords(records, { artist: 'unknown' });
+  const noMatch = filterCatalogRecords(records, { artist: 'artist x' });
   assert.equal(noMatch.length, 0);
 });
 

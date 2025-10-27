@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { AriaAttributes } from 'react';
 
 import { DEFAULT_LOCALE } from '../contexts/LanguageContext';
@@ -141,14 +141,6 @@ export type CatalogFilters = {
   song?: string;
 };
 
-const matchesFilter = (value: string, query: string): boolean => {
-  const trimmedQuery = query.trim();
-  if (!trimmedQuery) {
-    return true;
-  }
-  return value.toLocaleLowerCase().includes(trimmedQuery.toLocaleLowerCase());
-};
-
 export const filterCatalogRecords = (
   records: CatalogDisplayRecord[],
   { artist = '', composer = '', song = '' }: CatalogFilters
@@ -158,11 +150,11 @@ export const filterCatalogRecords = (
   }
 
   return records.filter((record) => {
-    return (
-      matchesFilter(record.artist, artist) &&
-      matchesFilter(record.composer, composer) &&
-      matchesFilter(record.songTitle, song)
-    );
+    const artistMatches = !artist || record.artist === artist;
+    const composerMatches = !composer || record.composer === composer;
+    const songMatches = !song || record.songTitle === song;
+
+    return artistMatches && composerMatches && songMatches;
   });
 };
 
@@ -233,6 +225,54 @@ const SongCatalogTable = ({ clips, videos, songs = [] }: SongCatalogTableProps) 
   const [artistFilter, setArtistFilter] = useState('');
   const [composerFilter, setComposerFilter] = useState('');
   const [songFilter, setSongFilter] = useState('');
+
+  const songOptions = useMemo(() => {
+    const values = new Set<string>();
+    records.forEach((record) => {
+      if (record.songTitle) {
+        values.add(record.songTitle);
+      }
+    });
+    return Array.from(values).sort((a, b) => collator.compare(a, b));
+  }, [records]);
+
+  const artistOptions = useMemo(() => {
+    const values = new Set<string>();
+    records.forEach((record) => {
+      if (record.artist) {
+        values.add(record.artist);
+      }
+    });
+    return Array.from(values).sort((a, b) => collator.compare(a, b));
+  }, [records]);
+
+  const composerOptions = useMemo(() => {
+    const values = new Set<string>();
+    records.forEach((record) => {
+      if (record.composer) {
+        values.add(record.composer);
+      }
+    });
+    return Array.from(values).sort((a, b) => collator.compare(a, b));
+  }, [records]);
+
+  useEffect(() => {
+    if (songFilter && !songOptions.includes(songFilter)) {
+      setSongFilter('');
+    }
+  }, [songFilter, songOptions]);
+
+  useEffect(() => {
+    if (artistFilter && !artistOptions.includes(artistFilter)) {
+      setArtistFilter('');
+    }
+  }, [artistFilter, artistOptions]);
+
+  useEffect(() => {
+    if (composerFilter && !composerOptions.includes(composerFilter)) {
+      setComposerFilter('');
+    }
+  }, [composerFilter, composerOptions]);
   const [sortState, setSortState] = useState<CatalogSort>({ key: 'song', direction: 'asc' });
 
   const filteredRecords = useMemo(
@@ -280,40 +320,55 @@ const SongCatalogTable = ({ clips, videos, songs = [] }: SongCatalogTableProps) 
           <label className="song-catalog__filter-label" htmlFor="song-filter">
             {translateText('catalog.filters.songLabel')}
           </label>
-          <input
+          <select
             id="song-filter"
-            type="search"
             value={songFilter}
             onChange={(event) => setSongFilter(event.target.value)}
-            placeholder={translateText('catalog.filters.songPlaceholder')}
             className="song-catalog__filter-input"
-          />
+          >
+            <option value="">{translateText('catalog.filters.optionAll')}</option>
+            {songOptions.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
         </div>
         <div className="song-catalog__filter">
           <label className="song-catalog__filter-label" htmlFor="artist-filter">
             {translateText('catalog.filters.artistLabel')}
           </label>
-          <input
+          <select
             id="artist-filter"
-            type="search"
             value={artistFilter}
             onChange={(event) => setArtistFilter(event.target.value)}
-            placeholder={translateText('catalog.filters.artistPlaceholder')}
             className="song-catalog__filter-input"
-          />
+          >
+            <option value="">{translateText('catalog.filters.optionAll')}</option>
+            {artistOptions.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
         </div>
         <div className="song-catalog__filter">
           <label className="song-catalog__filter-label" htmlFor="composer-filter">
             {translateText('catalog.filters.composerLabel')}
           </label>
-          <input
+          <select
             id="composer-filter"
-            type="search"
             value={composerFilter}
             onChange={(event) => setComposerFilter(event.target.value)}
-            placeholder={translateText('catalog.filters.composerPlaceholder')}
             className="song-catalog__filter-input"
-          />
+          >
+            <option value="">{translateText('catalog.filters.optionAll')}</option>
+            {composerOptions.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 
