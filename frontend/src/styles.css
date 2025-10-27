@@ -68,6 +68,32 @@ body {
   display: none;
 }
 
+.app-footer {
+  grid-column: 1 / -1;
+  margin-top: 48px;
+  text-align: center;
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+  letter-spacing: 0.01em;
+  line-height: 1.5;
+}
+
+.app-footer small {
+  display: block;
+  margin: 0;
+}
+
+.app-footer a {
+  color: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 0.24em;
+}
+
+.app-footer a:hover {
+  color: var(--accent-secondary);
+}
+
 .sidebar__brand {
   display: flex;
   gap: 16px;
@@ -820,6 +846,12 @@ body {
     margin: 0;
   }
 
+  .app-footer {
+    margin-top: 32px;
+    font-size: 0.7rem;
+    padding-bottom: calc(var(--mobile-bottom-nav-height) + env(safe-area-inset-bottom, 0px) + 16px);
+  }
+
   .sidebar {
     display: none;
   }
@@ -1157,6 +1189,11 @@ body {
 
   .app-shell {
     padding: 28px 18px 108px;
+  }
+
+  .app-footer {
+    margin-top: 24px;
+    font-size: 0.68rem;
   }
 
   .content-header {
