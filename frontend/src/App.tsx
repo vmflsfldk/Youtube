@@ -5215,1095 +5215,1112 @@ export default function App() {
           >
             <div className="panel media-panel">
               <div className={`artist-library${isMobileViewport ? ' artist-library--mobile' : ''}`}>
-                {isMobileViewport ? (
-                  <>
-                    <div className="artist-library__mobile-topbar">
-                      <div className="artist-library__mobile-icon" aria-hidden="true">
-                        <span aria-hidden="true">☰</span>
-                      </div>
-                      <div className="artist-library__mobile-logo" aria-hidden="true">
-                        <img src={utahubLogo} alt="" />
-                      </div>
-                      <div className="artist-library__mobile-actions">
+                {(() => {
+                  const mainContent = (
+                    <>
+                      {isMobileViewport && !isArtistRegistrationOpen && (
                         <button
                           type="button"
-                          className={`artist-library__filter-trigger${
-                            isMobileFilterOverlayOpen ? ' is-active' : ''
-                          }`}
-                          aria-label={isMobileFilterOverlayOpen ? '필터 닫기' : '필터 열기'}
-                          aria-haspopup="dialog"
-                          aria-expanded={isMobileFilterOverlayOpen}
-                          aria-controls="mobileArtistFilterDialog"
-                          onClick={handleMobileFilterOverlayToggle}
+                          className="artist-library__fab"
+                          onClick={openArtistRegistration}
+                          aria-label="아티스트 등록"
                         >
-                          <span aria-hidden="true" className="artist-library__filter-trigger-icon">
-                            🎚️
-                          </span>
+                          <span aria-hidden="true">+</span>
                         </button>
-                        <button
-                          type="button"
-                          className="mobile-auth-trigger"
-                          aria-label={isAuthenticated ? '계정 관리 열기' : '로그인 패널 열기'}
-                          aria-haspopup="dialog"
-                          aria-expanded={isMobileAuthOverlayOpen}
-                          aria-controls="mobileAuthDialog"
-                          onClick={() => setMobileAuthOverlayOpen(true)}
-                        >
-                          <span aria-hidden="true" className="mobile-auth-trigger__icon">
-                            🔐
-                          </span>
-                        </button>
-                      </div>
-                    </div>
-                    {isMobileFilterOverlayOpen && (
-                      <div className="mobile-filter-overlay">
-                        <div
-                          className="mobile-filter-overlay__backdrop"
-                          role="presentation"
-                          onClick={handleMobileFilterOverlayClose}
-                        />
-                        <div
-                          className="mobile-filter-overlay__content"
-                          role="dialog"
-                          aria-modal="true"
-                          aria-labelledby="mobileArtistFilterTitle"
-                          id="mobileArtistFilterDialog"
-                          ref={mobileFilterOverlayContentRef}
-                          tabIndex={-1}
-                        >
-                          <button
-                            type="button"
-                            className="mobile-filter-overlay__close"
-                            onClick={handleMobileFilterOverlayClose}
-                            aria-label="필터 닫기"
-                          >
-                            <span aria-hidden="true">×</span>
-                          </button>
-                          <div className="mobile-filter-overlay__header">
-                            <h3 id="mobileArtistFilterTitle">검색 및 필터</h3>
-                            <p className="mobile-filter-overlay__description">
-                              아티스트 검색과 필터를 설정하세요.
-                            </p>
-                          </div>
-                          <div className="mobile-filter-overlay__body">
-                            <div className="artist-directory__search-group">
-                              <ArtistSearchControls
-                                query={artistSearch.query}
-                                mode={artistSearch.mode}
-                                onQueryChange={handleArtistSearchQueryChange}
-                                onModeChange={handleArtistSearchModeChange}
-                                onClear={handleArtistSearchClear}
-                              />
-                            </div>
-                            <div className="artist-directory__filter-group">
-                              <div className="artist-directory__filter">
-                                <label htmlFor="artistCountryFilterMobile">서비스 국가</label>
-                                <select
-                                  id="artistCountryFilterMobile"
-                                  value={artistCountryFilter}
-                                  onChange={(event) =>
-                                    setArtistCountryFilter(event.target.value as 'all' | ArtistCountryKey)
-                                  }
-                                >
-                                  <option value="all">전체</option>
-                                  {ARTIST_COUNTRY_METADATA.map((country) => (
-                                    <option key={country.key} value={country.key}>
-                                      {country.label}
-                                    </option>
-                                  ))}
-                                </select>
-                              </div>
-                              <div className="artist-directory__filter">
-                                <label htmlFor="artistAgencyFilterMobile">소속사</label>
-                                <select
-                                  id="artistAgencyFilterMobile"
-                                  value={artistAgencyFilter}
-                                  onChange={(event) => setArtistAgencyFilter(event.target.value)}
-                                >
-                                  <option value="all">전체</option>
-                                  {artistAgencies.map((agency) => (
-                                    <option key={agency} value={agency}>
-                                      {agency}
-                                    </option>
-                                  ))}
-                                </select>
-                              </div>
-                            </div>
-                          </div>
-                          <div className="mobile-filter-overlay__footer">
-                            <button
-                              type="button"
-                              className="mobile-filter-overlay__action"
-                              onClick={handleMobileFilterOverlayClose}
-                            >
-                              필터 적용
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                    <div className="artist-library__mobile-tabs" role="group" aria-label="콘텐츠 전환">
-                      {mobileArtistTabs.map((tab) => {
-                        const isActiveTab = activeSection === tab.id;
-                        const tabLabel = tab.id === 'library' ? '아티스트' : '노래';
-                        return (
-                          <button
-                            key={`mobile-switch-${tab.id}`}
-                            type="button"
-                            aria-pressed={isActiveTab}
-                            className={`artist-library__mobile-tab${isActiveTab ? ' is-active' : ''}`}
-                            onClick={() => setActiveSection(tab.id)}
-                          >
-                            {tabLabel}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    <div className="artist-library__mobile-context">
-                      <span className="artist-library__mobile-context-label">VTUBERS</span>
-                      <div className="artist-library__mobile-context-button" aria-hidden="true">
-                        <span className="artist-library__mobile-context-value">
-                          {selectedArtist
-                            ? `${selectedArtist.displayName || selectedArtist.name} 선택됨`
-                            : '전체 아티스트'}
-                        </span>
-                        <span className="artist-library__mobile-context-icon">▾</span>
-                      </div>
-                    </div>
-                    <h3 id="artist-library-heading" className="artist-library__mobile-title visually-hidden">
-                      아티스트 디렉토리
-                    </h3>
-                    <p className="artist-library__mobile-description visually-hidden">
-                      전체 이용자가 확인할 수 있는 공개 목록입니다.
-                    </p>
-                  </>
-                ) : (
-                  <div className="artist-library__header">
-                    <div>
-                      <h3 id="artist-library-heading">아티스트 디렉토리</h3>
-                      <p className="artist-directory__subtitle">전체 이용자가 확인할 수 있는 공개 목록입니다.</p>
-                    </div>
-                    <button
-                      type="button"
-                      className="artist-library__register"
-                      onClick={openArtistRegistration}
-                    >
-                      아티스트 등록
-                    </button>
-                  </div>
-                )}
-                {isMobileViewport && !isArtistRegistrationOpen && (
-                  <button
-                    type="button"
-                    className="artist-library__fab"
-                    onClick={openArtistRegistration}
-                    aria-label="아티스트 등록"
-                  >
-                    <span aria-hidden="true">+</span>
-                  </button>
-                )}
-                {isArtistRegistrationOpen && (
-                  <section className="artist-library__detail-section artist-library__form-section">
-                    <div className="artist-library__section-header">
-                      <h4>아티스트 등록</h4>
-                      <button
-                        type="button"
-                        className="artist-library__action-button artist-library__action-button--secondary"
-                        onClick={() => setArtistRegistrationOpen(false)}
-                      >
-                        닫기
-                      </button>
-                    </div>
-                    <div
-                      className={`artist-registration${isMobileViewport ? ' artist-registration--mobile' : ''}`}
-                    >
-                      <form
-                        onSubmit={handleArtistSubmit}
-                        className={`stacked-form artist-registration__form${
-                          isMobileViewport ? ' artist-registration__form--mobile' : ''
-                        }`}
-                      >
-                        <div className="artist-registration__section artist-registration__section--required">
-                          <label htmlFor="artistName">아티스트 이름</label>
-                          <input
-                            id="artistName"
-                            placeholder="아티스트 이름"
-                            value={artistForm.name}
-                            onChange={(event) => setArtistForm((prev) => ({ ...prev, name: event.target.value }))}
-                            required
-                            disabled={creationDisabled}
-                          />
-                          <label htmlFor="artistChannelId">YouTube 채널 ID</label>
-                          <input
-                            id="artistChannelId"
-                            placeholder="UC..."
-                            value={artistForm.channelId}
-                            onChange={(event) => setArtistForm((prev) => ({ ...prev, channelId: event.target.value }))}
-                            required
-                            disabled={creationDisabled}
-                          />
-                        </div>
-                        {isMobileViewport && (
-                          <button
-                            type="button"
-                            className="artist-registration__toggle"
-                            onClick={() => setArtistOptionalFieldsOpen((prev) => !prev)}
-                            aria-expanded={isArtistOptionalFieldsOpen}
-                            aria-controls={mobileOptionalPanelId}
-                          >
-                            {optionalToggleLabel}
-                          </button>
-                        )}
-                        <div
-                          className="artist-registration__section artist-registration__section--optional"
-                          id={isMobileViewport ? mobileOptionalPanelId : undefined}
-                          hidden={isMobileViewport && !showOptionalFields}
-                          aria-hidden={isMobileViewport && !showOptionalFields ? true : undefined}
-                        >
-                          {artistOptionalFields}
-                        </div>
-                        <button
-                          type="submit"
-                          disabled={creationDisabled || isArtistPreviewLoading}
-                        >
-                          {isArtistPreviewLoading ? '채널 확인 중...' : artistSubmitLabel}
-                        </button>
-                        {creationDisabled && (
-                          <p className="artist-preview__hint">로그인 후 아티스트를 등록할 수 있습니다.</p>
-                        )}
-                        {artistPreviewError && (
-                          <p className="artist-preview__error" role="alert">
-                            {artistPreviewError}
-                          </p>
-                        )}
-                        {artistPreviewReady && artistPreview && (
-                          <p className="artist-preview__hint">채널 정보를 확인하셨다면 다시 등록 버튼을 눌러 완료하세요.</p>
-                        )}
-                      </form>
-                      {isMobileViewport ? (
-                        <div className="artist-registration__mobile-panels">
-                          <section
-                            className={`artist-preview-card${isMobileArtistPreviewOpen ? ' is-open' : ''}`}
-                          >
-                            <button
-                              type="button"
-                              className="artist-preview-card__header"
-                              onClick={() => setMobileArtistPreviewOpen((prev) => !prev)}
-                              aria-expanded={isMobileArtistPreviewOpen}
-                              aria-controls={mobilePreviewPanelId}
-                            >
-                              <div className="artist-preview-card__text">
-                                <span className="artist-preview-card__title">채널 미리보기</span>
-                                <span className="artist-preview-card__summary">{mobilePreviewSummary}</span>
-                              </div>
-                              <span className="artist-preview-card__chevron" aria-hidden="true" />
-                            </button>
-                            {isMobileArtistPreviewOpen && (
-                              <div
-                                className="artist-preview-card__body"
-                                id={mobilePreviewPanelId}
-                                aria-live="polite"
-                              >
-                                {artistPreviewBody}
-                              </div>
-                            )}
-                          </section>
-                          <section
-                            className={`artist-preview-card artist-preview-card--debug${
-                              isMobileArtistDebugOpen ? ' is-open' : ''
-                            }`}
-                          >
-                            <button
-                              type="button"
-                              className="artist-preview-card__header"
-                              onClick={() =>
-                                setMobileArtistDebugOpen((prev) => {
-                                  const next = !prev;
-                                  setArtistDebugVisible(next);
-                                  return next;
-                                })
-                              }
-                              aria-expanded={isMobileArtistDebugOpen}
-                              aria-controls={mobileDebugPanelId}
-                            >
-                              <div className="artist-preview-card__text">
-                                <span className="artist-preview-card__title">디버그 로그</span>
-                                <span className="artist-preview-card__summary">{mobileDebugSummary}</span>
-                              </div>
-                              <span className="artist-preview-card__chevron" aria-hidden="true" />
-                            </button>
-                            {isMobileArtistDebugOpen && (
-                              <div className="artist-preview-card__body" id={mobileDebugPanelId}>
-                                {artistDebugLogContent}
-                              </div>
-                            )}
-                          </section>
-                        </div>
-                      ) : (
-                        <aside className="artist-preview-panel" aria-live="polite">
-                          <div className="artist-preview-panel__header">
-                            <h4>채널 미리보기</h4>
-                            <button
-                              type="button"
-                              className="artist-debug-toggle"
-                              onClick={() => setArtistDebugVisible((prev) => !prev)}
-                            >
-                              {isArtistDebugVisible ? '디버그 숨기기' : '디버그 보기'}
-                            </button>
-                          </div>
-                          <div className="artist-preview-panel__body">{artistPreviewBody}</div>
-                          {isArtistDebugVisible && artistDebugLogContent}
-                        </aside>
                       )}
-                    </div>
-                  </section>
-                )}
-                {selectedArtist && (
-                  <div className="artist-library__selection">
-                    <span>선택된 아티스트</span>
-                    <strong>{selectedArtist.displayName || selectedArtist.name}</strong>
-                  </div>
-                )}
-                <div className="artist-library__controls">
-                  <div className="artist-directory__search-group">
-                    <ArtistSearchControls
-                      query={artistSearch.query}
-                      mode={artistSearch.mode}
-                      onQueryChange={handleArtistSearchQueryChange}
-                      onModeChange={handleArtistSearchModeChange}
-                      onClear={handleArtistSearchClear}
-                    />
-                  </div>
-                  <div className="artist-directory__filter-group">
-                    <div className="artist-directory__filter">
-                      <label htmlFor="artistCountryFilter">서비스 국가</label>
-                      <select
-                        id="artistCountryFilter"
-                        value={artistCountryFilter}
-                        onChange={(event) =>
-                          setArtistCountryFilter(event.target.value as 'all' | ArtistCountryKey)
-                        }
-                      >
-                        <option value="all">전체</option>
-                        {ARTIST_COUNTRY_METADATA.map((country) => (
-                          <option key={country.key} value={country.key}>
-                            {country.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="artist-directory__filter">
-                      <label htmlFor="artistAgencyFilter">소속사</label>
-                      <select
-                        id="artistAgencyFilter"
-                        value={artistAgencyFilter}
-                        onChange={(event) => setArtistAgencyFilter(event.target.value)}
-                      >
-                        <option value="all">전체</option>
-                        {artistAgencies.map((agency) => (
-                          <option key={agency} value={agency}>
-                            {agency}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                </div>
-                {noArtistsRegistered ? (
-                  <div className="artist-empty">등록된 아티스트가 없습니다.</div>
-                ) : selectedArtist ? (
-                  <div className="artist-library__split-view">
-                    <div className="artist-library__focused-panel">
-                      <button type="button" className="artist-library__back-button" onClick={handleArtistClear}>
-                        아티스트 목록으로 돌아가기
-                      </button>
-                      <ArtistLibraryCard
-                        artist={selectedArtist}
-                        isActive
-                        focusMode
-                        interactive={false}
-                        cardData={selectedArtist.cardData}
-                        showTags
-                      />
-                    </div>
-                    <div className="artist-library__detail-panel">
-                      <div className="artist-library__actions">
-                        <button
-                          type="button"
-                          className="artist-library__action-button"
-                          onClick={handleLibraryVideoRegister}
-                          disabled={creationDisabled}
-                        >
-                          영상 등록
-                        </button>
-                        <button
-                          type="button"
-                          className="artist-library__action-button artist-library__action-button--secondary"
-                          onClick={handleLibraryClipRegister}
-                          disabled={creationDisabled}
-                        >
-                          클립 등록
-                        </button>
-                        <button
-                          type="button"
-                          className="artist-library__action-button artist-library__action-button--ghost"
-                          onClick={handleShowVideoList}
-                        >
-                          영상 목록
-                        </button>
-                        <button
-                          type="button"
-                          className="artist-library__action-button artist-library__action-button--ghost"
-                          onClick={handleShowClipList}
-                        >
-                          클립 목록
-                        </button>
-                        {creationDisabled && (
-                          <span className="artist-library__action-hint">로그인 후 등록할 수 있습니다.</span>
-                        )}
-                      </div>
-                      <section className="artist-library__detail-section">
-                        <div className="artist-library__section-header">
-                          <h4>아티스트 정보</h4>
-                          <span className="artist-library__status">
-                            {isArtistProfileSaving ? '저장 중...' : '소속사와 태그를 관리하세요.'}
-                          </span>
-                        </div>
-                        <form
-                          onSubmit={handleArtistProfileSubmit}
-                          className="stacked-form artist-library__form"
-                        >
-                          <label htmlFor="artistDetailAgency">소속사</label>
-                          <input
-                            id="artistDetailAgency"
-                            placeholder="소속사를 입력하세요"
-                            value={artistProfileForm.agency}
-                            onChange={(event) => {
-                              setArtistProfileForm((prev) => ({
-                                ...prev,
-                                agency: event.target.value
-                              }));
-                              setArtistProfileStatus(null);
-                            }}
-                            disabled={creationDisabled || isArtistProfileSaving}
-                          />
-                          <label htmlFor="artistDetailTags">태그 (쉼표로 구분)</label>
-                          <input
-                            id="artistDetailTags"
-                            placeholder="예: 라이브, 커버"
-                            value={artistProfileForm.tags}
-                            onChange={(event) => {
-                              setArtistProfileForm((prev) => ({
-                                ...prev,
-                                tags: event.target.value
-                              }));
-                              setArtistProfileStatus(null);
-                            }}
-                            disabled={creationDisabled || isArtistProfileSaving}
-                          />
-                          <p className="form-hint">쉼표로 구분해 태그를 입력하세요.</p>
-                          {artistProfileTags.length > 0 && (
-                            <div className="artist-library__tags">
-                              {artistProfileTags.map((tag) => (
-                                <button
-                                  key={tag}
-                                  type="button"
-                                  className="artist-tag artist-tag--removable"
-                                  onClick={() => handleArtistProfileTagRemove(tag)}
-                                  aria-label={`태그 ${tag} 제거`}
-                                >
-                                  {tag}
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                          {artistProfileStatus && (
-                            <p
-                              className={`login-status__message${
-                                artistProfileStatus.type === 'error' ? ' error' : ''
-                              }`}
-                              role={artistProfileStatus.type === 'error' ? 'alert' : 'status'}
-                            >
-                              {artistProfileStatus.message}
-                            </p>
-                          )}
-                          <div className="artist-library__form-actions">
-                            <button
-                              type="submit"
-                              disabled={creationDisabled || isArtistProfileSaving}
-                            >
-                              {isArtistProfileSaving ? '저장 중...' : '정보 저장'}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={handleArtistProfileReset}
-                              disabled={isArtistProfileSaving || !selectedArtist}
-                            >
-                              되돌리기
-                            </button>
-                          </div>
-                          {creationDisabled && (
-                            <p className="form-hint">로그인 후 수정할 수 있습니다.</p>
-                          )}
-                        </form>
-                      </section>
-                      {isLibraryMediaFormOpen && selectedArtist && (
+                      {isArtistRegistrationOpen && (
                         <section className="artist-library__detail-section artist-library__form-section">
                           <div className="artist-library__section-header">
-                            <h4>영상 등록</h4>
-                            <span className="artist-library__status">
-                              {isClipRegistration
-                                ? selectedVideoData
-                                  ? selectedVideoData.title || selectedVideoData.youtubeVideoId
-                                  : '등록할 영상을 선택하세요.'
-                                : selectedArtist.displayName || selectedArtist.name}
-                            </span>
+                            <h4>아티스트 등록</h4>
+                            <button
+                              type="button"
+                              className="artist-library__action-button artist-library__action-button--secondary"
+                              onClick={() => setArtistRegistrationOpen(false)}
+                            >
+                              닫기
+                            </button>
                           </div>
-                          <form onSubmit={handleMediaSubmit} className="stacked-form artist-library__form">
-                            <p className="form-hint">YouTube URL에 live가 포함되면 자동으로 클립 등록으로 전환됩니다.</p>
-                            <label htmlFor="libraryMediaUrl">YouTube URL</label>
-                            <div className="number-row">
-                              <input
-                                id="libraryMediaUrl"
-                                placeholder="https://www.youtube.com/watch?v=..."
-                                value={videoForm.url}
-                                onChange={(event) => handleMediaUrlChange(event.target.value)}
-                                required={!isClipRegistration}
-                                disabled={creationDisabled}
-                              />
-                            </div>
-                            {videoSubmissionStatus && (
-                              <p
-                                className={`login-status__message${
-                                  videoSubmissionStatus.type === 'error' ? ' error' : ''
-                                }`}
-                                role={videoSubmissionStatus.type === 'error' ? 'alert' : 'status'}
-                                aria-live="polite"
-                              >
-                                {videoSubmissionStatus.message}
-                              </p>
-                            )}
-                            {!isClipRegistration && (
-                              <>
-                                <label htmlFor="libraryVideoOriginalComposer">원곡자</label>
+                          <div
+                            className={`artist-registration${isMobileViewport ? ' artist-registration--mobile' : ''}`}
+                          >
+                            <form
+                              onSubmit={handleArtistSubmit}
+                              className={`stacked-form artist-registration__form${
+                                isMobileViewport ? ' artist-registration__form--mobile' : ''
+                              }`}
+                            >
+                              <div className="artist-registration__section artist-registration__section--required">
+                                <label htmlFor="artistName">아티스트 이름</label>
                                 <input
-                                  id="libraryVideoOriginalComposer"
-                                  placeholder="예: 원곡 또는 작곡가"
-                                  value={videoForm.originalComposer}
-                                  onChange={(event) =>
-                                    setVideoForm((prev) => ({
-                                      ...prev,
-                                      originalComposer: event.target.value
-                                    }))
-                                  }
+                                  id="artistName"
+                                  placeholder="아티스트 이름"
+                                  value={artistForm.name}
+                                  onChange={(event) => setArtistForm((prev) => ({ ...prev, name: event.target.value }))}
+                                  required
                                   disabled={creationDisabled}
                                 />
-                              </>
+                                <label htmlFor="artistChannelId">YouTube 채널 ID</label>
+                                <input
+                                  id="artistChannelId"
+                                  placeholder="UC..."
+                                  value={artistForm.channelId}
+                                  onChange={(event) => setArtistForm((prev) => ({ ...prev, channelId: event.target.value }))}
+                                  required
+                                  disabled={creationDisabled}
+                                />
+                              </div>
+                              {isMobileViewport && (
+                                <button
+                                  type="button"
+                                  className="artist-registration__toggle"
+                                  onClick={() => setArtistOptionalFieldsOpen((prev) => !prev)}
+                                  aria-expanded={isArtistOptionalFieldsOpen}
+                                  aria-controls={mobileOptionalPanelId}
+                                >
+                                  {optionalToggleLabel}
+                                </button>
+                              )}
+                              <div
+                                className="artist-registration__section artist-registration__section--optional"
+                                id={isMobileViewport ? mobileOptionalPanelId : undefined}
+                                hidden={isMobileViewport && !showOptionalFields}
+                                aria-hidden={isMobileViewport && !showOptionalFields ? true : undefined}
+                              >
+                                {artistOptionalFields}
+                              </div>
+                              <button
+                                type="submit"
+                                disabled={creationDisabled || isArtistPreviewLoading}
+                              >
+                                {isArtistPreviewLoading ? '채널 확인 중...' : artistSubmitLabel}
+                              </button>
+                              {creationDisabled && (
+                                <p className="artist-preview__hint">로그인 후 아티스트를 등록할 수 있습니다.</p>
+                              )}
+                              {artistPreviewError && (
+                                <p className="artist-preview__error" role="alert">
+                                  {artistPreviewError}
+                                </p>
+                              )}
+                              {artistPreviewReady && artistPreview && (
+                                <p className="artist-preview__hint">채널 정보를 확인하셨다면 다시 등록 버튼을 눌러 완료하세요.</p>
+                              )}
+                            </form>
+                            {isMobileViewport ? (
+                              <div className="artist-registration__mobile-panels">
+                                <section
+                                  className={`artist-preview-card${isMobileArtistPreviewOpen ? ' is-open' : ''}`}
+                                >
+                                  <button
+                                    type="button"
+                                    className="artist-preview-card__header"
+                                    onClick={() => setMobileArtistPreviewOpen((prev) => !prev)}
+                                    aria-expanded={isMobileArtistPreviewOpen}
+                                    aria-controls={mobilePreviewPanelId}
+                                  >
+                                    <div className="artist-preview-card__text">
+                                      <span className="artist-preview-card__title">채널 미리보기</span>
+                                      <span className="artist-preview-card__summary">{mobilePreviewSummary}</span>
+                                    </div>
+                                    <span className="artist-preview-card__chevron" aria-hidden="true" />
+                                  </button>
+                                  {isMobileArtistPreviewOpen && (
+                                    <div
+                                      className="artist-preview-card__body"
+                                      id={mobilePreviewPanelId}
+                                      aria-live="polite"
+                                    >
+                                      {artistPreviewBody}
+                                    </div>
+                                  )}
+                                </section>
+                                <section
+                                  className={`artist-preview-card artist-preview-card--debug${
+                                    isMobileArtistDebugOpen ? ' is-open' : ''
+                                  }`}
+                                >
+                                  <button
+                                    type="button"
+                                    className="artist-preview-card__header"
+                                    onClick={() =>
+                                      setMobileArtistDebugOpen((prev) => {
+                                        const next = !prev;
+                                        setArtistDebugVisible(next);
+                                        return next;
+                                      })
+                                    }
+                                    aria-expanded={isMobileArtistDebugOpen}
+                                    aria-controls={mobileDebugPanelId}
+                                  >
+                                    <div className="artist-preview-card__text">
+                                      <span className="artist-preview-card__title">디버그 로그</span>
+                                      <span className="artist-preview-card__summary">{mobileDebugSummary}</span>
+                                    </div>
+                                    <span className="artist-preview-card__chevron" aria-hidden="true" />
+                                  </button>
+                                  {isMobileArtistDebugOpen && (
+                                    <div className="artist-preview-card__body" id={mobileDebugPanelId}>
+                                      {artistDebugLogContent}
+                                    </div>
+                                  )}
+                                </section>
+                              </div>
+                            ) : (
+                              <aside className="artist-preview-panel" aria-live="polite">
+                                <div className="artist-preview-panel__header">
+                                  <h4>채널 미리보기</h4>
+                                  <button
+                                    type="button"
+                                    className="artist-debug-toggle"
+                                    onClick={() => setArtistDebugVisible((prev) => !prev)}
+                                  >
+                                    {isArtistDebugVisible ? '디버그 숨기기' : '디버그 보기'}
+                                  </button>
+                                </div>
+                                <div className="artist-preview-panel__body">{artistPreviewBody}</div>
+                                {isArtistDebugVisible && artistDebugLogContent}
+                              </aside>
                             )}
-                            <label htmlFor="libraryVideoCategory">영상 분류</label>
+                          </div>
+                        </section>
+                      )}
+                      {selectedArtist && (
+                        <div className="artist-library__selection">
+                          <span>선택된 아티스트</span>
+                          <strong>{selectedArtist.displayName || selectedArtist.name}</strong>
+                        </div>
+                      )}
+                      <div className="artist-library__controls">
+                        <div className="artist-directory__search-group">
+                          <ArtistSearchControls
+                            query={artistSearch.query}
+                            mode={artistSearch.mode}
+                            onQueryChange={handleArtistSearchQueryChange}
+                            onModeChange={handleArtistSearchModeChange}
+                            onClear={handleArtistSearchClear}
+                          />
+                        </div>
+                        <div className="artist-directory__filter-group">
+                          <div className="artist-directory__filter">
+                            <label htmlFor="artistCountryFilter">서비스 국가</label>
                             <select
-                              id="libraryVideoCategory"
-                              value={videoForm.category}
+                              id="artistCountryFilter"
+                              value={artistCountryFilter}
                               onChange={(event) =>
-                                setVideoForm((prev) => ({
-                                  ...prev,
-                                  category: event.target.value as VideoCategorySelection
-                                }))
+                                setArtistCountryFilter(event.target.value as 'all' | ArtistCountryKey)
                               }
-                              disabled={creationDisabled}
                             >
-                              {VIDEO_CATEGORY_OPTIONS.map(({ value, label }) => (
-                                <option key={value || 'auto'} value={value}>
-                                  {label}
+                              <option value="all">전체</option>
+                              {ARTIST_COUNTRY_METADATA.map((country) => (
+                                <option key={country.key} value={country.key}>
+                                  {country.label}
                                 </option>
                               ))}
                             </select>
-                            <p className="form-hint">선택하지 않으면 제목을 기준으로 자동 분류합니다.</p>
-                            {!isClipRegistration && (
-                              <p className="artist-preview__hint">
-                                영상 등록을 완료하면 아래 <strong>자동 감지된 클립 제안</strong>에서 추천 구간을 확인할 수 있습니다.
-                              </p>
-                            )}
-                            {showClipFields && (
-                              <>
+                          </div>
+                          <div className="artist-directory__filter">
+                            <label htmlFor="artistAgencyFilter">소속사</label>
+                            <select
+                              id="artistAgencyFilter"
+                              value={artistAgencyFilter}
+                              onChange={(event) => setArtistAgencyFilter(event.target.value)}
+                            >
+                              <option value="all">전체</option>
+                              {artistAgencies.map((agency) => (
+                                <option key={agency} value={agency}>
+                                  {agency}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+                      {noArtistsRegistered ? (
+                        <div className="artist-empty">등록된 아티스트가 없습니다.</div>
+                      ) : selectedArtist ? (
+                        <div className="artist-library__split-view">
+                          <div className="artist-library__focused-panel">
+                            <button type="button" className="artist-library__back-button" onClick={handleArtistClear}>
+                              아티스트 목록으로 돌아가기
+                            </button>
+                            <ArtistLibraryCard
+                              artist={selectedArtist}
+                              isActive
+                              focusMode
+                              interactive={false}
+                              cardData={selectedArtist.cardData}
+                              showTags
+                            />
+                          </div>
+                          <div className="artist-library__detail-panel">
+                            <div className="artist-library__actions">
+                              <button
+                                type="button"
+                                className="artist-library__action-button"
+                                onClick={handleLibraryVideoRegister}
+                                disabled={creationDisabled}
+                              >
+                                영상 등록
+                              </button>
+                              <button
+                                type="button"
+                                className="artist-library__action-button artist-library__action-button--secondary"
+                                onClick={handleLibraryClipRegister}
+                                disabled={creationDisabled}
+                              >
+                                클립 등록
+                              </button>
+                              <button
+                                type="button"
+                                className="artist-library__action-button artist-library__action-button--ghost"
+                                onClick={handleShowVideoList}
+                              >
+                                영상 목록
+                              </button>
+                              <button
+                                type="button"
+                                className="artist-library__action-button artist-library__action-button--ghost"
+                                onClick={handleShowClipList}
+                              >
+                                클립 목록
+                              </button>
+                              {creationDisabled && (
+                                <span className="artist-library__action-hint">로그인 후 등록할 수 있습니다.</span>
+                              )}
+                            </div>
+                            <section className="artist-library__detail-section">
+                              <div className="artist-library__section-header">
+                                <h4>아티스트 정보</h4>
+                                <span className="artist-library__status">
+                                  {isArtistProfileSaving ? '저장 중...' : '소속사와 태그를 관리하세요.'}
+                                </span>
+                              </div>
+                              <form
+                                onSubmit={handleArtistProfileSubmit}
+                                className="stacked-form artist-library__form"
+                              >
+                                <label htmlFor="artistDetailAgency">소속사</label>
+                                <input
+                                  id="artistDetailAgency"
+                                  placeholder="소속사를 입력하세요"
+                                  value={artistProfileForm.agency}
+                                  onChange={(event) => {
+                                    setArtistProfileForm((prev) => ({
+                                      ...prev,
+                                      agency: event.target.value
+                                    }));
+                                    setArtistProfileStatus(null);
+                                  }}
+                                  disabled={creationDisabled || isArtistProfileSaving}
+                                />
+                                <label htmlFor="artistDetailTags">태그 (쉼표로 구분)</label>
+                                <input
+                                  id="artistDetailTags"
+                                  placeholder="예: 라이브, 커버"
+                                  value={artistProfileForm.tags}
+                                  onChange={(event) => {
+                                    setArtistProfileForm((prev) => ({
+                                      ...prev,
+                                      tags: event.target.value
+                                    }));
+                                    setArtistProfileStatus(null);
+                                  }}
+                                  disabled={creationDisabled || isArtistProfileSaving}
+                                />
+                                <p className="form-hint">쉼표로 구분해 태그를 입력하세요.</p>
+                                {artistProfileTags.length > 0 && (
+                                  <div className="artist-library__tags">
+                                    {artistProfileTags.map((tag) => (
+                                      <button
+                                        key={tag}
+                                        type="button"
+                                        className="artist-tag artist-tag--removable"
+                                        onClick={() => handleArtistProfileTagRemove(tag)}
+                                        aria-label={`태그 ${tag} 제거`}
+                                      >
+                                        {tag}
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+                                {artistProfileStatus && (
+                                  <p
+                                    className={`login-status__message${
+                                      artistProfileStatus.type === 'error' ? ' error' : ''
+                                    }`}
+                                    role={artistProfileStatus.type === 'error' ? 'alert' : 'status'}
+                                  >
+                                    {artistProfileStatus.message}
+                                  </p>
+                                )}
+                                <div className="artist-library__form-actions">
+                                  <button
+                                    type="submit"
+                                    disabled={creationDisabled || isArtistProfileSaving}
+                                  >
+                                    {isArtistProfileSaving ? '저장 중...' : '정보 저장'}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={handleArtistProfileReset}
+                                    disabled={isArtistProfileSaving || !selectedArtist}
+                                  >
+                                    되돌리기
+                                  </button>
+                                </div>
+                                {creationDisabled && (
+                                  <p className="form-hint">로그인 후 수정할 수 있습니다.</p>
+                                )}
+                              </form>
+                            </section>
+                            {isLibraryMediaFormOpen && selectedArtist && (
+                              <section className="artist-library__detail-section artist-library__form-section">
+                                <div className="artist-library__section-header">
+                                  <h4>영상 등록</h4>
+                                  <span className="artist-library__status">
+                                    {isClipRegistration
+                                      ? selectedVideoData
+                                        ? selectedVideoData.title || selectedVideoData.youtubeVideoId
+                                        : '등록할 영상을 선택하세요.'
+                                      : selectedArtist.displayName || selectedArtist.name}
+                                  </span>
+                                </div>
+                                <form onSubmit={handleMediaSubmit} className="stacked-form artist-library__form">
+                                  <p className="form-hint">YouTube URL에 live가 포함되면 자동으로 클립 등록으로 전환됩니다.</p>
+                                  <label htmlFor="libraryMediaUrl">YouTube URL</label>
+                                  <div className="number-row">
+                                    <input
+                                      id="libraryMediaUrl"
+                                      placeholder="https://www.youtube.com/watch?v=..."
+                                      value={videoForm.url}
+                                      onChange={(event) => handleMediaUrlChange(event.target.value)}
+                                      required={!isClipRegistration}
+                                      disabled={creationDisabled}
+                                    />
+                                  </div>
+                                  {videoSubmissionStatus && (
+                                    <p
+                                      className={`login-status__message${
+                                        videoSubmissionStatus.type === 'error' ? ' error' : ''
+                                      }`}
+                                      role={videoSubmissionStatus.type === 'error' ? 'alert' : 'status'}
+                                      aria-live="polite"
+                                    >
+                                      {videoSubmissionStatus.message}
+                                    </p>
+                                  )}
+                                  {!isClipRegistration && (
+                                    <>
+                                      <label htmlFor="libraryVideoOriginalComposer">원곡자</label>
+                                      <input
+                                        id="libraryVideoOriginalComposer"
+                                        placeholder="예: 원곡 또는 작곡가"
+                                        value={videoForm.originalComposer}
+                                        onChange={(event) =>
+                                          setVideoForm((prev) => ({
+                                            ...prev,
+                                            originalComposer: event.target.value
+                                          }))
+                                        }
+                                        disabled={creationDisabled}
+                                      />
+                                    </>
+                                  )}
+                                  <label htmlFor="libraryVideoCategory">영상 분류</label>
+                                  <select
+                                    id="libraryVideoCategory"
+                                    value={videoForm.category}
+                                    onChange={(event) =>
+                                      setVideoForm((prev) => ({
+                                        ...prev,
+                                        category: event.target.value as VideoCategorySelection
+                                      }))
+                                    }
+                                    disabled={creationDisabled}
+                                  >
+                                    {VIDEO_CATEGORY_OPTIONS.map(({ value, label }) => (
+                                      <option key={value || 'auto'} value={value}>
+                                        {label}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <p className="form-hint">선택하지 않으면 제목을 기준으로 자동 분류합니다.</p>
+                                  {!isClipRegistration && (
+                                    <p className="artist-preview__hint">
+                                      영상 등록을 완료하면 아래 <strong>자동 감지된 클립 제안</strong>에서 추천 구간을 확인할 수 있습니다.
+                                    </p>
+                                  )}
+                                  {showClipFields && (
+                                    <>
+                                      {isClipRegistration && (
+                                        <>
+                                          <label htmlFor="libraryClipVideoId">영상 선택</label>
+                                          <p className="form-hint">등록된 라이브 영상을 선택하거나 URL을 입력해 새로운 클립 원본을 등록하세요.</p>
+                                          <select
+                                            id="libraryClipVideoId"
+                                            value={selectedVideo ?? ''}
+                                            onChange={(event) => {
+                                              const { value } = event.target;
+                                              if (value === '') {
+                                                setSelectedVideo(null);
+                                                return;
+                                              }
+                                              const parsed = Number(value);
+                                              setSelectedVideo(Number.isNaN(parsed) ? null : parsed);
+                                            }}
+                                            disabled={creationDisabled || displayableVideos.length === 0}
+                                          >
+                                            <option value="">선택 안 함</option>
+                                            {clipSourceVideos.length > 0 && (
+                                              <optgroup label="라이브/클립 원본">
+                                                {clipSourceVideos.map((video) => (
+                                                  <option key={video.id} value={video.id}>
+                                                    {(video.title || video.youtubeVideoId) ?? video.youtubeVideoId} ·{' '}
+                                                    {formatVideoMetaSummary(video, { includeDuration: false })}
+                                                  </option>
+                                                ))}
+                                              </optgroup>
+                                            )}
+                                            {officialVideos.length > 0 && (
+                                              <optgroup label="공식 영상">
+                                                {officialVideos.map((video) => (
+                                                  <option key={video.id} value={video.id}>
+                                                    {(video.title || video.youtubeVideoId) ?? video.youtubeVideoId} ·{' '}
+                                                    {formatVideoMetaSummary(video, { includeDuration: false })}
+                                                  </option>
+                                                ))}
+                                              </optgroup>
+                                            )}
+                                          </select>
+                                          {selectedVideoData && selectedVideoSectionsWithCandidates.length > 0 ? (
+                                            <div className="section-preview">
+                                              <p className="artist-preview__hint">구간을 클릭하면 시간이 자동으로 입력됩니다.</p>
+                                              <ul className="video-item__sections">
+                                                {selectedVideoSectionsWithCandidates.map((section, index) => (
+                                                  <li
+                                                    key={`${section.startSec}-${section.endSec}-${index}`}
+                                                    className="video-item__section"
+                                                    onClick={() => applyVideoSectionToClip(section, `구간 ${index + 1}`)}
+                                                    role="button"
+                                                    tabIndex={0}
+                                                    onKeyDown={(event) =>
+                                                      handleInteractiveListItemKeyDown(event, () =>
+                                                        applyVideoSectionToClip(section, `구간 ${index + 1}`)
+                                                      )
+                                                    }
+                                                  >
+                                                    <span className="video-item__section-time">
+                                                      {formatSeconds(section.startSec)} → {formatSeconds(section.endSec)}
+                                                    </span>
+                                                    <span className="video-item__section-title">
+                                                      {section.title || `구간 ${index + 1}`}
+                                                    </span>
+                                                    <span className="video-item__section-source">
+                                                      {describeSectionSource(section.source)}
+                                                    </span>
+                                                  </li>
+                                                ))}
+                                              </ul>
+                                            </div>
+                                          ) : (
+                                            selectedVideo && (
+                                              <p className="artist-preview__hint">
+                                                저장된 구간이 없습니다. 아래에서 직접 시간을 입력하세요.
+                                              </p>
+                                            )
+                                          )}
+                                        </>
+                                      )}
+                                      <label htmlFor="libraryClipTitle">클립 제목</label>
+                                      <input
+                                        id="libraryClipTitle"
+                                        placeholder="클립 제목"
+                                        value={clipForm.title}
+                                        onChange={(event) =>
+                                          setClipForm((prev) => ({ ...prev, title: event.target.value }))
+                                        }
+                                        required={clipFieldsRequired}
+                                        disabled={creationDisabled}
+                                      />
+                                      <div className="clip-time-row">
+                                        <fieldset className="clip-time-fieldset">
+                                          <legend>시작 시간</legend>
+                                          <div className="clip-time-inputs">
+                                            <div className="clip-time-input">
+                                              <label htmlFor="libraryClipStartHours">시간</label>
+                                              <input
+                                                id="libraryClipStartHours"
+                                                type="text"
+                                                inputMode="numeric"
+                                                placeholder="0"
+                                                maxLength={3}
+                                                value={clipForm.startHours}
+                                                onChange={handleClipTimePartChange('startHours')}
+                                                disabled={creationDisabled}
+                                              />
+                                            </div>
+                                            <div className="clip-time-input">
+                                              <label htmlFor="libraryClipStartMinutes">분</label>
+                                              <input
+                                                id="libraryClipStartMinutes"
+                                                type="text"
+                                                inputMode="numeric"
+                                                placeholder="00"
+                                                maxLength={2}
+                                                value={clipForm.startMinutes}
+                                                onChange={handleClipTimePartChange('startMinutes')}
+                                                disabled={creationDisabled}
+                                              />
+                                            </div>
+                                            <div className="clip-time-input">
+                                              <label htmlFor="libraryClipStartSeconds">초</label>
+                                              <input
+                                                id="libraryClipStartSeconds"
+                                                type="text"
+                                                inputMode="numeric"
+                                                placeholder="00"
+                                                maxLength={2}
+                                                value={clipForm.startSeconds}
+                                                onChange={handleClipTimePartChange('startSeconds')}
+                                                required={clipFieldsRequired}
+                                                disabled={creationDisabled}
+                                              />
+                                            </div>
+                                          </div>
+                                        </fieldset>
+                                        <fieldset className="clip-time-fieldset">
+                                          <legend>종료 시간</legend>
+                                          <div className="clip-time-inputs">
+                                            <div className="clip-time-input">
+                                              <label htmlFor="libraryClipEndHours">시간</label>
+                                              <input
+                                                id="libraryClipEndHours"
+                                                type="text"
+                                                inputMode="numeric"
+                                                placeholder="0"
+                                                maxLength={3}
+                                                value={clipForm.endHours}
+                                                onChange={handleClipTimePartChange('endHours')}
+                                                disabled={creationDisabled}
+                                              />
+                                            </div>
+                                            <div className="clip-time-input">
+                                              <label htmlFor="libraryClipEndMinutes">분</label>
+                                              <input
+                                                id="libraryClipEndMinutes"
+                                                type="text"
+                                                inputMode="numeric"
+                                                placeholder="00"
+                                                maxLength={2}
+                                                value={clipForm.endMinutes}
+                                                onChange={handleClipTimePartChange('endMinutes')}
+                                                disabled={creationDisabled}
+                                              />
+                                            </div>
+                                            <div className="clip-time-input">
+                                              <label htmlFor="libraryClipEndSeconds">초</label>
+                                              <input
+                                                id="libraryClipEndSeconds"
+                                                type="text"
+                                                inputMode="numeric"
+                                                placeholder="00"
+                                                maxLength={2}
+                                                value={clipForm.endSeconds}
+                                                onChange={handleClipTimePartChange('endSeconds')}
+                                                required={clipFieldsRequired}
+                                                disabled={creationDisabled}
+                                              />
+                                            </div>
+                                          </div>
+                                        </fieldset>
+                                      </div>
+                                      <label htmlFor="libraryClipTags">태그 (쉼표로 구분)</label>
+                                      <input
+                                        id="libraryClipTags"
+                                        placeholder="예: 하이라이트, 라이브"
+                                        value={clipForm.tags}
+                                        onChange={(event) =>
+                                          setClipForm((prev) => ({ ...prev, tags: event.target.value }))
+                                        }
+                                        disabled={creationDisabled}
+                                      />
+                                      <label htmlFor="libraryClipOriginalComposer">원곡자</label>
+                                      <input
+                                        id="libraryClipOriginalComposer"
+                                        placeholder="예: 원곡 또는 작곡가"
+                                        value={clipForm.originalComposer}
+                                        onChange={(event) =>
+                                          setClipForm((prev) => ({ ...prev, originalComposer: event.target.value }))
+                                        }
+                                        disabled={creationDisabled}
+                                      />
+                                    </>
+                                  )}
+                                  <button type="submit" disabled={creationDisabled}>
+                                    {isClipRegistration ? '클립 등록' : '영상 메타데이터 저장'}
+                                  </button>
+                                </form>
                                 {isClipRegistration && (
                                   <>
-                                    <label htmlFor="libraryClipVideoId">영상 선택</label>
-                                    <p className="form-hint">등록된 라이브 영상을 선택하거나 URL을 입력해 새로운 클립 원본을 등록하세요.</p>
-                                    <select
-                                      id="libraryClipVideoId"
-                                      value={selectedVideo ?? ''}
-                                      onChange={(event) => {
-                                        const { value } = event.target;
-                                        if (value === '') {
-                                          setSelectedVideo(null);
-                                          return;
-                                        }
-                                        const parsed = Number(value);
-                                        setSelectedVideo(Number.isNaN(parsed) ? null : parsed);
-                                      }}
-                                      disabled={creationDisabled || displayableVideos.length === 0}
-                                    >
-                                      <option value="">선택 안 함</option>
-                                      {clipSourceVideos.length > 0 && (
-                                        <optgroup label="라이브/클립 원본">
-                                          {clipSourceVideos.map((video) => (
-                                            <option key={video.id} value={video.id}>
-                                              {(video.title || video.youtubeVideoId) ?? video.youtubeVideoId} ·{' '}
-                                              {formatVideoMetaSummary(video, { includeDuration: false })}
-                                            </option>
-                                          ))}
-                                        </optgroup>
-                                      )}
-                                      {officialVideos.length > 0 && (
-                                        <optgroup label="공식 영상">
-                                          {officialVideos.map((video) => (
-                                            <option key={video.id} value={video.id}>
-                                              {(video.title || video.youtubeVideoId) ?? video.youtubeVideoId} ·{' '}
-                                              {formatVideoMetaSummary(video, { includeDuration: false })}
-                                            </option>
-                                          ))}
-                                        </optgroup>
-                                      )}
-                                    </select>
-                                    {selectedVideoData && selectedVideoSectionsWithCandidates.length > 0 ? (
-                                      <div className="section-preview">
-                                        <p className="artist-preview__hint">구간을 클릭하면 시간이 자동으로 입력됩니다.</p>
-                                        <ul className="video-item__sections">
-                                          {selectedVideoSectionsWithCandidates.map((section, index) => (
-                                            <li
-                                              key={`${section.startSec}-${section.endSec}-${index}`}
-                                              className="video-item__section"
-                                              onClick={() => applyVideoSectionToClip(section, `구간 ${index + 1}`)}
-                                              role="button"
-                                              tabIndex={0}
-                                              onKeyDown={(event) =>
-                                                handleInteractiveListItemKeyDown(event, () =>
-                                                  applyVideoSectionToClip(section, `구간 ${index + 1}`)
-                                                )
+                                    <div className="clip-preview">
+                                      <h4>프리뷰</h4>
+                                      {selectedVideoData ? (
+                                        <>
+                                          <p className="form-hint">
+                                            {formatVideoMetaSummary(selectedVideoData, {
+                                              includeDuration: false
+                                            })}{' '}
+                                            영상 ·{' '}
+                                            {selectedVideoData.title || selectedVideoData.youtubeVideoId}
+                                          </p>
+                                          <div className="clip-preview__player">
+                                            <Suspense
+                                              fallback={
+                                                <div className="clip-preview__player-loading" role="status" aria-live="polite">
+                                                  프리뷰를 준비하는 중…
+                                                </div>
                                               }
                                             >
-                                              <span className="video-item__section-time">
-                                                {formatSeconds(section.startSec)} → {formatSeconds(section.endSec)}
-                                              </span>
-                                              <span className="video-item__section-title">
-                                                {section.title || `구간 ${index + 1}`}
-                                              </span>
-                                              <span className="video-item__section-source">
-                                                {describeSectionSource(section.source)}
-                                              </span>
-                                            </li>
-                                          ))}
-                                        </ul>
+                                              <ClipPlayer
+                                                youtubeVideoId={selectedVideoData.youtubeVideoId}
+                                                startSec={previewStartSec}
+                                                endSec={previewEndSec}
+                                                autoplay={false}
+                                              />
+                                            </Suspense>
+                                          </div>
+                                        </>
+                                      ) : (
+                                        <p className="empty-state">클립 프리뷰를 확인하려면 영상을 선택하세요.</p>
+                                      )}
+                                    </div>
+                                    <div className="auto-detect">
+                                      <div className="number-row">
+                                        <select
+                                          id="libraryDetectVideo"
+                                          value={selectedVideo ?? ''}
+                                          onChange={(event) => {
+                                            const { value } = event.target;
+                                            if (value === '') {
+                                              setSelectedVideo(null);
+                                              return;
+                                            }
+                                            const parsed = Number(value);
+                                            setSelectedVideo(Number.isNaN(parsed) ? null : parsed);
+                                          }}
+                                          disabled={creationDisabled || displayableVideos.length === 0}
+                                        >
+                                          <option value="">선택 안 함</option>
+                                          {clipSourceVideos.length > 0 && (
+                                            <optgroup label="라이브/클립 원본">
+                                              {clipSourceVideos.map((video) => (
+                                                <option key={video.id} value={video.id}>
+                                                  {(video.title || video.youtubeVideoId) ?? video.youtubeVideoId} ·{' '}
+                                                  {formatVideoMetaSummary(video, { includeDuration: false })}
+                                                </option>
+                                              ))}
+                                            </optgroup>
+                                          )}
+                                          {officialVideos.length > 0 && (
+                                            <optgroup label="공식 영상">
+                                              {officialVideos.map((video) => (
+                                                <option key={video.id} value={video.id}>
+                                                  {(video.title || video.youtubeVideoId) ?? video.youtubeVideoId} ·{' '}
+                                                  {formatVideoMetaSummary(video, { includeDuration: false })}
+                                                </option>
+                                              ))}
+                                            </optgroup>
+                                          )}
+                                        </select>
+                                        <select
+                                          id="libraryDetectMode"
+                                          value={autoDetectMode}
+                                          onChange={(event) => setAutoDetectMode(event.target.value)}
+                                          disabled={creationDisabled}
+                                        >
+                                          <option value="chapters">챕터 기반</option>
+                                          <option value="captions">자막 기반</option>
+                                          <option value="combined">혼합</option>
+                                        </select>
                                       </div>
-                                    ) : (
-                                      selectedVideo && (
-                                        <p className="artist-preview__hint">
-                                          저장된 구간이 없습니다. 아래에서 직접 시간을 입력하세요.
-                                        </p>
-                                      )
-                                    )}
+                                      <button
+                                        type="button"
+                                        onClick={runAutoDetect}
+                                        disabled={creationDisabled || !selectedVideo}
+                                      >
+                                        자동으로 클립 제안 받기
+                                      </button>
+                                    </div>
                                   </>
                                 )}
-                                <label htmlFor="libraryClipTitle">클립 제목</label>
-                                <input
-                                  id="libraryClipTitle"
-                                  placeholder="클립 제목"
-                                  value={clipForm.title}
-                                  onChange={(event) =>
-                                    setClipForm((prev) => ({ ...prev, title: event.target.value }))
-                                  }
-                                  required={clipFieldsRequired}
-                                  disabled={creationDisabled}
-                                />
-                                <div className="clip-time-row">
-                                  <fieldset className="clip-time-fieldset">
-                                    <legend>시작 시간</legend>
-                                    <div className="clip-time-inputs">
-                                      <div className="clip-time-input">
-                                        <label htmlFor="libraryClipStartHours">시간</label>
-                                        <input
-                                          id="libraryClipStartHours"
-                                          type="text"
-                                          inputMode="numeric"
-                                          placeholder="0"
-                                          maxLength={3}
-                                          value={clipForm.startHours}
-                                          onChange={handleClipTimePartChange('startHours')}
-                                          disabled={creationDisabled}
-                                        />
-                                      </div>
-                                      <div className="clip-time-input">
-                                        <label htmlFor="libraryClipStartMinutes">분</label>
-                                        <input
-                                          id="libraryClipStartMinutes"
-                                          type="text"
-                                          inputMode="numeric"
-                                          placeholder="00"
-                                          maxLength={2}
-                                          value={clipForm.startMinutes}
-                                          onChange={handleClipTimePartChange('startMinutes')}
-                                          disabled={creationDisabled}
-                                        />
-                                      </div>
-                                      <div className="clip-time-input">
-                                        <label htmlFor="libraryClipStartSeconds">초</label>
-                                        <input
-                                          id="libraryClipStartSeconds"
-                                          type="text"
-                                          inputMode="numeric"
-                                          placeholder="00"
-                                          maxLength={2}
-                                          value={clipForm.startSeconds}
-                                          onChange={handleClipTimePartChange('startSeconds')}
-                                          required={clipFieldsRequired}
-                                          disabled={creationDisabled}
-                                        />
-                                      </div>
-                                    </div>
-                                  </fieldset>
-                                  <fieldset className="clip-time-fieldset">
-                                    <legend>종료 시간</legend>
-                                    <div className="clip-time-inputs">
-                                      <div className="clip-time-input">
-                                        <label htmlFor="libraryClipEndHours">시간</label>
-                                        <input
-                                          id="libraryClipEndHours"
-                                          type="text"
-                                          inputMode="numeric"
-                                          placeholder="0"
-                                          maxLength={3}
-                                          value={clipForm.endHours}
-                                          onChange={handleClipTimePartChange('endHours')}
-                                          disabled={creationDisabled}
-                                        />
-                                      </div>
-                                      <div className="clip-time-input">
-                                        <label htmlFor="libraryClipEndMinutes">분</label>
-                                        <input
-                                          id="libraryClipEndMinutes"
-                                          type="text"
-                                          inputMode="numeric"
-                                          placeholder="00"
-                                          maxLength={2}
-                                          value={clipForm.endMinutes}
-                                          onChange={handleClipTimePartChange('endMinutes')}
-                                          disabled={creationDisabled}
-                                        />
-                                      </div>
-                                      <div className="clip-time-input">
-                                        <label htmlFor="libraryClipEndSeconds">초</label>
-                                        <input
-                                          id="libraryClipEndSeconds"
-                                          type="text"
-                                          inputMode="numeric"
-                                          placeholder="00"
-                                          maxLength={2}
-                                          value={clipForm.endSeconds}
-                                          onChange={handleClipTimePartChange('endSeconds')}
-                                          required={clipFieldsRequired}
-                                          disabled={creationDisabled}
-                                        />
-                                      </div>
-                                    </div>
-                                  </fieldset>
-                                </div>
-                                <label htmlFor="libraryClipTags">태그 (쉼표로 구분)</label>
-                                <input
-                                  id="libraryClipTags"
-                                  placeholder="예: 하이라이트, 라이브"
-                                  value={clipForm.tags}
-                                  onChange={(event) =>
-                                    setClipForm((prev) => ({ ...prev, tags: event.target.value }))
-                                  }
-                                  disabled={creationDisabled}
-                                />
-                                <label htmlFor="libraryClipOriginalComposer">원곡자</label>
-                                <input
-                                  id="libraryClipOriginalComposer"
-                                  placeholder="예: 원곡 또는 작곡가"
-                                  value={clipForm.originalComposer}
-                                  onChange={(event) =>
-                                    setClipForm((prev) => ({ ...prev, originalComposer: event.target.value }))
-                                  }
-                                  disabled={creationDisabled}
-                                />
-                              </>
+                              </section>
                             )}
-                            <button type="submit" disabled={creationDisabled}>
-                              {isClipRegistration ? '클립 등록' : '영상 메타데이터 저장'}
-                            </button>
-                          </form>
-                          {isClipRegistration && (
-                            <>
-                              <div className="clip-preview">
-                                <h4>프리뷰</h4>
-                                {selectedVideoData ? (
-                                  <>
-                                    <p className="form-hint">
-                                      {formatVideoMetaSummary(selectedVideoData, {
-                                        includeDuration: false
-                                      })}{' '}
-                                      영상 ·{' '}
-                                      {selectedVideoData.title || selectedVideoData.youtubeVideoId}
+                            {activeLibraryView === 'videoList' && (
+                              <section ref={videoListSectionRef} className="artist-library__detail-section">
+                              <div className="artist-library__section-header">
+                                <h4>영상 목록</h4>
+                                {isArtistVideosLoading ? (
+                                  <span className="artist-library__status">불러오는 중...</span>
+                                ) : displayableVideos.length > 0 ? (
+                                  <span className="artist-library__status">{displayableVideos.length}개 영상</span>
+                                ) : null}
+                              </div>
+                              {displayableVideos.length === 0 ? (
+                                <p className="artist-library__empty">영상 목록이 비어 있습니다.</p>
+                              ) : (
+                                <ul className="artist-library__video-list">
+                                  {shouldShowSelectedVideoPreview && selectedVideoData && (
+                                    <li className="artist-library__video-preview">
+                                      <div className="artist-library__video-preview-meta">
+                                        <span className="artist-library__video-preview-title">
+                                          {selectedVideoData.title || selectedVideoData.youtubeVideoId || '제목 없는 영상'}
+                                        </span>
+                                        <span className="artist-library__video-preview-subtitle">
+                                          {formatVideoMetaSummary(selectedVideoData)}
+                                        </span>
+                                      </div>
+                                      {selectedVideoData.youtubeVideoId ? (
+                                        <div className="artist-library__video-preview-player">
+                                          <Suspense
+                                            fallback={
+                                              <div
+                                                className="artist-library__video-preview-loading"
+                                                role="status"
+                                                aria-live="polite"
+                                              >
+                                                미리보기를 불러오는 중…
+                                              </div>
+                                            }
+                                          >
+                                            <ClipPlayer
+                                              youtubeVideoId={selectedVideoData.youtubeVideoId}
+                                              startSec={0}
+                                              endSec={
+                                                selectedVideoDurationSec && selectedVideoDurationSec > 0
+                                                  ? selectedVideoDurationSec
+                                                  : undefined
+                                              }
+                                            />
+                                          </Suspense>
+                                        </div>
+                                      ) : (
+                                        <p className="artist-library__video-preview-empty">
+                                          유튜브 영상 정보가 없어 재생할 수 없습니다.
+                                        </p>
+                                      )}
+                                    </li>
+                                  )}
+                                  {VIDEO_CATEGORY_METADATA.map(({ key, label }) => {
+                                    const videosInCategory = categorizedVideos[key];
+                                    if (videosInCategory.length === 0) {
+                                      return null;
+                                    }
+                                    const isExpanded = expandedVideoCategories[key];
+                                    return (
+                                      <li key={key} className="artist-library__video-category">
+                                        <button
+                                          type="button"
+                                          className="artist-library__video-category-toggle"
+                                          onClick={() =>
+                                            setExpandedVideoCategories((prev) => ({
+                                              ...prev,
+                                              [key]: !prev[key]
+                                            }))
+                                          }
+                                          aria-expanded={isExpanded}
+                                        >
+                                          <span className="artist-library__video-category-label">{label}</span>
+                                          <span className="artist-library__video-category-count">
+                                            {videosInCategory.length}곡
+                                          </span>
+                                          <span aria-hidden="true" className="artist-library__video-category-icon">
+                                            {isExpanded ? '▾' : '▸'}
+                                          </span>
+                                        </button>
+                                        {isExpanded && (
+                                          <ul className="artist-library__video-sublist">
+                                            {videosInCategory.map((video) => renderVideoListItem(video))}
+                                          </ul>
+                                        )}
+                                      </li>
+                                    );
+                                  })}
+                                </ul>
+                              )}
+                              </section>
+                            )}
+                            {activeLibraryView === 'clipList' && (
+                              <section ref={clipListSectionRef} className="artist-library__detail-section">
+                              <div className="artist-library__section-header">
+                                <h4>클립 목록</h4>
+                                {selectedVideoData && (
+                                  <span className="artist-library__status">
+                                    {selectedVideoData.title || selectedVideoData.youtubeVideoId || '제목 없는 영상'}
+                                  </span>
+                                )}
+                              </div>
+                              {artistLibraryClips.length === 0 ? (
+                                <p className="artist-library__empty">클립 목록이 비어 있습니다.</p>
+                              ) : (
+                                <>
+                                  {selectedVideoData && selectedVideoIsHidden && (
+                                    <p className="artist-preview__hint">
+                                      댓글 구간에서 자동 저장된 클립입니다. 영상은 라이브러리에 등록되지 않습니다.
                                     </p>
-                                    <div className="clip-preview__player">
+                                  )}
+                                  {activeClipPreview && (
+                                    <ClipPreviewPanel
+                                      clipTitle={activeClipPreview.clipTitle}
+                                      videoTitle={activeClipPreview.videoTitle}
+                                      rangeLabel={activeClipPreview.rangeLabel}
+                                      tags={activeClipPreview.tags}
+                                      isEditing={activeClipPreview.isEditing}
+                                    >
                                       <Suspense
                                         fallback={
-                                          <div className="clip-preview__player-loading" role="status" aria-live="polite">
-                                            프리뷰를 준비하는 중…
+                                          <div
+                                            className="artist-library__clip-preview-loading"
+                                            role="status"
+                                            aria-live="polite"
+                                          >
+                                            플레이어 준비 중…
                                           </div>
                                         }
                                       >
                                         <ClipPlayer
-                                          youtubeVideoId={selectedVideoData.youtubeVideoId}
-                                          startSec={previewStartSec}
-                                          endSec={previewEndSec}
-                                          autoplay={false}
+                                          youtubeVideoId={activeClipPreview.youtubeVideoId}
+                                          startSec={activeClipPreview.startSec}
+                                          endSec={activeClipPreview.endSec}
+                                          autoplay
                                         />
                                       </Suspense>
-                                    </div>
-                                  </>
-                                ) : (
-                                  <p className="empty-state">클립 프리뷰를 확인하려면 영상을 선택하세요.</p>
-                                )}
-                              </div>
-                              <div className="auto-detect">
-                                <div className="number-row">
-                                  <select
-                                    id="libraryDetectVideo"
-                                    value={selectedVideo ?? ''}
-                                    onChange={(event) => {
-                                      const { value } = event.target;
-                                      if (value === '') {
-                                        setSelectedVideo(null);
-                                        return;
-                                      }
-                                      const parsed = Number(value);
-                                      setSelectedVideo(Number.isNaN(parsed) ? null : parsed);
-                                    }}
-                                    disabled={creationDisabled || displayableVideos.length === 0}
-                                  >
-                                    <option value="">선택 안 함</option>
-                                    {clipSourceVideos.length > 0 && (
-                                      <optgroup label="라이브/클립 원본">
-                                        {clipSourceVideos.map((video) => (
-                                          <option key={video.id} value={video.id}>
-                                            {(video.title || video.youtubeVideoId) ?? video.youtubeVideoId} ·{' '}
-                                            {formatVideoMetaSummary(video, { includeDuration: false })}
-                                          </option>
-                                        ))}
-                                      </optgroup>
-                                    )}
-                                    {officialVideos.length > 0 && (
-                                      <optgroup label="공식 영상">
-                                        {officialVideos.map((video) => (
-                                          <option key={video.id} value={video.id}>
-                                            {(video.title || video.youtubeVideoId) ?? video.youtubeVideoId} ·{' '}
-                                            {formatVideoMetaSummary(video, { includeDuration: false })}
-                                          </option>
-                                        ))}
-                                      </optgroup>
-                                    )}
-                                  </select>
-                                  <select
-                                    id="libraryDetectMode"
-                                    value={autoDetectMode}
-                                    onChange={(event) => setAutoDetectMode(event.target.value)}
-                                    disabled={creationDisabled}
-                                  >
-                                    <option value="chapters">챕터 기반</option>
-                                    <option value="captions">자막 기반</option>
-                                    <option value="combined">혼합</option>
-                                  </select>
-                                </div>
+                                    </ClipPreviewPanel>
+                                  )}
+                                  <ClipList
+                                    clips={artistLibraryClips}
+                                    getItemKey={(clip) => clip.id}
+                                    renderItem={renderClipListItem}
+                                    itemData={clipListItemData}
+                                    className="artist-library__clip-list"
+                                  />
+                                </>
+                              )}
+                              </section>
+                            )}
+                          </div>
+                        </div>
+                      ) : noFilteredArtists ? (
+                        <div className="artist-empty">검색 결과가 없습니다.</div>
+                      ) : (
+                        <ArtistLibraryGrid
+                          artists={artistList}
+                          getArtistId={(artist) => artist.id}
+                          selectedArtistId={selectedArtistId}
+                          onArtistClick={handleArtistClick}
+                          ariaLabelledby="artist-library-heading"
+                          renderCard={(artist, { isActive, onSelect }) => (
+                            <ArtistLibraryCard
+                              artist={artist}
+                              isActive={isActive}
+                              onSelect={onSelect}
+                              cardData={artist.cardData}
+                              showTags={false}
+                            />
+                          )}
+                        />
+                      )}
+                      </div>
+                    </>
+                  );
+
+                  if (isMobileViewport) {
+                    return (
+                        <>
+                          <div className="artist-library__mobile-topbar">
+                            <div className="artist-library__mobile-icon" aria-hidden="true">
+                              <span aria-hidden="true">☰</span>
+                            </div>
+                            <div className="artist-library__mobile-logo" aria-hidden="true">
+                              <img src={utahubLogo} alt="" />
+                            </div>
+                            <div className="artist-library__mobile-actions">
+                              <button
+                                type="button"
+                                className={`artist-library__filter-trigger${
+                                  isMobileFilterOverlayOpen ? ' is-active' : ''
+                                }`}
+                                aria-label={isMobileFilterOverlayOpen ? '필터 닫기' : '필터 열기'}
+                                aria-haspopup="dialog"
+                                aria-expanded={isMobileFilterOverlayOpen}
+                                aria-controls="mobileArtistFilterDialog"
+                                onClick={handleMobileFilterOverlayToggle}
+                              >
+                                <span aria-hidden="true" className="artist-library__filter-trigger-icon">
+                                  🎚️
+                                </span>
+                              </button>
+                              <button
+                                type="button"
+                                className="mobile-auth-trigger"
+                                aria-label={isAuthenticated ? '계정 관리 열기' : '로그인 패널 열기'}
+                                aria-haspopup="dialog"
+                                aria-expanded={isMobileAuthOverlayOpen}
+                                aria-controls="mobileAuthDialog"
+                                onClick={() => setMobileAuthOverlayOpen(true)}
+                              >
+                                <span aria-hidden="true" className="mobile-auth-trigger__icon">
+                                  🔐
+                                </span>
+                              </button>
+                            </div>
+                          </div>
+                          {isMobileFilterOverlayOpen && (
+                            <div className="mobile-filter-overlay">
+                              <div
+                                className="mobile-filter-overlay__backdrop"
+                                role="presentation"
+                                onClick={handleMobileFilterOverlayClose}
+                              />
+                              <div
+                                className="mobile-filter-overlay__content"
+                                role="dialog"
+                                aria-modal="true"
+                                aria-labelledby="mobileArtistFilterTitle"
+                                id="mobileArtistFilterDialog"
+                                ref={mobileFilterOverlayContentRef}
+                                tabIndex={-1}
+                              >
                                 <button
                                   type="button"
-                                  onClick={runAutoDetect}
-                                  disabled={creationDisabled || !selectedVideo}
+                                  className="mobile-filter-overlay__close"
+                                  onClick={handleMobileFilterOverlayClose}
+                                  aria-label="필터 닫기"
                                 >
-                                  자동으로 클립 제안 받기
+                                  <span aria-hidden="true">×</span>
                                 </button>
-                              </div>
-                            </>
-                          )}
-                        </section>
-                      )}
-                      {activeLibraryView === 'videoList' && (
-                        <section ref={videoListSectionRef} className="artist-library__detail-section">
-                        <div className="artist-library__section-header">
-                          <h4>영상 목록</h4>
-                          {isArtistVideosLoading ? (
-                            <span className="artist-library__status">불러오는 중...</span>
-                          ) : displayableVideos.length > 0 ? (
-                            <span className="artist-library__status">{displayableVideos.length}개 영상</span>
-                          ) : null}
-                        </div>
-                        {displayableVideos.length === 0 ? (
-                          <p className="artist-library__empty">영상 목록이 비어 있습니다.</p>
-                        ) : (
-                          <ul className="artist-library__video-list">
-                            {shouldShowSelectedVideoPreview && selectedVideoData && (
-                              <li className="artist-library__video-preview">
-                                <div className="artist-library__video-preview-meta">
-                                  <span className="artist-library__video-preview-title">
-                                    {selectedVideoData.title || selectedVideoData.youtubeVideoId || '제목 없는 영상'}
-                                  </span>
-                                  <span className="artist-library__video-preview-subtitle">
-                                    {formatVideoMetaSummary(selectedVideoData)}
-                                  </span>
-                                </div>
-                                {selectedVideoData.youtubeVideoId ? (
-                                  <div className="artist-library__video-preview-player">
-                                    <Suspense
-                                      fallback={
-                                        <div
-                                          className="artist-library__video-preview-loading"
-                                          role="status"
-                                          aria-live="polite"
-                                        >
-                                          미리보기를 불러오는 중…
-                                        </div>
-                                      }
-                                    >
-                                      <ClipPlayer
-                                        youtubeVideoId={selectedVideoData.youtubeVideoId}
-                                        startSec={0}
-                                        endSec={
-                                          selectedVideoDurationSec && selectedVideoDurationSec > 0
-                                            ? selectedVideoDurationSec
-                                            : undefined
-                                        }
-                                      />
-                                    </Suspense>
-                                  </div>
-                                ) : (
-                                  <p className="artist-library__video-preview-empty">
-                                    유튜브 영상 정보가 없어 재생할 수 없습니다.
+                                <div className="mobile-filter-overlay__header">
+                                  <h3 id="mobileArtistFilterTitle">검색 및 필터</h3>
+                                  <p className="mobile-filter-overlay__description">
+                                    아티스트 검색과 필터를 설정하세요.
                                   </p>
-                                )}
-                              </li>
-                            )}
-                            {VIDEO_CATEGORY_METADATA.map(({ key, label }) => {
-                              const videosInCategory = categorizedVideos[key];
-                              if (videosInCategory.length === 0) {
-                                return null;
-                              }
-                              const isExpanded = expandedVideoCategories[key];
-                              return (
-                                <li key={key} className="artist-library__video-category">
+                                </div>
+                                <div className="mobile-filter-overlay__body">
+                                  <div className="artist-directory__search-group">
+                                    <ArtistSearchControls
+                                      query={artistSearch.query}
+                                      mode={artistSearch.mode}
+                                      onQueryChange={handleArtistSearchQueryChange}
+                                      onModeChange={handleArtistSearchModeChange}
+                                      onClear={handleArtistSearchClear}
+                                    />
+                                  </div>
+                                  <div className="artist-directory__filter-group">
+                                    <div className="artist-directory__filter">
+                                      <label htmlFor="artistCountryFilterMobile">서비스 국가</label>
+                                      <select
+                                        id="artistCountryFilterMobile"
+                                        value={artistCountryFilter}
+                                        onChange={(event) =>
+                                          setArtistCountryFilter(event.target.value as 'all' | ArtistCountryKey)
+                                        }
+                                      >
+                                        <option value="all">전체</option>
+                                        {ARTIST_COUNTRY_METADATA.map((country) => (
+                                          <option key={country.key} value={country.key}>
+                                            {country.label}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </div>
+                                    <div className="artist-directory__filter">
+                                      <label htmlFor="artistAgencyFilterMobile">소속사</label>
+                                      <select
+                                        id="artistAgencyFilterMobile"
+                                        value={artistAgencyFilter}
+                                        onChange={(event) => setArtistAgencyFilter(event.target.value)}
+                                      >
+                                        <option value="all">전체</option>
+                                        {artistAgencies.map((agency) => (
+                                          <option key={agency} value={agency}>
+                                            {agency}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </div>
+                                  </div>
+                                </div>
+                                <div className="mobile-filter-overlay__footer">
                                   <button
                                     type="button"
-                                    className="artist-library__video-category-toggle"
-                                    onClick={() =>
-                                      setExpandedVideoCategories((prev) => ({
-                                        ...prev,
-                                        [key]: !prev[key]
-                                      }))
-                                    }
-                                    aria-expanded={isExpanded}
+                                    className="mobile-filter-overlay__action"
+                                    onClick={handleMobileFilterOverlayClose}
                                   >
-                                    <span className="artist-library__video-category-label">{label}</span>
-                                    <span className="artist-library__video-category-count">
-                                      {videosInCategory.length}곡
-                                    </span>
-                                    <span aria-hidden="true" className="artist-library__video-category-icon">
-                                      {isExpanded ? '▾' : '▸'}
-                                    </span>
+                                    필터 적용
                                   </button>
-                                  {isExpanded && (
-                                    <ul className="artist-library__video-sublist">
-                                      {videosInCategory.map((video) => renderVideoListItem(video))}
-                                    </ul>
-                                  )}
-                                </li>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                          <div className="artist-library__mobile-tabs" role="group" aria-label="콘텐츠 전환">
+                            {mobileArtistTabs.map((tab) => {
+                              const isActiveTab = activeSection === tab.id;
+                              const tabLabel = tab.id === 'library' ? '아티스트' : '노래';
+                              return (
+                                <button
+                                  key={`mobile-switch-${tab.id}`}
+                                  type="button"
+                                  aria-pressed={isActiveTab}
+                                  className={`artist-library__mobile-tab${isActiveTab ? ' is-active' : ''}`}
+                                  onClick={() => setActiveSection(tab.id)}
+                                >
+                                  {tabLabel}
+                                </button>
                               );
                             })}
-                          </ul>
-                        )}
-                        </section>
-                      )}
-                      {activeLibraryView === 'clipList' && (
-                        <section ref={clipListSectionRef} className="artist-library__detail-section">
-                        <div className="artist-library__section-header">
-                          <h4>클립 목록</h4>
-                          {selectedVideoData && (
-                            <span className="artist-library__status">
-                              {selectedVideoData.title || selectedVideoData.youtubeVideoId || '제목 없는 영상'}
-                            </span>
-                          )}
+                          </div>
+                          <div className="artist-library__mobile-context">
+                            <span className="artist-library__mobile-context-label">VTUBERS</span>
+                            <div className="artist-library__mobile-context-button" aria-hidden="true">
+                              <span className="artist-library__mobile-context-value">
+                                {selectedArtist
+                                  ? `${selectedArtist.displayName || selectedArtist.name} 선택됨`
+                                  : '전체 아티스트'}
+                              </span>
+                              <span className="artist-library__mobile-context-icon">▾</span>
+                            </div>
+                          </div>
+                          <h3 id="artist-library-heading" className="artist-library__mobile-title visually-hidden">
+                            아티스트 디렉토리
+                          </h3>
+                          <p className="artist-library__mobile-description visually-hidden">
+                            전체 이용자가 확인할 수 있는 공개 목록입니다.
+                          </p>
+                          <div className="artist-library__scroll-region">
+                            {mainContent}
+                          </div>
+                        </>
+                      );
+                    }
+
+                    return (
+                      <>
+                        <div className="artist-library__header">
+                          <div>
+                            <h3 id="artist-library-heading">아티스트 디렉토리</h3>
+                            <p className="artist-directory__subtitle">전체 이용자가 확인할 수 있는 공개 목록입니다.</p>
+                          </div>
+                          <button
+                            type="button"
+                            className="artist-library__register"
+                            onClick={openArtistRegistration}
+                          >
+                            아티스트 등록
+                          </button>
                         </div>
-                        {artistLibraryClips.length === 0 ? (
-                          <p className="artist-library__empty">클립 목록이 비어 있습니다.</p>
-                        ) : (
-                          <>
-                            {selectedVideoData && selectedVideoIsHidden && (
-                              <p className="artist-preview__hint">
-                                댓글 구간에서 자동 저장된 클립입니다. 영상은 라이브러리에 등록되지 않습니다.
-                              </p>
-                            )}
-                            {activeClipPreview && (
-                              <ClipPreviewPanel
-                                clipTitle={activeClipPreview.clipTitle}
-                                videoTitle={activeClipPreview.videoTitle}
-                                rangeLabel={activeClipPreview.rangeLabel}
-                                tags={activeClipPreview.tags}
-                                isEditing={activeClipPreview.isEditing}
-                              >
-                                <Suspense
-                                  fallback={
-                                    <div
-                                      className="artist-library__clip-preview-loading"
-                                      role="status"
-                                      aria-live="polite"
-                                    >
-                                      플레이어 준비 중…
-                                    </div>
-                                  }
-                                >
-                                  <ClipPlayer
-                                    youtubeVideoId={activeClipPreview.youtubeVideoId}
-                                    startSec={activeClipPreview.startSec}
-                                    endSec={activeClipPreview.endSec}
-                                    autoplay
-                                  />
-                                </Suspense>
-                              </ClipPreviewPanel>
-                            )}
-                            <ClipList
-                              clips={artistLibraryClips}
-                              getItemKey={(clip) => clip.id}
-                              renderItem={renderClipListItem}
-                              itemData={clipListItemData}
-                              className="artist-library__clip-list"
-                            />
-                          </>
-                        )}
-                        </section>
-                      )}
-                    </div>
-                  </div>
-                ) : noFilteredArtists ? (
-                  <div className="artist-empty">검색 결과가 없습니다.</div>
-                ) : (
-                  <ArtistLibraryGrid
-                    artists={artistList}
-                    getArtistId={(artist) => artist.id}
-                    selectedArtistId={selectedArtistId}
-                    onArtistClick={handleArtistClick}
-                    ariaLabelledby="artist-library-heading"
-                    renderCard={(artist, { isActive, onSelect }) => (
-                      <ArtistLibraryCard
-                        artist={artist}
-                        isActive={isActive}
-                        onSelect={onSelect}
-                        cardData={artist.cardData}
-                        showTags={false}
-                      />
-                    )}
-                  />
-                )}
-              </div>
+                        {mainContent}
+                      </>
+                    );
+                  })()}
 
             </div>
           </section>

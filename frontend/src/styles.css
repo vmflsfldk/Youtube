@@ -2531,6 +2531,32 @@ button:disabled:hover {
 }
 
 @media (max-width: 640px) {
+  .panel.media-panel {
+    overflow: visible;
+  }
+
+  .artist-library--mobile {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+  }
+
+  .artist-library__scroll-region {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    gap: 20px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .artist-library--mobile .artist-library__grid-wrapper {
+    flex: 1;
+    min-height: 0;
+  }
+
   .artist-library__grid,
   .artist-library__grid-row {
     grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
