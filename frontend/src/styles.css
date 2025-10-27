@@ -16,6 +16,10 @@
   --focus-ring: rgba(99, 102, 241, 0.35);
   --gradient-primary: linear-gradient(135deg, #6366f1 0%, #22d3ee 100%);
   --mobile-bottom-nav-height: 64px;
+  --mobile-playback-collapsed-height: 80px;
+  --mobile-fixed-ui-height: calc(
+    var(--mobile-bottom-nav-height) + var(--mobile-playback-collapsed-height)
+  );
   font-family: 'Pretendard', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   color: var(--color-text-primary);
   background-color: var(--color-background);
@@ -839,7 +843,8 @@ body {
   }
 
   .app-shell {
-    padding: 28px 18px 160px;
+    padding: 28px 18px
+      calc(var(--mobile-fixed-ui-height) + env(safe-area-inset-bottom, 0px) + 16px);
     gap: 24px;
     grid-template-columns: minmax(0, 1fr);
     width: 100%;
@@ -860,7 +865,9 @@ body {
     position: relative;
     z-index: 0;
     padding-top: 16px;
-    padding-bottom: 100px;
+    padding-bottom: calc(
+      var(--mobile-playback-collapsed-height) + env(safe-area-inset-bottom, 0px) + 16px
+    );
     gap: 24px;
   }
 
@@ -1188,7 +1195,8 @@ body {
   }
 
   .app-shell {
-    padding: 28px 18px 108px;
+    padding: 28px 18px
+      calc(var(--mobile-fixed-ui-height) + env(safe-area-inset-bottom, 0px) + 16px);
   }
 
   .app-footer {
