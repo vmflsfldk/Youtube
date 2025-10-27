@@ -17,6 +17,8 @@ export interface VideoResponse {
   category?: 'live' | 'cover' | 'original' | string | null;
   sections?: VideoSectionResponse[];
   hidden?: boolean;
+  createdAt?: string | null;
+  updatedAt?: string | null;
   originalComposer?: string | null;
   artistName?: string | null;
   artistDisplayName?: string | null;
