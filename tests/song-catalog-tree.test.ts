@@ -102,7 +102,7 @@ test('buildCatalogRecords merges clips and songs while filtering unsupported med
   assert.equal(songRecord?.artist, 'Artist A');
 });
 
-test('filterCatalogRecords applies case-insensitive partial matches across fields', () => {
+test('filterCatalogRecords applies case-insensitive partial matches for the selected field', () => {
   const clips = [
     {
       id: 301,
@@ -162,24 +162,23 @@ test('filterCatalogRecords applies case-insensitive partial matches across field
   const records = buildCatalogRecords(clips, videos, songs);
   assert.equal(records.length, 3);
 
-  const byArtist = filterCatalogRecords(records, { artist: 'artist x' });
-  assert.equal(byArtist.length, 2);
-  assert(byArtist.every((record) => record.artist === 'Artist X'));
-
-  const byComposer = filterCatalogRecords(records, { composer: 'composer y' });
-  assert.equal(byComposer.length, 1);
-  assert.equal(byComposer[0]?.composer, 'Composer Y');
-
-  const bySong = filterCatalogRecords(records, { song: 'moon' });
+  const bySong = filterCatalogRecords(records, { field: 'song', query: 'moon' });
   assert.equal(bySong.length, 1);
   assert.equal(bySong[0]?.songTitle, 'Moonlight Sonata');
 
-  const combined = filterCatalogRecords(records, { song: 'midnight', artist: 'artist x' });
-  assert.equal(combined.length, 1);
-  assert.equal(combined[0]?.songTitle, 'Midnight Dream');
+  const byArtist = filterCatalogRecords(records, { field: 'artist', query: 'artist x' });
+  assert.equal(byArtist.length, 2);
+  assert(byArtist.every((record) => record.artist === 'Artist X'));
 
-  const noMatch = filterCatalogRecords(records, { artist: 'unknown' });
+  const byComposer = filterCatalogRecords(records, { field: 'composer', query: 'composer y' });
+  assert.equal(byComposer.length, 1);
+  assert.equal(byComposer[0]?.composer, 'Composer Y');
+
+  const noMatch = filterCatalogRecords(records, { field: 'artist', query: 'unknown' });
   assert.equal(noMatch.length, 0);
+
+  const emptyQuery = filterCatalogRecords(records, { field: 'composer', query: '   ' });
+  assert.equal(emptyQuery.length, records.length);
 });
 
 test('sortCatalogRecords orders rows by selected column and toggles direction', () => {
