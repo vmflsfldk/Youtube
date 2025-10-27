@@ -6460,6 +6460,17 @@ export default function App() {
           );
         })}
       </nav>
+      <footer className="app-footer">
+        <small>
+          문의 및 오류 제보는{' '}
+          <a href="https://x.com/utahuboffcial" target="_blank" rel="noopener noreferrer">
+            X의 @utahuboffcial
+          </a>{' '}
+          또는{' '}
+          <a href="mailto:utahubcs@gmail.com">utahubcs@gmail.com</a>
+          으로 부탁드립니다.
+        </small>
+      </footer>
       </div>
       <PlaylistBar
         items={playbackBarItems}
