@@ -1,5 +1,6 @@
 import { FormEvent, useId } from 'react';
 import GoogleLoginButton from './GoogleLoginButton';
+import { useTranslations } from '../locales/translations';
 
 type AuthPanelProps = {
   className?: string;
@@ -35,40 +36,48 @@ export default function AuthPanel({
   shouldAutoPromptGoogle = false
 }: AuthPanelProps) {
   const nicknameInputId = useId();
+  const translate = useTranslations();
+  const sectionLabel = isAuthenticated
+    ? translate('auth.sectionLabelAuthenticated')
+    : translate('auth.sectionLabelGuest');
+  const heading = isAuthenticated
+    ? translate('auth.headingAuthenticated')
+    : translate('auth.headingGuest');
+  const description = isAuthenticated
+    ? translate('auth.descriptionAuthenticated')
+    : translate('auth.descriptionGuest');
 
   return (
     <section
       className={`auth-panel sidebar__auth-card${className ? ` ${className}` : ''}`}
-      aria-label={isAuthenticated ? '계정 관리' : '로그인 안내'}
+      aria-label={sectionLabel}
       tabIndex={-1}
     >
       <div className="sidebar__auth-header">
-        <h2>{isAuthenticated ? '내 계정' : '로그인'}</h2>
-        <p>
-          {isAuthenticated
-            ? '닉네임을 바로 수정하고 계정을 관리하세요.'
-            : '아티스트 관리를 위해 Google 계정으로 로그인하세요.'}
-        </p>
+        <h2>{heading}</h2>
+        <p>{description}</p>
       </div>
       {isAuthenticated ? (
         <div className="sidebar__auth-content">
           <p className="login-status__message">{greetingMessage}</p>
-          {isLoadingUser && <p className="sidebar__auth-muted">사용자 정보를 불러오는 중...</p>}
+          {isLoadingUser && (
+            <p className="sidebar__auth-muted">{translate('auth.greetingLoading')}</p>
+          )}
           <form className="stacked-form sidebar__nickname-form" onSubmit={onNicknameSubmit}>
-            <label htmlFor={nicknameInputId}>닉네임</label>
+            <label htmlFor={nicknameInputId}>{translate('auth.nicknameLabel')}</label>
             <input
               id={nicknameInputId}
-              placeholder="닉네임"
+              placeholder={translate('auth.nicknamePlaceholder')}
               value={nicknameInput}
               onChange={(event) => onNicknameInputChange(event.target.value)}
             />
-            <button type="submit">닉네임 저장</button>
+            <button type="submit">{translate('auth.nicknameSave')}</button>
           </form>
           {nicknameStatus && <p className="login-status__message">{nicknameStatus}</p>}
           {nicknameError && <p className="login-status__message error">{nicknameError}</p>}
           <div className="sidebar__auth-actions">
             <button type="button" onClick={onSignOut} className="sidebar__auth-button">
-              로그아웃
+              {translate('auth.signOut')}
             </button>
           </div>
         </div>
@@ -82,10 +91,10 @@ export default function AuthPanel({
                 autoPrompt={shouldAutoPromptGoogle}
               />
             ) : (
-              <span className="sidebar__auth-muted">구글 로그인 준비 중...</span>
+              <span className="sidebar__auth-muted">{translate('auth.googleLoading')}</span>
             )}
           </div>
-          <p className="sidebar__auth-muted">Google 계정으로 로그인 후 전체 기능을 이용할 수 있습니다.</p>
+          <p className="sidebar__auth-muted">{translate('auth.googleDescription')}</p>
         </div>
       )}
     </section>
