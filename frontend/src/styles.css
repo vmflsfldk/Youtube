@@ -2139,15 +2139,10 @@ button:disabled:hover {
   gap: 20px;
 }
 
-.artist-library__mobile-header {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  padding: 24px 20px 22px;
-  border-radius: 32px;
-  background: linear-gradient(180deg, rgba(12, 19, 33, 0.92) 0%, rgba(7, 13, 24, 0.96) 100%);
-  border: 1px solid rgba(37, 58, 99, 0.52);
-  box-shadow: 0 28px 60px rgba(2, 6, 23, 0.55);
+.artist-library--mobile .artist-library__mobile-topbar,
+.artist-library--mobile .artist-library__mobile-tabs,
+.artist-library--mobile .artist-library__mobile-context {
+  width: 100%;
 }
 
 .artist-library__mobile-topbar {

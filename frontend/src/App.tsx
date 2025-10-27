@@ -5098,7 +5098,7 @@ export default function App() {
             <div className="panel media-panel">
               <div className={`artist-library${isMobileViewport ? ' artist-library--mobile' : ''}`}>
                 {isMobileViewport ? (
-                  <div className="artist-library__mobile-header">
+                  <>
                     <div className="artist-library__mobile-topbar">
                       <div className="artist-library__mobile-icon" aria-hidden="true">
                         <span aria-hidden="true">☰</span>
@@ -5154,7 +5154,7 @@ export default function App() {
                     <p className="artist-library__mobile-description visually-hidden">
                       전체 이용자가 확인할 수 있는 공개 목록입니다.
                     </p>
-                  </div>
+                  </>
                 ) : (
                   <div className="artist-library__header">
                     <div>
