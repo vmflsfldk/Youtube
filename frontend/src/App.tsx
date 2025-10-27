@@ -47,6 +47,22 @@ const VIDEO_CATEGORY_ORDER = ['cover', 'live', 'original'] as const;
 type VideoCategoryKey = (typeof VIDEO_CATEGORY_ORDER)[number];
 type VideoCategorySelection = '' | VideoCategoryKey;
 
+const LATEST_VIDEO_LIMIT = 6;
+const LATEST_CLIP_LIMIT = 8;
+
+const resolveDescendingSortValue = (
+  createdAt: string | null | undefined,
+  fallback: number
+): number => {
+  if (typeof createdAt === 'string') {
+    const timestamp = Date.parse(createdAt);
+    if (!Number.isNaN(timestamp)) {
+      return timestamp;
+    }
+  }
+  return fallback;
+};
+
 const VIDEO_CATEGORY_LABELS: Record<VideoCategoryKey, string> = {
   cover: '커버',
   live: '라이브',
@@ -693,11 +709,19 @@ interface ClipResponse {
   artistYoutubeChannelId?: string | null;
   artistYoutubeChannelTitle?: string | null;
   artistProfileImageUrl?: string | null;
+  hidden?: boolean;
+  createdAt?: string | null;
+  updatedAt?: string | null;
 }
 
 type PlaylistEntry =
   | { type: 'video'; itemId: number; video: VideoResponse }
   | { type: 'clip'; itemId: number; clip: ClipResponse; parentVideo: VideoResponse | null };
+
+type LatestClipEntry = {
+  clip: ClipResponse;
+  parentVideo: VideoResponse | null;
+};
 
 type PlaylistVisibility = 'PRIVATE' | 'UNLISTED' | 'PUBLIC';
 
@@ -967,7 +991,7 @@ const normalizePlaylist = (playlist: PlaylistLike): PlaylistResponse => {
   };
 };
 
-type SectionKey = 'library' | 'catalog' | 'playlist';
+type SectionKey = 'library' | 'latest' | 'catalog' | 'playlist';
 
 const allowCrossOriginApi = String(import.meta.env.VITE_ALLOW_CROSS_ORIGIN_API ?? '')
   .toLowerCase()
@@ -1293,6 +1317,44 @@ export default function App() {
   const libraryVideos = isAuthenticated ? videos : publicVideos;
   const librarySongVideos = isAuthenticated ? songVideos : publicSongVideos;
   const libraryClips = isAuthenticated ? clips : publicClips;
+  const libraryVideoMap = useMemo(() => {
+    const map = new Map<number, VideoResponse>();
+    libraryVideos.forEach((video) => {
+      map.set(video.id, video);
+    });
+    return map;
+  }, [libraryVideos]);
+  const latestVideos = useMemo(() => {
+    const filtered = libraryVideos.filter(
+      (video) => video.hidden !== true && !hiddenVideoIdSet.has(video.id)
+    );
+    const sorted = [...filtered].sort((a, b) => {
+      const diff =
+        resolveDescendingSortValue(b.createdAt ?? null, b.id) -
+        resolveDescendingSortValue(a.createdAt ?? null, a.id);
+      if (diff !== 0) {
+        return diff;
+      }
+      return b.id - a.id;
+    });
+    return sorted.slice(0, LATEST_VIDEO_LIMIT);
+  }, [libraryVideos, hiddenVideoIdSet]);
+  const latestClipEntries = useMemo<LatestClipEntry[]>(() => {
+    const filtered = libraryClips.filter((clip) => clip.hidden !== true);
+    const sorted = [...filtered].sort((a, b) => {
+      const diff =
+        resolveDescendingSortValue(b.createdAt ?? null, b.id) -
+        resolveDescendingSortValue(a.createdAt ?? null, a.id);
+      if (diff !== 0) {
+        return diff;
+      }
+      return b.id - a.id;
+    });
+    return sorted.slice(0, LATEST_CLIP_LIMIT).map((clip) => ({
+      clip,
+      parentVideo: libraryVideoMap.get(clip.videoId) ?? null
+    }));
+  }, [libraryClips, libraryVideoMap]);
   const [videoSubmissionStatus, setVideoSubmissionStatus] = useState<
     { type: 'success' | 'info' | 'error'; message: string }
   | null
@@ -3545,6 +3607,23 @@ export default function App() {
     setActiveLibraryView('clipList');
     scrollToSectionWithFrame(clipListSectionRef);
   }, [setActiveLibraryView, scrollToSectionWithFrame]);
+  const openVideoInLibrary = useCallback(
+    (videoId: number) => {
+      setActiveSection('library');
+      setActiveLibraryView('videoList');
+      handleLibraryVideoSelect(videoId);
+    },
+    [handleLibraryVideoSelect, setActiveLibraryView, setActiveSection]
+  );
+  const openClipInLibrary = useCallback(
+    (clipId: number) => {
+      setActiveSection('library');
+      setActiveLibraryView('clipList');
+      setActiveClipId(clipId);
+      resetClipEditForm();
+    },
+    [resetClipEditForm, setActiveClipId, setActiveLibraryView, setActiveSection]
+  );
   const handleArtistProfileTagRemove = useCallback(
     (tag: string) => {
       const updatedTags = artistProfileTags.filter((existingTag) => existingTag !== tag);
@@ -4795,6 +4874,21 @@ export default function App() {
         )
       },
       {
+        id: 'latest',
+        label: translate('nav.latest.label'),
+        description: translate('nav.latest.description'),
+        icon: (
+          <svg viewBox="0 0 24 24" role="presentation" aria-hidden="true">
+            <path
+              d="M12 3a8 8 0 1 0 0 16 1 1 0 0 0 0-2 6 6 0 1 1 6-6 1 1 0 1 0 2 0 8 8 0 0 0-8-8Z"
+              fill="currentColor"
+            />
+            <path d="M12.75 6.5h-1.5v4.6l3.36 2-.72 1.2L11 12.3V6.5Z" fill="currentColor" />
+            <path d="M15.5 12h4.2l-1.84 3H20l-4.8 7.2.66-4.7H14Z" fill="currentColor" />
+          </svg>
+        )
+      },
+      {
         id: 'catalog',
         label: translate('nav.catalog.label'),
         description: translate('nav.catalog.description'),
@@ -5224,6 +5318,255 @@ export default function App() {
         )}
 
         <div className="content-panels">
+
+          <section
+            className={`content-panel${activeSection === 'latest' ? ' active' : ''}`}
+            role="tabpanel"
+            aria-labelledby="sidebar-tab-latest"
+            hidden={activeSection !== 'latest'}
+          >
+            <div className="panel latest-panel">
+              <div className="latest-panel__header">
+                <h2>{translate('latest.panel.heading')}</h2>
+                <p>{translate('latest.panel.description')}</p>
+              </div>
+              <div className="latest-panel__grid">
+                <article className="latest-block latest-block--videos">
+                  <div className="latest-block__header">
+                    <h3>{translate('latest.panel.videosHeading')}</h3>
+                  </div>
+                  {latestVideos.length > 0 ? (
+                    <ul className="latest-video-grid">
+                      {latestVideos.map((video) => {
+                        const videoThumbnail =
+                          video.thumbnailUrl ||
+                          (video.youtubeVideoId
+                            ? `https://img.youtube.com/vi/${video.youtubeVideoId}/hqdefault.jpg`
+                            : null);
+                        const rawVideoTitle =
+                          video.title ||
+                          video.youtubeVideoId ||
+                          translate('latest.panel.videoFallbackTitle');
+                        const videoTitle =
+                          formatSongTitle(video.title, { fallback: rawVideoTitle }) ||
+                          translate('latest.panel.videoFallbackTitle');
+                        const videoArtistName =
+                          (
+                            video.artistDisplayName ??
+                            video.artistName ??
+                            video.artistYoutubeChannelTitle ??
+                            ''
+                          ).trim() || translate('catalog.fallback.artist');
+                        const metaSummary = formatVideoMetaSummary(video, { includeDuration: false });
+                        const addedLabel =
+                          typeof video.createdAt === 'string'
+                            ? formatTimestamp(video.createdAt)
+                            : null;
+                        const youtubeUrl = video.youtubeVideoId
+                          ? `https://www.youtube.com/watch?v=${video.youtubeVideoId}`
+                          : null;
+                        return (
+                          <li key={`latest-video-${video.id}`} className="latest-video-card">
+                            <button
+                              type="button"
+                              className="latest-video-card__main"
+                              onClick={() => openVideoInLibrary(video.id)}
+                              aria-label={`${translate('latest.panel.viewInLibrary')} · ${videoTitle}`}
+                            >
+                              <div className="latest-video-card__thumbnail">
+                                {videoThumbnail ? (
+                                  <img
+                                    src={videoThumbnail}
+                                    alt={`${videoTitle} ${translate('latest.panel.thumbnailAltSuffix')}`}
+                                    loading="lazy"
+                                    decoding="async"
+                                  />
+                                ) : (
+                                  <div
+                                    className="latest-video-card__thumbnail-placeholder"
+                                    aria-hidden="true"
+                                  >
+                                    {translate('latest.panel.thumbnailPlaceholder')}
+                                  </div>
+                                )}
+                              </div>
+                              <div className="latest-video-card__body">
+                                <h4 className="latest-video-card__title">{videoTitle}</h4>
+                                <div className="latest-video-card__meta">
+                                  <span className="latest-video-card__artist">{videoArtistName}</span>
+                                  {metaSummary && (
+                                    <span className="latest-video-card__summary">{metaSummary}</span>
+                                  )}
+                                  {addedLabel && (
+                                    <span className="latest-video-card__timestamp">
+                                      {translate('latest.panel.addedAt')} {addedLabel}
+                                    </span>
+                                  )}
+                                </div>
+                                <span className="latest-video-card__cta">
+                                  {translate('latest.panel.viewInLibrary')}
+                                </span>
+                              </div>
+                            </button>
+                            <div className="latest-video-card__actions">
+                              {youtubeUrl ? (
+                                <a
+                                  className="latest-video-card__action latest-video-card__action--link"
+                                  href={youtubeUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                >
+                                  {translate('latest.panel.openOnYoutube')}
+                                </a>
+                              ) : (
+                                <span className="latest-video-card__action latest-video-card__action--placeholder">
+                                  {translate('latest.panel.openOnYoutube')}
+                                </span>
+                              )}
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  ) : (
+                    <p className="latest-empty" role="status">
+                      {translate('latest.panel.videosEmpty')}
+                    </p>
+                  )}
+                </article>
+                <article className="latest-block latest-block--clips">
+                  <div className="latest-block__header">
+                    <h3>{translate('latest.panel.clipsHeading')}</h3>
+                  </div>
+                  {latestClipEntries.length > 0 ? (
+                    <ul className="latest-clip-list">
+                      {latestClipEntries.map(({ clip, parentVideo }) => {
+                        const clipThumbnail =
+                          clip.thumbnailUrl ||
+                          (clip.youtubeVideoId
+                            ? `https://img.youtube.com/vi/${clip.youtubeVideoId}/hqdefault.jpg`
+                            : null);
+                        const rawClipTitle =
+                          clip.title ||
+                          clip.sectionTitle ||
+                          clip.youtubeChapterTitle ||
+                          clip.description ||
+                          clip.youtubeVideoId ||
+                          clip.videoTitle ||
+                          translate('catalog.fallback.clip');
+                        const clipTitle =
+                          formatSongTitle(clip.title, { tags: clip.tags, fallback: rawClipTitle }) ||
+                          translate('catalog.fallback.clip');
+                        const clipArtistName =
+                          (
+                            clip.artistDisplayName ??
+                            clip.artistName ??
+                            parentVideo?.artistDisplayName ??
+                            parentVideo?.artistName ??
+                            parentVideo?.artistYoutubeChannelTitle ??
+                            ''
+                          ).trim() || translate('catalog.fallback.artist');
+                        const clipRangeLabel = `${formatSeconds(clip.startSec)} → ${formatSeconds(clip.endSec)}`;
+                        const clipAddedLabel =
+                          typeof clip.createdAt === 'string'
+                            ? formatTimestamp(clip.createdAt)
+                            : null;
+                        const sourceTitle = parentVideo
+                          ? formatSongTitle(parentVideo.title, {
+                              fallback:
+                                parentVideo.youtubeVideoId ||
+                                translate('latest.panel.videoFallbackTitle')
+                            })
+                          : formatSongTitle(clip.videoTitle, {
+                              fallback:
+                                clip.sectionTitle ??
+                                clip.youtubeChapterTitle ??
+                                clip.description ??
+                                clip.youtubeVideoId ??
+                                translate('catalog.fallback.clip')
+                            });
+                        const clipYoutubeUrl = clip.youtubeVideoId
+                          ? `https://www.youtube.com/watch?v=${clip.youtubeVideoId}&t=${Math.floor(
+                              clip.startSec
+                            )}s`
+                          : null;
+                        return (
+                          <li key={`latest-clip-${clip.id}`} className="latest-clip">
+                            <button
+                              type="button"
+                              className="latest-clip__main"
+                              onClick={() => openClipInLibrary(clip.id)}
+                              aria-label={`${translate('latest.panel.viewInLibrary')} · ${clipTitle}`}
+                            >
+                              <div className="latest-clip__media">
+                                {clipThumbnail ? (
+                                  <img
+                                    src={clipThumbnail}
+                                    alt={`${clipTitle} ${translate('latest.panel.thumbnailAltSuffix')}`}
+                                    loading="lazy"
+                                    decoding="async"
+                                  />
+                                ) : (
+                                  <div
+                                    className="latest-clip__thumbnail latest-clip__thumbnail--placeholder"
+                                    aria-hidden="true"
+                                  >
+                                    {translate('latest.panel.thumbnailPlaceholder')}
+                                  </div>
+                                )}
+                              </div>
+                              <div className="latest-clip__body">
+                                <h4 className="latest-clip__title">{clipTitle}</h4>
+                                <div className="latest-clip__meta">
+                                  <span className="latest-clip__artist">{clipArtistName}</span>
+                                  <span className="latest-clip__range">
+                                    {translate('latest.panel.clipRange')} {clipRangeLabel}
+                                  </span>
+                                  {clipAddedLabel && (
+                                    <span className="latest-clip__timestamp">
+                                      {translate('latest.panel.addedAt')} {clipAddedLabel}
+                                    </span>
+                                  )}
+                                  {sourceTitle && (
+                                    <span className="latest-clip__source">
+                                      {translate('latest.panel.sourceVideo')} {sourceTitle}
+                                    </span>
+                                  )}
+                                </div>
+                                <span className="latest-clip__cta">
+                                  {translate('latest.panel.viewInLibrary')}
+                                </span>
+                              </div>
+                            </button>
+                            <div className="latest-clip__actions">
+                              {clipYoutubeUrl ? (
+                                <a
+                                  className="latest-clip__action latest-clip__action--link"
+                                  href={clipYoutubeUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                >
+                                  {translate('latest.panel.openOnYoutube')}
+                                </a>
+                              ) : (
+                                <span className="latest-clip__action latest-clip__action--placeholder">
+                                  {translate('latest.panel.openOnYoutube')}
+                                </span>
+                              )}
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  ) : (
+                    <p className="latest-empty" role="status">
+                      {translate('latest.panel.clipsEmpty')}
+                    </p>
+                  )}
+                </article>
+              </div>
+            </div>
+          </section>
 
           <section
             className={`content-panel${activeSection === 'library' ? ' active' : ''}`}
