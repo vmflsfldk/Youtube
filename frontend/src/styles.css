@@ -2256,6 +2256,34 @@ button:disabled:hover {
   gap: 20px;
 }
 
+@media (max-width: 640px) {
+  .panel.media-panel {
+    overflow-y: visible;
+  }
+
+  .artist-library--mobile {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  .artist-library--mobile .artist-library__scroll-region {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+
+  .artist-library--mobile .artist-library__grid-wrapper {
+    flex: 1;
+    min-height: 0;
+  }
+}
+
 .artist-library--mobile .artist-library__mobile-topbar,
 .artist-library--mobile .artist-library__mobile-tabs,
 .artist-library--mobile .artist-library__mobile-context {
