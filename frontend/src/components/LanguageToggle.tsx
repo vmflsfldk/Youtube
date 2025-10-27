@@ -1,5 +1,5 @@
 import { Locale, SUPPORTED_LOCALES, useLanguage } from '../contexts/LanguageContext';
-import { useTranslations } from '../locales/translations';
+import { TranslationKey, useTranslations } from '../locales/translations';
 
 type LanguageToggleProps = {
   className?: string;
@@ -7,6 +7,21 @@ type LanguageToggleProps = {
 };
 
 const LANGUAGE_DISPLAY_ORDER: Locale[] = SUPPORTED_LOCALES.slice();
+
+const LANGUAGE_KEY_MAP: Record<Locale, { label: TranslationKey; aria: TranslationKey }> = {
+  ko: {
+    label: 'language.option.ko',
+    aria: 'language.option.koAria'
+  },
+  ja: {
+    label: 'language.option.ja',
+    aria: 'language.option.jaAria'
+  },
+  en: {
+    label: 'language.option.en',
+    aria: 'language.option.enAria'
+  }
+};
 
 export default function LanguageToggle({ className = '', variant = 'default' }: LanguageToggleProps) {
   const { locale, setLocale } = useLanguage();
@@ -23,8 +38,7 @@ export default function LanguageToggle({ className = '', variant = 'default' }: 
     <div className={rootClassName} role="group" aria-label={translate('language.toggleLabel')}>
       {LANGUAGE_DISPLAY_ORDER.map((option) => {
         const isActive = option === locale;
-        const labelKey = option === 'ko' ? 'language.option.ko' : 'language.option.en';
-        const ariaKey = option === 'ko' ? 'language.option.koAria' : 'language.option.enAria';
+        const { label: labelKey, aria: ariaKey } = LANGUAGE_KEY_MAP[option];
         const buttonClassName = ['language-toggle__button', isActive ? 'is-active' : '']
           .filter(Boolean)
           .join(' ');
