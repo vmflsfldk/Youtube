@@ -29,6 +29,15 @@ public class Artist {
     @Column(name = "display_name")
     private String displayName;
 
+    @Column(name = "name_ko")
+    private String nameKo;
+
+    @Column(name = "name_jp")
+    private String nameJp;
+
+    @Column(name = "name_en")
+    private String nameEn;
+
     @Column(name = "youtube_channel_id", nullable = false)
     private String youtubeChannelId;
 
@@ -99,6 +108,30 @@ public class Artist {
 
     public void setDisplayName(String displayName) {
         this.displayName = displayName;
+    }
+
+    public String getNameKo() {
+        return nameKo;
+    }
+
+    public void setNameKo(String nameKo) {
+        this.nameKo = nameKo;
+    }
+
+    public String getNameJp() {
+        return nameJp;
+    }
+
+    public void setNameJp(String nameJp) {
+        this.nameJp = nameJp;
+    }
+
+    public String getNameEn() {
+        return nameEn;
+    }
+
+    public void setNameEn(String nameEn) {
+        this.nameEn = nameEn;
     }
 
     public String getYoutubeChannelId() {

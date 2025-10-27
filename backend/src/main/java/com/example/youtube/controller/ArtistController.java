@@ -52,7 +52,15 @@ public class ArtistController {
     public ArtistResponse updateProfile(@PathVariable Long artistId,
                                         @Valid @RequestBody ArtistProfileRequest request,
                                         @RequestAttribute(UserRequestInterceptor.CURRENT_USER_ATTR) UserAccount user) {
-        return artistService.updateProfile(artistId, request.tags(), request.agency(), request.names(), user);
+        return artistService.updateProfile(
+                artistId,
+                request.tags(),
+                request.agency(),
+                request.nameKo(),
+                request.nameEn(),
+                request.nameJp(),
+                request.names(),
+                user);
     }
 
     @GetMapping("/artists/search")
