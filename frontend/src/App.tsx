@@ -1284,6 +1284,7 @@ export default function App() {
   const [playbackActivationNonce, setPlaybackActivationNonce] = useState(0);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [isMobileAuthOverlayOpen, setMobileAuthOverlayOpen] = useState(false);
+  const [isMobileFilterOverlayOpen, setMobileFilterOverlayOpen] = useState(false);
   const [selectedVideo, setSelectedVideo] = useState<number | null>(null);
   const [clipCandidates, setClipCandidates] = useState<ClipCandidateResponse[]>([]);
   const libraryVideos = isAuthenticated ? videos : publicVideos;
@@ -1346,6 +1347,8 @@ export default function App() {
   const clipListSectionRef = useRef<HTMLElement | null>(null);
   const mobileAuthOverlayContentRef = useRef<HTMLDivElement | null>(null);
   const previousFocusedElementRef = useRef<HTMLElement | null>(null);
+  const mobileFilterOverlayContentRef = useRef<HTMLDivElement | null>(null);
+  const previousMobileFilterFocusedElementRef = useRef<HTMLElement | null>(null);
   const handleArtistSearchQueryChange = useCallback((value: string) => {
     setArtistSearch((previous) => {
       if (previous.query === value) {
@@ -1373,11 +1376,25 @@ export default function App() {
     });
   }, []);
 
+  const handleMobileFilterOverlayClose = useCallback(() => {
+    setMobileFilterOverlayOpen(false);
+  }, []);
+
+  const handleMobileFilterOverlayToggle = useCallback(() => {
+    setMobileFilterOverlayOpen((previous) => !previous);
+  }, []);
+
   useEffect(() => {
     if (!isMobileViewport && isMobileAuthOverlayOpen) {
       setMobileAuthOverlayOpen(false);
     }
   }, [isMobileViewport, isMobileAuthOverlayOpen]);
+
+  useEffect(() => {
+    if (!isMobileViewport && isMobileFilterOverlayOpen) {
+      setMobileFilterOverlayOpen(false);
+    }
+  }, [isMobileViewport, isMobileFilterOverlayOpen]);
 
   useEffect(() => {
     if (!isMobileAuthOverlayOpen) {
@@ -1475,6 +1492,105 @@ export default function App() {
       document.body.style.overflow = previousOverflow;
     };
   }, [isMobileAuthOverlayOpen]);
+
+  useEffect(() => {
+    if (!isMobileFilterOverlayOpen) {
+      const previouslyFocused = previousMobileFilterFocusedElementRef.current;
+      if (previouslyFocused && typeof previouslyFocused.focus === 'function') {
+        previouslyFocused.focus({ preventScroll: true });
+      }
+      previousMobileFilterFocusedElementRef.current = null;
+      return;
+    }
+
+    if (typeof document === 'undefined') {
+      return;
+    }
+
+    const contentNode = mobileFilterOverlayContentRef.current;
+    if (!contentNode) {
+      return;
+    }
+
+    const selectors = [
+      'a[href]',
+      'button:not([disabled])',
+      'textarea:not([disabled])',
+      'input:not([disabled])',
+      'select:not([disabled])',
+      '[tabindex]:not([tabindex="-1"])'
+    ].join(', ');
+
+    const getFocusableElements = () =>
+      Array.from(contentNode.querySelectorAll<HTMLElement>(selectors)).filter(
+        (element) => !element.hasAttribute('aria-hidden')
+      );
+
+    const activeElement = document.activeElement;
+    if (activeElement instanceof HTMLElement) {
+      previousMobileFilterFocusedElementRef.current = activeElement;
+    } else {
+      previousMobileFilterFocusedElementRef.current = null;
+    }
+
+    const focusFirstElement = () => {
+      const focusableElements = getFocusableElements();
+      const firstElement = focusableElements[0] ?? contentNode;
+      firstElement.focus({ preventScroll: true });
+    };
+
+    const keydownHandler = (event: globalThis.KeyboardEvent) => {
+      if (!isMobileFilterOverlayOpen) {
+        return;
+      }
+
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setMobileFilterOverlayOpen(false);
+        return;
+      }
+
+      if (event.key !== 'Tab') {
+        return;
+      }
+
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) {
+        event.preventDefault();
+        contentNode.focus({ preventScroll: true });
+        return;
+      }
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+      const currentActive = document.activeElement as HTMLElement | null;
+
+      if (!event.shiftKey && currentActive === lastElement) {
+        event.preventDefault();
+        firstElement.focus({ preventScroll: true });
+        return;
+      }
+
+      if (event.shiftKey && currentActive === firstElement) {
+        event.preventDefault();
+        lastElement.focus({ preventScroll: true });
+      }
+    };
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const focusTimeout = window.setTimeout(focusFirstElement, 0);
+    document.addEventListener('keydown', keydownHandler);
+
+    return () => {
+      document.removeEventListener('keydown', keydownHandler);
+      window.clearTimeout(focusTimeout);
+      if (!isMobileAuthOverlayOpen) {
+        document.body.style.overflow = previousOverflow;
+      }
+    };
+  }, [isMobileFilterOverlayOpen, isMobileAuthOverlayOpen]);
   useEffect(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
       return;
@@ -5106,20 +5222,124 @@ export default function App() {
                       <div className="artist-library__mobile-logo" aria-hidden="true">
                         <img src={utahubLogo} alt="" />
                       </div>
-                      <button
-                        type="button"
-                        className="mobile-auth-trigger"
-                        aria-label={isAuthenticated ? '계정 관리 열기' : '로그인 패널 열기'}
-                        aria-haspopup="dialog"
-                        aria-expanded={isMobileAuthOverlayOpen}
-                        aria-controls="mobileAuthDialog"
-                        onClick={() => setMobileAuthOverlayOpen(true)}
-                      >
-                        <span aria-hidden="true" className="mobile-auth-trigger__icon">
-                          🔐
-                        </span>
-                      </button>
+                      <div className="artist-library__mobile-actions">
+                        <button
+                          type="button"
+                          className={`artist-library__filter-trigger${
+                            isMobileFilterOverlayOpen ? ' is-active' : ''
+                          }`}
+                          aria-label={isMobileFilterOverlayOpen ? '필터 닫기' : '필터 열기'}
+                          aria-haspopup="dialog"
+                          aria-expanded={isMobileFilterOverlayOpen}
+                          aria-controls="mobileArtistFilterDialog"
+                          onClick={handleMobileFilterOverlayToggle}
+                        >
+                          <span aria-hidden="true" className="artist-library__filter-trigger-icon">
+                            🎚️
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          className="mobile-auth-trigger"
+                          aria-label={isAuthenticated ? '계정 관리 열기' : '로그인 패널 열기'}
+                          aria-haspopup="dialog"
+                          aria-expanded={isMobileAuthOverlayOpen}
+                          aria-controls="mobileAuthDialog"
+                          onClick={() => setMobileAuthOverlayOpen(true)}
+                        >
+                          <span aria-hidden="true" className="mobile-auth-trigger__icon">
+                            🔐
+                          </span>
+                        </button>
+                      </div>
                     </div>
+                    {isMobileFilterOverlayOpen && (
+                      <div className="mobile-filter-overlay">
+                        <div
+                          className="mobile-filter-overlay__backdrop"
+                          role="presentation"
+                          onClick={handleMobileFilterOverlayClose}
+                        />
+                        <div
+                          className="mobile-filter-overlay__content"
+                          role="dialog"
+                          aria-modal="true"
+                          aria-labelledby="mobileArtistFilterTitle"
+                          id="mobileArtistFilterDialog"
+                          ref={mobileFilterOverlayContentRef}
+                          tabIndex={-1}
+                        >
+                          <button
+                            type="button"
+                            className="mobile-filter-overlay__close"
+                            onClick={handleMobileFilterOverlayClose}
+                            aria-label="필터 닫기"
+                          >
+                            <span aria-hidden="true">×</span>
+                          </button>
+                          <div className="mobile-filter-overlay__header">
+                            <h3 id="mobileArtistFilterTitle">검색 및 필터</h3>
+                            <p className="mobile-filter-overlay__description">
+                              아티스트 검색과 필터를 설정하세요.
+                            </p>
+                          </div>
+                          <div className="mobile-filter-overlay__body">
+                            <div className="artist-directory__search-group">
+                              <ArtistSearchControls
+                                query={artistSearch.query}
+                                mode={artistSearch.mode}
+                                onQueryChange={handleArtistSearchQueryChange}
+                                onModeChange={handleArtistSearchModeChange}
+                                onClear={handleArtistSearchClear}
+                              />
+                            </div>
+                            <div className="artist-directory__filter-group">
+                              <div className="artist-directory__filter">
+                                <label htmlFor="artistCountryFilterMobile">서비스 국가</label>
+                                <select
+                                  id="artistCountryFilterMobile"
+                                  value={artistCountryFilter}
+                                  onChange={(event) =>
+                                    setArtistCountryFilter(event.target.value as 'all' | ArtistCountryKey)
+                                  }
+                                >
+                                  <option value="all">전체</option>
+                                  {ARTIST_COUNTRY_METADATA.map((country) => (
+                                    <option key={country.key} value={country.key}>
+                                      {country.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div className="artist-directory__filter">
+                                <label htmlFor="artistAgencyFilterMobile">소속사</label>
+                                <select
+                                  id="artistAgencyFilterMobile"
+                                  value={artistAgencyFilter}
+                                  onChange={(event) => setArtistAgencyFilter(event.target.value)}
+                                >
+                                  <option value="all">전체</option>
+                                  {artistAgencies.map((agency) => (
+                                    <option key={agency} value={agency}>
+                                      {agency}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="mobile-filter-overlay__footer">
+                            <button
+                              type="button"
+                              className="mobile-filter-overlay__action"
+                              onClick={handleMobileFilterOverlayClose}
+                            >
+                              필터 적용
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                     <div className="artist-library__mobile-tabs" role="group" aria-label="콘텐츠 전환">
                       {mobileArtistTabs.map((tab) => {
                         const isActiveTab = activeSection === tab.id;
