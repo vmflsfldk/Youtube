@@ -308,6 +308,134 @@ body {
   box-shadow: none;
 }
 
+.mobile-filter-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 32px 20px 20px;
+}
+
+.mobile-filter-overlay__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.82);
+  backdrop-filter: blur(12px);
+}
+
+.mobile-filter-overlay__content {
+  position: relative;
+  z-index: 1;
+  width: min(520px, 100%);
+  max-height: calc(100vh - 80px);
+  overflow-y: auto;
+  border-radius: 26px 26px 0 0;
+  padding: 28px 24px 24px;
+  background: linear-gradient(180deg, rgba(14, 23, 41, 0.98) 0%, rgba(7, 13, 24, 0.98) 100%);
+  border: 1px solid rgba(59, 130, 246, 0.32);
+  box-shadow: 0 40px 90px rgba(2, 6, 23, 0.7);
+}
+
+.mobile-filter-overlay__content:focus {
+  outline: none;
+}
+
+.mobile-filter-overlay__close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 38px;
+  height: 38px;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.75);
+  color: rgba(226, 232, 240, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.mobile-filter-overlay__close:hover {
+  background: rgba(30, 41, 59, 0.88);
+}
+
+.mobile-filter-overlay__close:active {
+  transform: scale(0.95);
+}
+
+.mobile-filter-overlay__close:focus-visible {
+  outline: 2px solid rgba(99, 102, 241, 0.65);
+  outline-offset: 2px;
+}
+
+.mobile-filter-overlay__header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-right: 44px;
+}
+
+.mobile-filter-overlay__header h3 {
+  font-size: 1.15rem;
+  color: var(--color-text-primary);
+  margin: 0;
+}
+
+.mobile-filter-overlay__description {
+  font-size: 0.9rem;
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+.mobile-filter-overlay__body {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  margin-top: 24px;
+}
+
+.mobile-filter-overlay__body .artist-directory__filter-group {
+  display: grid;
+  gap: 16px;
+}
+
+.mobile-filter-overlay__footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 24px;
+}
+
+.mobile-filter-overlay__action {
+  appearance: none;
+  border: none;
+  border-radius: 14px;
+  padding: 0.75rem 1.6rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: rgba(226, 232, 240, 0.92);
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.85), rgba(37, 99, 235, 0.72));
+  box-shadow: 0 20px 36px rgba(37, 99, 235, 0.35);
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.mobile-filter-overlay__action:hover {
+  box-shadow: 0 24px 42px rgba(37, 99, 235, 0.45);
+}
+
+.mobile-filter-overlay__action:active {
+  transform: translateY(1px);
+}
+
+.mobile-filter-overlay__action:focus-visible {
+  outline: 2px solid rgba(226, 232, 240, 0.9);
+  outline-offset: 2px;
+}
+
 .clip-player {
   position: relative;
   width: 100%;
@@ -2151,6 +2279,56 @@ button:disabled:hover {
   justify-content: space-between;
 }
 
+.artist-library__mobile-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.artist-library__filter-trigger {
+  appearance: none;
+  border: none;
+  background: rgba(10, 18, 30, 0.88);
+  border-radius: 18px;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(226, 232, 240, 0.9);
+  font-size: 1.05rem;
+  box-shadow: 0 18px 32px rgba(15, 23, 42, 0.48);
+  border: 1px solid rgba(59, 130, 246, 0.24);
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.artist-library__filter-trigger:hover {
+  background: rgba(21, 34, 55, 0.92);
+  box-shadow: 0 22px 38px rgba(15, 23, 42, 0.6);
+}
+
+.artist-library__filter-trigger:active {
+  transform: scale(0.95);
+}
+
+.artist-library__filter-trigger:focus-visible {
+  outline: 2px solid rgba(99, 102, 241, 0.65);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.3);
+}
+
+.artist-library__filter-trigger.is-active {
+  background: rgba(37, 56, 94, 0.95);
+  box-shadow: 0 24px 42px rgba(37, 56, 94, 0.55);
+  border-color: rgba(99, 102, 241, 0.42);
+}
+
+.artist-library__filter-trigger-icon {
+  line-height: 1;
+  transform: translateY(-1px);
+}
+
 .artist-library__mobile-icon {
   width: 44px;
   height: 44px;
@@ -2379,8 +2557,7 @@ button:disabled:hover {
   }
 
   .artist-library--mobile .artist-library__controls {
-    padding: 0 16px 20px;
-    gap: 18px;
+    display: none;
   }
 
   .artist-library--mobile .artist-directory__search-group,
@@ -2405,10 +2582,7 @@ button:disabled:hover {
 }
 
 .artist-library--mobile .artist-library__controls {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  padding: 0 20px 20px;
+  display: none;
 }
 
 .artist-library--mobile .artist-directory__search-group {
