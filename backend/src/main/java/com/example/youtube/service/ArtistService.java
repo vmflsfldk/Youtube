@@ -10,8 +10,10 @@ import com.example.youtube.model.UserAccount;
 import com.example.youtube.repository.ArtistRepository;
 import com.example.youtube.repository.UserAccountRepository;
 import jakarta.persistence.EntityNotFoundException;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,12 +38,16 @@ public class ArtistService {
         ChannelMetadata channelMetadata = channelMetadataProvider.fetch(request.youtubeChannelId());
         String metadataTitle = channelMetadata.title();
 
-        List<LocalizedTextRequest> nameRequests = request.names();
-        if (nameRequests == null || nameRequests.isEmpty()) {
+        Map<String, String> localizedNames = createLocalizedNameMap(
+                request.names(),
+                request.nameKo(),
+                request.nameEn(),
+                request.nameJp());
+        if (localizedNames.isEmpty()) {
             throw new IllegalArgumentException("At least one name must be provided");
         }
 
-        String primaryName = nameRequests.get(0).value().trim();
+        String primaryName = determinePrimaryName(localizedNames, request.names());
         String displayName = metadataTitle != null && !metadataTitle.isBlank() ? metadataTitle : primaryName;
 
         Artist artist = new Artist(
@@ -54,7 +60,7 @@ public class ArtistService {
                 request.availableJp());
         artist.setTags(normalizeTags(request.tags()));
         artist.setAgency(trimToNull(request.agency()));
-        artist.setNames(toArtistNames(artist, nameRequests));
+        applyLocalizedNames(artist, localizedNames);
         String profileImageUrl = channelMetadata.profileImageUrl();
         if (metadataTitle != null && !metadataTitle.isBlank()) {
             artist.setYoutubeChannelTitle(metadataTitle);
@@ -70,6 +76,9 @@ public class ArtistService {
     public ArtistResponse updateProfile(Long artistId,
                                         List<String> tags,
                                         String agency,
+                                        String nameKo,
+                                        String nameEn,
+                                        String nameJp,
                                         List<LocalizedTextRequest> names,
                                         UserAccount user) {
         Artist artist = artistRepository.findById(artistId)
@@ -77,11 +86,29 @@ public class ArtistService {
 
         artist.setTags(normalizeTags(tags));
         artist.setAgency(trimToNull(agency));
-        if (names != null && !names.isEmpty()) {
-            artist.setNames(toArtistNames(artist, names));
-            String primaryName = names.get(0).value().trim();
-            artist.setName(primaryName);
-            artist.setDisplayName(primaryName);
+        boolean updatesLocalizedNames = names != null || nameKo != null || nameEn != null || nameJp != null;
+        if (updatesLocalizedNames) {
+            Map<String, String> localizedNames;
+            if (names != null) {
+                localizedNames = createLocalizedNameMap(names, null, null, null);
+            } else {
+                localizedNames = toLocalizedNameMap(artist.getNames());
+            }
+            localizedNames = new LinkedHashMap<>(localizedNames);
+
+            applyLocalizedOverride(localizedNames, "ko", nameKo);
+            applyLocalizedOverride(localizedNames, "en", nameEn);
+            applyLocalizedOverride(localizedNames, "ja", nameJp);
+
+            applyLocalizedNames(artist, localizedNames);
+
+            if (!localizedNames.isEmpty()) {
+                String primaryName = determinePrimaryName(localizedNames, names);
+                if (primaryName != null) {
+                    artist.setName(primaryName);
+                    artist.setDisplayName(primaryName);
+                }
+            }
         }
         Artist saved = artistRepository.save(artist);
         return map(saved);
@@ -158,6 +185,9 @@ public class ArtistService {
                 resolved.getId(),
                 resolved.getName(),
                 resolved.getDisplayName(),
+                resolved.getNameKo(),
+                resolved.getNameEn(),
+                resolved.getNameJp(),
                 resolved.getYoutubeChannelId(),
                 resolved.getYoutubeChannelTitle(),
                 resolved.getProfileImageUrl(),
@@ -212,14 +242,11 @@ public class ArtistService {
         return value == null || value.isBlank();
     }
 
-    private List<ArtistName> toArtistNames(Artist artist, List<LocalizedTextRequest> names) {
-        if (names == null) {
-            return List.of();
-        }
-        return names.stream()
-                .filter(name -> name != null && name.value() != null && !name.value().isBlank())
-                .map(name -> new ArtistName(artist, normalizeLanguageCode(name.languageCode()), name.value().trim()))
-                .collect(Collectors.toList());
+    private void applyLocalizedNames(Artist artist, Map<String, String> localizedNames) {
+        artist.setNameKo(localizedNames.get("ko"));
+        artist.setNameEn(localizedNames.get("en"));
+        artist.setNameJp(localizedNames.get("ja"));
+        artist.setNames(toArtistNames(artist, localizedNames));
     }
 
     private List<LocalizedTextResponse> mapNames(List<ArtistName> names) {
@@ -231,6 +258,85 @@ public class ArtistService {
                 .collect(Collectors.toList());
     }
 
+    private List<ArtistName> toArtistNames(Artist artist, Map<String, String> localizedNames) {
+        if (localizedNames == null || localizedNames.isEmpty()) {
+            return List.of();
+        }
+        return localizedNames.entrySet().stream()
+                .filter(entry -> entry.getValue() != null && !entry.getValue().isBlank())
+                .map(entry -> new ArtistName(artist, normalizeLanguageCode(entry.getKey()), entry.getValue().trim()))
+                .collect(Collectors.toList());
+    }
+
+    private Map<String, String> createLocalizedNameMap(List<LocalizedTextRequest> names,
+                                                       String nameKo,
+                                                       String nameEn,
+                                                       String nameJp) {
+        Map<String, String> localizedNames = new LinkedHashMap<>();
+        if (names != null) {
+            for (LocalizedTextRequest name : names) {
+                if (name == null || name.value() == null || name.value().isBlank()) {
+                    continue;
+                }
+                String language = normalizeLanguageCode(name.languageCode());
+                localizedNames.put(language, name.value().trim());
+            }
+        }
+        applyLocalizedOverride(localizedNames, "ko", nameKo);
+        applyLocalizedOverride(localizedNames, "en", nameEn);
+        applyLocalizedOverride(localizedNames, "ja", nameJp);
+        return localizedNames;
+    }
+
+    private Map<String, String> toLocalizedNameMap(List<ArtistName> names) {
+        Map<String, String> map = new LinkedHashMap<>();
+        if (names != null) {
+            for (ArtistName name : names) {
+                if (name.getValue() != null) {
+                    map.put(normalizeLanguageCode(name.getLanguageCode()), name.getValue());
+                }
+            }
+        }
+        return map;
+    }
+
+    private void applyLocalizedOverride(Map<String, String> localizedNames, String languageCode, String value) {
+        if (localizedNames == null) {
+            return;
+        }
+        String trimmed = trimToNull(value);
+        if (trimmed == null) {
+            localizedNames.remove(languageCode);
+        } else {
+            localizedNames.put(languageCode, trimmed);
+        }
+    }
+
+    private String determinePrimaryName(Map<String, String> localizedNames, List<LocalizedTextRequest> fallbackNames) {
+        if (localizedNames != null) {
+            if (localizedNames.containsKey("ko")) {
+                return localizedNames.get("ko");
+            }
+            if (localizedNames.containsKey("en")) {
+                return localizedNames.get("en");
+            }
+            if (localizedNames.containsKey("ja")) {
+                return localizedNames.get("ja");
+            }
+            if (!localizedNames.isEmpty()) {
+                return localizedNames.values().iterator().next();
+            }
+        }
+        if (fallbackNames != null) {
+            for (LocalizedTextRequest name : fallbackNames) {
+                if (name != null && name.value() != null && !name.value().trim().isEmpty()) {
+                    return name.value().trim();
+                }
+            }
+        }
+        return null;
+    }
+
     private String normalizeLanguageCode(String languageCode) {
         if (languageCode == null) {
             return "und";
@@ -239,7 +345,11 @@ public class ArtistService {
         if (trimmed.isEmpty()) {
             return "und";
         }
-        return trimmed.toLowerCase(Locale.ROOT);
+        String normalized = trimmed.toLowerCase(Locale.ROOT);
+        if ("jp".equals(normalized)) {
+            return "ja";
+        }
+        return normalized;
     }
 
     private String normalizeName(String value) {

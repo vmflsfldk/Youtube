@@ -16,6 +16,9 @@ public interface ArtistRepository extends JpaRepository<Artist, Long> {
             LEFT JOIN a.names n
             WHERE (:name IS NULL OR :name = '' OR LOWER(a.name) LIKE LOWER(CONCAT('%', :name, '%'))
                    OR LOWER(a.displayName) LIKE LOWER(CONCAT('%', :name, '%'))
+                   OR LOWER(a.nameKo) LIKE LOWER(CONCAT('%', :name, '%'))
+                   OR LOWER(a.nameEn) LIKE LOWER(CONCAT('%', :name, '%'))
+                   OR LOWER(a.nameJp) LIKE LOWER(CONCAT('%', :name, '%'))
                    OR LOWER(n.value) LIKE LOWER(CONCAT('%', :name, '%'))
                    OR (:normalizedName IS NOT NULL AND n.normalizedValue LIKE CONCAT('%', :normalizedName, '%')))
               AND (:tag IS NULL OR :tag = '' OR LOWER(t) LIKE LOWER(CONCAT('%', :tag, '%')))
