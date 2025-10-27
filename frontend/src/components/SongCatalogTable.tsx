@@ -1,6 +1,9 @@
 import { useMemo, useState } from 'react';
 import type { AriaAttributes } from 'react';
 
+import { DEFAULT_LOCALE } from '../contexts/LanguageContext';
+import { translate, useTranslations } from '../locales/translations';
+
 type SongCatalogClip = {
   id: number;
   title: string;
@@ -40,17 +43,27 @@ export type CatalogDisplayRecord = {
   clipValue: string;
 };
 
-const FALLBACK_ARTIST = '표기되지 않은 아티스트';
-const FALLBACK_COMPOSER = '표기되지 않은 원곡자';
-const FALLBACK_SONG = '곡 제목 미정';
-const FALLBACK_CLIP = '클립 제목 미정';
+export type CatalogFallbacks = {
+  artist: string;
+  composer: string;
+  song: string;
+  clip: string;
+};
+
+const DEFAULT_CATALOG_FALLBACKS: CatalogFallbacks = {
+  artist: translate(DEFAULT_LOCALE, 'catalog.fallback.artist'),
+  composer: translate(DEFAULT_LOCALE, 'catalog.fallback.composer'),
+  song: translate(DEFAULT_LOCALE, 'catalog.fallback.song'),
+  clip: translate(DEFAULT_LOCALE, 'catalog.fallback.clip')
+};
 
 const normalize = (value?: string | null): string => (typeof value === 'string' ? value.trim() : '');
 
 export const buildCatalogRecords = (
   clips: SongCatalogClip[],
   videos: SongCatalogVideo[],
-  songs: SongCatalogVideo[] = []
+  songs: SongCatalogVideo[] = [],
+  fallbacks: CatalogFallbacks = DEFAULT_CATALOG_FALLBACKS
 ): CatalogDisplayRecord[] => {
   const videoMap = new Map<number, SongCatalogVideo>();
   videos.forEach((video) => {
@@ -78,10 +91,10 @@ export const buildCatalogRecords = (
 
     return {
       id: clip.id,
-      artist: artistValue || FALLBACK_ARTIST,
-      composer: composerValue || FALLBACK_COMPOSER,
-      songTitle: primaryTitle || FALLBACK_SONG,
-      clipTitle: secondaryTitle || primaryTitle || FALLBACK_CLIP,
+      artist: artistValue || fallbacks.artist,
+      composer: composerValue || fallbacks.composer,
+      songTitle: primaryTitle || fallbacks.song,
+      clipTitle: secondaryTitle || primaryTitle || fallbacks.clip,
       artistValue,
       composerValue,
       songValue: primaryTitle,
@@ -108,10 +121,10 @@ export const buildCatalogRecords = (
 
       return {
         id: -Math.abs(song.id),
-        artist: artistValue || FALLBACK_ARTIST,
-        composer: composerValue || FALLBACK_COMPOSER,
-        songTitle: songTitleValue || FALLBACK_SONG,
-        clipTitle: songTitleValue || FALLBACK_CLIP,
+        artist: artistValue || fallbacks.artist,
+        composer: composerValue || fallbacks.composer,
+        songTitle: songTitleValue || fallbacks.song,
+        clipTitle: songTitleValue || fallbacks.clip,
         artistValue,
         composerValue,
         songValue: songTitleValue,
@@ -200,7 +213,22 @@ export const sortCatalogRecords = (
 };
 
 const SongCatalogTable = ({ clips, videos, songs = [] }: SongCatalogTableProps) => {
-  const records = useMemo(() => buildCatalogRecords(clips, videos, songs), [clips, songs, videos]);
+  const translateText = useTranslations();
+
+  const fallbacks = useMemo(
+    () => ({
+      artist: translateText('catalog.fallback.artist'),
+      composer: translateText('catalog.fallback.composer'),
+      song: translateText('catalog.fallback.song'),
+      clip: translateText('catalog.fallback.clip')
+    }),
+    [translateText]
+  );
+
+  const records = useMemo(
+    () => buildCatalogRecords(clips, videos, songs, fallbacks),
+    [clips, fallbacks, songs, videos]
+  );
 
   const [artistFilter, setArtistFilter] = useState('');
   const [composerFilter, setComposerFilter] = useState('');
@@ -236,61 +264,70 @@ const SongCatalogTable = ({ clips, videos, songs = [] }: SongCatalogTableProps) 
   if (records.length === 0) {
     return (
       <div className="catalog-panel__status" role="status" aria-live="polite">
-        표시할 곡이 없습니다.
+        {translateText('catalog.noRecords')}
       </div>
     );
   }
 
   return (
     <div className="song-catalog">
-      <div className="song-catalog__filters" role="search" aria-label="곡 필터">
+      <div
+        className="song-catalog__filters"
+        role="search"
+        aria-label={translateText('catalog.filtersAriaLabel')}
+      >
         <div className="song-catalog__filter">
           <label className="song-catalog__filter-label" htmlFor="song-filter">
-            곡 제목
+            {translateText('catalog.filters.songLabel')}
           </label>
           <input
             id="song-filter"
             type="search"
             value={songFilter}
             onChange={(event) => setSongFilter(event.target.value)}
-            placeholder="곡 제목 검색"
+            placeholder={translateText('catalog.filters.songPlaceholder')}
             className="song-catalog__filter-input"
           />
         </div>
         <div className="song-catalog__filter">
           <label className="song-catalog__filter-label" htmlFor="artist-filter">
-            아티스트
+            {translateText('catalog.filters.artistLabel')}
           </label>
           <input
             id="artist-filter"
             type="search"
             value={artistFilter}
             onChange={(event) => setArtistFilter(event.target.value)}
-            placeholder="아티스트 검색"
+            placeholder={translateText('catalog.filters.artistPlaceholder')}
             className="song-catalog__filter-input"
           />
         </div>
         <div className="song-catalog__filter">
           <label className="song-catalog__filter-label" htmlFor="composer-filter">
-            원곡자
+            {translateText('catalog.filters.composerLabel')}
           </label>
           <input
             id="composer-filter"
             type="search"
             value={composerFilter}
             onChange={(event) => setComposerFilter(event.target.value)}
-            placeholder="원곡자 검색"
+            placeholder={translateText('catalog.filters.composerPlaceholder')}
             className="song-catalog__filter-input"
           />
         </div>
       </div>
 
-      <div className="song-catalog__table-wrapper" role="region" aria-live="polite" aria-label="곡 카탈로그">
+      <div
+        className="song-catalog__table-wrapper"
+        role="region"
+        aria-live="polite"
+        aria-label={translateText('catalog.regionAriaLabel')}
+      >
         {filteredRecords.length === 0 ? (
-          <div className="catalog-panel__status">조건에 맞는 곡이 없습니다.</div>
+          <div className="catalog-panel__status">{translateText('catalog.noMatches')}</div>
         ) : (
           <table className="song-catalog__table">
-            <caption className="visually-hidden">곡 카탈로그</caption>
+            <caption className="visually-hidden">{translateText('catalog.tableCaption')}</caption>
             <thead>
               <tr>
                 <th scope="col" aria-sort={getAriaSort('song')}>
@@ -299,7 +336,7 @@ const SongCatalogTable = ({ clips, videos, songs = [] }: SongCatalogTableProps) 
                     className="song-catalog__sort-button"
                     onClick={() => updateSort('song')}
                   >
-                    곡 제목
+                    {translateText('catalog.columns.song')}
                     <span aria-hidden="true" className="song-catalog__sort-indicator">
                       {sortState.key === 'song' ? (sortState.direction === 'asc' ? '▲' : '▼') : '↕'}
                     </span>
@@ -311,7 +348,7 @@ const SongCatalogTable = ({ clips, videos, songs = [] }: SongCatalogTableProps) 
                     className="song-catalog__sort-button"
                     onClick={() => updateSort('clip')}
                   >
-                    클립/영상
+                    {translateText('catalog.columns.clip')}
                     <span aria-hidden="true" className="song-catalog__sort-indicator">
                       {sortState.key === 'clip' ? (sortState.direction === 'asc' ? '▲' : '▼') : '↕'}
                     </span>
@@ -323,7 +360,7 @@ const SongCatalogTable = ({ clips, videos, songs = [] }: SongCatalogTableProps) 
                     className="song-catalog__sort-button"
                     onClick={() => updateSort('artist')}
                   >
-                    아티스트
+                    {translateText('catalog.columns.artist')}
                     <span aria-hidden="true" className="song-catalog__sort-indicator">
                       {sortState.key === 'artist' ? (sortState.direction === 'asc' ? '▲' : '▼') : '↕'}
                     </span>
@@ -335,7 +372,7 @@ const SongCatalogTable = ({ clips, videos, songs = [] }: SongCatalogTableProps) 
                     className="song-catalog__sort-button"
                     onClick={() => updateSort('composer')}
                   >
-                    원곡자
+                    {translateText('catalog.columns.composer')}
                     <span aria-hidden="true" className="song-catalog__sort-indicator">
                       {sortState.key === 'composer' ? (sortState.direction === 'asc' ? '▲' : '▼') : '↕'}
                     </span>
@@ -346,10 +383,10 @@ const SongCatalogTable = ({ clips, videos, songs = [] }: SongCatalogTableProps) 
             <tbody>
               {sortedRecords.map((record) => (
                 <tr key={record.id}>
-                  <td data-title="곡 제목">{record.songTitle}</td>
-                  <td data-title="클립/영상">{record.clipTitle}</td>
-                  <td data-title="아티스트">{record.artist}</td>
-                  <td data-title="원곡자">{record.composer}</td>
+                  <td data-title={translateText('catalog.columns.song')}>{record.songTitle}</td>
+                  <td data-title={translateText('catalog.columns.clip')}>{record.clipTitle}</td>
+                  <td data-title={translateText('catalog.columns.artist')}>{record.artist}</td>
+                  <td data-title={translateText('catalog.columns.composer')}>{record.composer}</td>
                 </tr>
               ))}
             </tbody>

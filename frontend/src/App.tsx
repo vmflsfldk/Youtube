@@ -5405,7 +5405,7 @@ export default function App() {
                     )}
                     {selectedArtist && (
                       <div className="artist-library__selection">
-                        <span>선택된 아티스트</span>
+                        <span>{translate('artistDirectory.selectedLabel')}</span>
                         <strong>{selectedArtist.displayName || selectedArtist.name}</strong>
                       </div>
                     )}
@@ -5421,7 +5421,9 @@ export default function App() {
                       </div>
                       <div className="artist-directory__filter-group">
                         <div className="artist-directory__filter">
-                          <label htmlFor="artistCountryFilter">서비스 국가</label>
+                          <label htmlFor="artistCountryFilter">
+                            {translate('artistDirectory.filters.countryLabel')}
+                          </label>
                           <select
                             id="artistCountryFilter"
                             value={artistCountryFilter}
@@ -5429,7 +5431,7 @@ export default function App() {
                               setArtistCountryFilter(event.target.value as 'all' | ArtistCountryKey)
                             }
                           >
-                            <option value="all">전체</option>
+                            <option value="all">{translate('artistDirectory.filters.countryAll')}</option>
                             {ARTIST_COUNTRY_METADATA.map((country) => (
                               <option key={country.key} value={country.key}>
                                 {country.label}
@@ -5438,13 +5440,15 @@ export default function App() {
                           </select>
                         </div>
                         <div className="artist-directory__filter">
-                          <label htmlFor="artistAgencyFilter">소속사</label>
+                          <label htmlFor="artistAgencyFilter">
+                            {translate('artistDirectory.filters.agencyLabel')}
+                          </label>
                           <select
                             id="artistAgencyFilter"
                             value={artistAgencyFilter}
                             onChange={(event) => setArtistAgencyFilter(event.target.value)}
                           >
-                            <option value="all">전체</option>
+                            <option value="all">{translate('artistDirectory.filters.agencyAll')}</option>
                             {artistAgencies.map((agency) => (
                               <option key={agency} value={agency}>
                                 {agency}
@@ -5455,12 +5459,12 @@ export default function App() {
                       </div>
                     </div>
                     {noArtistsRegistered ? (
-                      <div className="artist-empty">등록된 아티스트가 없습니다.</div>
+                      <div className="artist-empty">{translate('artistDirectory.empty')}</div>
                     ) : selectedArtist ? (
                       <div className="artist-library__split-view">
                         <div className="artist-library__focused-panel">
                           <button type="button" className="artist-library__back-button" onClick={handleArtistClear}>
-                            아티스트 목록으로 돌아가기
+                            {translate('artistDirectory.back')}
                           </button>
                           <ArtistLibraryCard
                             artist={selectedArtist}
@@ -6280,10 +6284,17 @@ export default function App() {
                           </div>
                         </div>
                       )}
-                      <div className="artist-library__mobile-tabs" role="group" aria-label="콘텐츠 전환">
+                      <div
+                        className="artist-library__mobile-tabs"
+                        role="group"
+                        aria-label={translate('artistDirectory.mobileTabsAria')}
+                      >
                         {mobileArtistTabs.map((tab) => {
                           const isActiveTab = activeSection === tab.id;
-                          const tabLabel = tab.id === 'library' ? '아티스트' : '노래';
+                          const tabLabel =
+                            tab.id === 'library'
+                              ? translate('artistDirectory.mobileTab.library')
+                              : translate('artistDirectory.mobileTab.catalog');
                           return (
                             <button
                               key={`mobile-switch-${tab.id}`}
@@ -6302,17 +6313,19 @@ export default function App() {
                         <div className="artist-library__mobile-context-button" aria-hidden="true">
                           <span className="artist-library__mobile-context-value">
                             {selectedArtist
-                              ? `${selectedArtist.displayName || selectedArtist.name} 선택됨`
-                              : '전체 아티스트'}
+                              ? `${selectedArtist.displayName || selectedArtist.name} ${translate(
+                                  'artistDirectory.mobileContext.selectedSuffix'
+                                )}`
+                              : translate('artistDirectory.mobileContext.all')}
                           </span>
                           <span className="artist-library__mobile-context-icon">▾</span>
                         </div>
                       </div>
                       <h3 id="artist-library-heading" className="artist-library__mobile-title visually-hidden">
-                        아티스트 디렉토리
+                        {translate('artistDirectory.heading')}
                       </h3>
                       <p className="artist-library__mobile-description visually-hidden">
-                        전체 이용자가 확인할 수 있는 공개 목록입니다.
+                        {translate('artistDirectory.subtitle')}
                       </p>
                         <div className="artist-library__scroll-region">
                           {mainContent}
@@ -6325,15 +6338,15 @@ export default function App() {
                     <>
                       <div className="artist-library__header">
                         <div>
-                          <h3 id="artist-library-heading">아티스트 디렉토리</h3>
-                          <p className="artist-directory__subtitle">전체 이용자가 확인할 수 있는 공개 목록입니다.</p>
+                          <h3 id="artist-library-heading">{translate('artistDirectory.heading')}</h3>
+                          <p className="artist-directory__subtitle">{translate('artistDirectory.subtitle')}</p>
                         </div>
                         <button
                           type="button"
                           className="artist-library__register"
                           onClick={openArtistRegistration}
                         >
-                          아티스트 등록
+                          {translate('artistDirectory.register')}
                         </button>
                       </div>
                       {mainContent}
@@ -6354,12 +6367,12 @@ export default function App() {
             <div className="panel catalog-panel">
               {isClipsLoading ? (
                 <div className="catalog-panel__status" role="status" aria-live="polite">
-                  곡 정보를 불러오는 중입니다…
+                  {translate('catalog.loading')}
                 </div>
               ) : artistLibraryClips.length === 0 ? (
                 <div className="catalog-panel__empty-state">
-                  <h3>아직 등록된 곡 정보가 없습니다.</h3>
-                  <p>영상이나 클립을 추가하면 이곳에서 곡별 데이터를 확인할 수 있어요.</p>
+                  <h3>{translate('catalog.emptyHeading')}</h3>
+                  <p>{translate('catalog.emptyDescription')}</p>
                 </div>
               ) : (
                 <SongCatalogTable

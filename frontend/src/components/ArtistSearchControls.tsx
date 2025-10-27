@@ -1,4 +1,7 @@
+import { useMemo } from 'react';
+
 import type { ArtistSearchMode } from '../App';
+import { useTranslations } from '../locales/translations';
 
 type ArtistSearchControlsProps = {
   query: string;
@@ -8,12 +11,6 @@ type ArtistSearchControlsProps = {
   onClear: () => void;
 };
 
-const MODE_OPTIONS: Array<{ value: ArtistSearchMode; label: string }> = [
-  { value: 'all', label: '모두' },
-  { value: 'name', label: '이름' },
-  { value: 'tag', label: '태그' }
-];
-
 const ArtistSearchControls = ({
   query,
   mode,
@@ -21,9 +18,20 @@ const ArtistSearchControls = ({
   onModeChange,
   onClear
 }: ArtistSearchControlsProps) => {
+  const translate = useTranslations();
+
+  const modeOptions = useMemo(
+    () => [
+      { value: 'all' as const, label: translate('artistSearch.mode.all') },
+      { value: 'name' as const, label: translate('artistSearch.mode.name') },
+      { value: 'tag' as const, label: translate('artistSearch.mode.tag') }
+    ],
+    [translate]
+  );
+
   return (
     <div className="artist-search-controls">
-      <label htmlFor="artistDirectorySearch">아티스트 검색</label>
+      <label htmlFor="artistDirectorySearch">{translate('artistSearch.label')}</label>
       <div className="artist-search-controls__input-row">
         <div className="artist-directory__search-input-wrapper">
           <input
@@ -31,7 +39,7 @@ const ArtistSearchControls = ({
             type="search"
             value={query}
             onChange={(event) => onQueryChange(event.target.value)}
-            placeholder="이름, 채널 또는 태그 검색"
+            placeholder={translate('artistSearch.placeholder')}
             autoComplete="off"
           />
           {query && (
@@ -39,14 +47,18 @@ const ArtistSearchControls = ({
               type="button"
               className="artist-directory__search-clear"
               onClick={onClear}
-              aria-label="검색어 지우기"
+              aria-label={translate('artistSearch.clearAria')}
             >
-              지우기
+              {translate('artistSearch.clear')}
             </button>
           )}
         </div>
-        <div className="artist-search-controls__mode-toggle" role="group" aria-label="검색 범위">
-          {MODE_OPTIONS.map((option) => {
+        <div
+          className="artist-search-controls__mode-toggle"
+          role="group"
+          aria-label={translate('artistSearch.modeGroupLabel')}
+        >
+          {modeOptions.map((option) => {
             const buttonClassName = [
               'artist-search-controls__mode-button',
               option.value === mode ? 'artist-search-controls__mode-button--active' : null
