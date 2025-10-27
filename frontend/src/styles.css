@@ -760,17 +760,6 @@ body {
     gap: 24px;
   }
 
-  .content-header {
-    padding: 0;
-    background: transparent;
-    border: none;
-    box-shadow: none;
-  }
-
-  .content-header__body {
-    display: none;
-  }
-
   .mobile-appbar {
     display: none;
   }

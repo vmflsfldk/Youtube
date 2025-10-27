@@ -5144,21 +5144,23 @@ export default function App() {
       </aside>
 
       <main className="content-area">
-        <header className="content-header">
-          <div className="mobile-appbar" aria-hidden="true">
-            <div className="mobile-appbar__action-slot mobile-appbar__action-slot--leading" />
-            <div className="mobile-appbar__title">
-              <span className="mobile-appbar__brand">UtaHub</span>
-              <span className="mobile-appbar__section">{activeSidebarTab.label}</span>
+        {!isMobileViewport && (
+          <header className="content-header">
+            <div className="mobile-appbar" aria-hidden="true">
+              <div className="mobile-appbar__action-slot mobile-appbar__action-slot--leading" />
+              <div className="mobile-appbar__title">
+                <span className="mobile-appbar__brand">UtaHub</span>
+                <span className="mobile-appbar__section">{activeSidebarTab.label}</span>
+              </div>
+              <div className="mobile-appbar__action-slot mobile-appbar__action-slot--trailing" />
             </div>
-            <div className="mobile-appbar__action-slot mobile-appbar__action-slot--trailing" />
-          </div>
-          <div className="content-header__body">
-            <p className="content-header__eyebrow">UtaHub</p>
-            <h2>{activeSidebarTab.label}</h2>
-            <p className="content-header__description">{activeSidebarTab.description}</p>
-          </div>
-        </header>
+            <div className="content-header__body">
+              <p className="content-header__eyebrow">UtaHub</p>
+              <h2>{activeSidebarTab.label}</h2>
+              <p className="content-header__description">{activeSidebarTab.description}</p>
+            </div>
+          </header>
+        )}
 
         {isMobileViewport && isMobileAuthOverlayOpen && (
           <div className="mobile-auth-overlay">
