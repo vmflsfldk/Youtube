@@ -636,6 +636,67 @@ body {
   color: var(--color-text-muted);
 }
 
+.content-header__top-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.content-header__language-toggle {
+  flex-shrink: 0;
+}
+
+.language-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.65);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.3);
+  backdrop-filter: blur(10px);
+}
+
+.language-toggle__button {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: rgba(226, 232, 240, 0.85);
+  font-size: 0.82rem;
+  font-weight: 500;
+  padding: 6px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.language-toggle__button:hover {
+  color: #e2e8f0;
+}
+
+.language-toggle__button:focus-visible {
+  outline: 2px solid rgba(59, 130, 246, 0.75);
+  outline-offset: 2px;
+}
+
+.language-toggle__button.is-active {
+  background: linear-gradient(120deg, rgba(56, 189, 248, 0.85), rgba(59, 130, 246, 0.9));
+  color: #0f172a;
+  font-weight: 600;
+}
+
+.language-toggle--compact {
+  padding: 2px;
+  gap: 4px;
+}
+
+.language-toggle--compact .language-toggle__button {
+  padding: 4px 10px;
+  font-size: 0.75rem;
+}
+
 .mobile-appbar {
   display: none;
 }
@@ -676,6 +737,17 @@ body {
   justify-content: center;
   opacity: 0;
   pointer-events: none;
+}
+
+.mobile-appbar__action-slot--has-content {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.mobile-appbar__action-slot--has-content .language-toggle {
+  width: 100%;
+  justify-content: center;
+  box-shadow: none;
 }
 
 .content-panels {
@@ -2300,6 +2372,16 @@ button:disabled:hover {
   display: inline-flex;
   align-items: center;
   gap: 12px;
+}
+
+.artist-library__language-toggle {
+  display: inline-flex;
+}
+
+.artist-library__mobile-actions .language-toggle {
+  background: rgba(10, 18, 30, 0.88);
+  border-color: rgba(59, 130, 246, 0.28);
+  box-shadow: none;
 }
 
 .artist-library__filter-trigger {

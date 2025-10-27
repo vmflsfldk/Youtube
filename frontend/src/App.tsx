@@ -19,6 +19,7 @@ import PlaylistBar, {
   type PlaylistBarItem
 } from './components/PlaylistBar';
 import AuthPanel from './components/AuthPanel';
+import LanguageToggle from './components/LanguageToggle';
 import utahubLogo from './assets/utahub-logo.svg';
 import ArtistLibraryGrid from './ArtistLibraryGrid';
 import ArtistLibraryCard, { type ArtistLibraryCardData } from './components/ArtistLibraryCard';
@@ -31,6 +32,7 @@ import {
   mergeVideoIntoCollections,
   normalizeVideo
 } from './utils/videos';
+import { useTranslations } from './locales/translations';
 
 const ClipPlayer = lazy(() => import('./components/ClipPlayer'));
 
@@ -1244,6 +1246,7 @@ function PlaylistEntriesList({
 }
 
 export default function App() {
+  const translate = useTranslations();
   const [authToken, setAuthToken] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<UserResponse | null>(null);
   const [isLoadingUser, setIsLoadingUser] = useState(false);
@@ -1356,7 +1359,7 @@ export default function App() {
       }
       return { ...previous, query: value };
     });
-  }, []);
+  }, [translate]);
 
   const handleArtistSearchModeChange = useCallback((mode: ArtistSearchMode) => {
     setArtistSearch((previous) => {
@@ -4780,8 +4783,8 @@ export default function App() {
     }[] = [
       {
         id: 'library',
-        label: '아티스트 라이브러리',
-        description: '최신 아티스트 목록과 영상을 탐색하세요.',
+        label: translate('nav.library.label'),
+        description: translate('nav.library.description'),
         icon: (
           <svg viewBox="0 0 24 24" role="presentation" aria-hidden="true">
             <path
@@ -4793,8 +4796,8 @@ export default function App() {
       },
       {
         id: 'catalog',
-        label: '곡 DB',
-        description: '등록된 곡과 클립을 아티스트·원곡자 기준으로 찾아보세요.',
+        label: translate('nav.catalog.label'),
+        description: translate('nav.catalog.description'),
         icon: (
           <svg viewBox="0 0 24 24" role="presentation" aria-hidden="true">
             <path
@@ -4806,8 +4809,8 @@ export default function App() {
       },
       {
         id: 'playlist',
-        label: '영상·클립 모음',
-        description: '저장된 영상과 클립을 한눈에 확인하세요.',
+        label: translate('nav.playlist.label'),
+        description: translate('nav.playlist.description'),
         icon: (
           <svg viewBox="0 0 24 24" role="presentation" aria-hidden="true">
             <path
@@ -4820,7 +4823,7 @@ export default function App() {
     ];
 
     return tabs;
-  }, []);
+  }, [translate]);
 
   const mobileArtistTabs = useMemo(
     () => sidebarTabs.filter((tab) => tab.id === 'library' || tab.id === 'catalog'),
@@ -4828,6 +4831,16 @@ export default function App() {
   );
 
   const activeSidebarTab = sidebarTabs.find((tab) => tab.id === activeSection) ?? sidebarTabs[0];
+
+  const mobileAuthOverlayLabel = isAuthenticated
+    ? translate('mobile.auth.overlayLabelAuthenticated')
+    : translate('mobile.auth.overlayLabelGuest');
+  const mobileAuthTriggerLabel = isAuthenticated
+    ? translate('mobile.actions.authOpenAuthenticated')
+    : translate('mobile.actions.authOpenGuest');
+  const mobileFilterToggleLabel = isMobileFilterOverlayOpen
+    ? translate('mobile.actions.filterClose')
+    : translate('mobile.actions.filterOpen');
 
   const previousAuthRef = useRef(isAuthenticated);
 
@@ -5094,19 +5107,19 @@ export default function App() {
         <aside
           id="app-sidebar"
           className="sidebar"
-          aria-label="주요 탐색"
+          aria-label={translate('layout.sidebarNavLabel')}
           aria-hidden={isMobileViewport ? true : undefined}
-      >
-        <div className="sidebar__brand">
-          <div className="sidebar__logo">
-            <img src={utahubLogo} alt="UtaHub 로고" />
+        >
+          <div className="sidebar__brand">
+            <div className="sidebar__logo">
+              <img src={utahubLogo} alt={translate('layout.logoAlt')} />
+            </div>
+            <div className="sidebar__brand-copy">
+              <p className="sidebar__eyebrow">{translate('app.brand')}</p>
+              <h1>{translate('app.title')}</h1>
+            </div>
           </div>
-          <div className="sidebar__brand-copy">
-            <p className="sidebar__eyebrow">UtaHub</p>
-            <h1>UtaHub Studio</h1>
-          </div>
-        </div>
-        <AuthPanel
+          <AuthPanel
           isAuthenticated={isAuthenticated}
           greetingMessage={greetingMessage}
           isLoadingUser={isLoadingUser}
@@ -5149,13 +5162,18 @@ export default function App() {
             <div className="mobile-appbar" aria-hidden="true">
               <div className="mobile-appbar__action-slot mobile-appbar__action-slot--leading" />
               <div className="mobile-appbar__title">
-                <span className="mobile-appbar__brand">UtaHub</span>
+                <span className="mobile-appbar__brand">{translate('mobile.appbar.brand')}</span>
                 <span className="mobile-appbar__section">{activeSidebarTab.label}</span>
               </div>
-              <div className="mobile-appbar__action-slot mobile-appbar__action-slot--trailing" />
+              <div className="mobile-appbar__action-slot mobile-appbar__action-slot--trailing mobile-appbar__action-slot--has-content">
+                <LanguageToggle variant="compact" />
+              </div>
             </div>
             <div className="content-header__body">
-              <p className="content-header__eyebrow">UtaHub</p>
+              <div className="content-header__top-row">
+                <p className="content-header__eyebrow">{translate('header.eyebrow')}</p>
+                <LanguageToggle className="content-header__language-toggle" />
+              </div>
               <h2>{activeSidebarTab.label}</h2>
               <p className="content-header__description">{activeSidebarTab.description}</p>
             </div>
@@ -5173,7 +5191,7 @@ export default function App() {
               className="mobile-auth-overlay__content"
               role="dialog"
               aria-modal="true"
-              aria-label={isAuthenticated ? '계정 관리' : '로그인'}
+              aria-label={mobileAuthOverlayLabel}
               id="mobileAuthDialog"
               ref={mobileAuthOverlayContentRef}
               tabIndex={-1}
@@ -5182,7 +5200,7 @@ export default function App() {
                 type="button"
                 className="mobile-auth-overlay__close"
                 onClick={() => setMobileAuthOverlayOpen(false)}
-                aria-label="로그인 창 닫기"
+                aria-label={translate('mobile.auth.closeAriaLabel')}
               >
                 <span aria-hidden="true">×</span>
               </button>
@@ -6144,12 +6162,13 @@ export default function App() {
                           <img src={utahubLogo} alt="" />
                         </div>
                         <div className="artist-library__mobile-actions">
+                          <LanguageToggle className="artist-library__language-toggle" variant="compact" />
                           <button
                             type="button"
                             className={`artist-library__filter-trigger${
                               isMobileFilterOverlayOpen ? ' is-active' : ''
                             }`}
-                            aria-label={isMobileFilterOverlayOpen ? '필터 닫기' : '필터 열기'}
+                            aria-label={mobileFilterToggleLabel}
                             aria-haspopup="dialog"
                             aria-expanded={isMobileFilterOverlayOpen}
                             aria-controls="mobileArtistFilterDialog"
@@ -6162,7 +6181,7 @@ export default function App() {
                           <button
                             type="button"
                             className="mobile-auth-trigger"
-                            aria-label={isAuthenticated ? '계정 관리 열기' : '로그인 패널 열기'}
+                            aria-label={mobileAuthTriggerLabel}
                             aria-haspopup="dialog"
                             aria-expanded={isMobileAuthOverlayOpen}
                             aria-controls="mobileAuthDialog"
