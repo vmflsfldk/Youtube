@@ -3612,8 +3612,25 @@ export default function App() {
       setActiveSection('library');
       setActiveLibraryView('videoList');
       handleLibraryVideoSelect(videoId);
+      const video = libraryVideoMap.get(videoId);
+      if (video) {
+        const category = categorizeVideo(video);
+        setExpandedVideoCategories((previous) => ({
+          ...previous,
+          [category]: true
+        }));
+      }
+      scrollToSectionWithFrame(videoListSectionRef);
     },
-    [handleLibraryVideoSelect, setActiveLibraryView, setActiveSection]
+    [
+      handleLibraryVideoSelect,
+      libraryVideoMap,
+      scrollToSectionWithFrame,
+      setActiveLibraryView,
+      setActiveSection,
+      setExpandedVideoCategories,
+      videoListSectionRef
+    ]
   );
   const openClipInLibrary = useCallback(
     (clipId: number) => {
