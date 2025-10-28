@@ -4,6 +4,7 @@ import com.example.youtube.dto.VideoCategoryUpdateRequest;
 import com.example.youtube.dto.VideoClipSuggestionsRequest;
 import com.example.youtube.dto.VideoClipSuggestionsResponse;
 import com.example.youtube.dto.VideoCreateRequest;
+import com.example.youtube.dto.VideoMetadataUpdateRequest;
 import com.example.youtube.dto.VideoResponse;
 import com.example.youtube.service.VideoService;
 import jakarta.validation.Valid;
@@ -30,6 +31,13 @@ public class VideoController {
     @PostMapping
     public VideoResponse createVideo(@Valid @RequestBody VideoCreateRequest request) {
         return videoService.create(request);
+    }
+
+    @PatchMapping("/{id}")
+    public VideoResponse updateVideoMetadata(
+            @PathVariable("id") Long id,
+            @RequestBody VideoMetadataUpdateRequest request) {
+        return videoService.updateMetadata(id, request);
     }
 
     @PatchMapping("/{id}/category")

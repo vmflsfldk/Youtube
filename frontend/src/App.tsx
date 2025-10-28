@@ -149,6 +149,17 @@ type VideoCategoryMutationStatus =
   | { state: 'success'; message: string }
   | { state: 'error'; message: string };
 
+type VideoMetadataDraftState = {
+  title: string;
+  originalComposer: string;
+};
+
+type VideoMetadataMutationStatus =
+  | { state: 'saving' }
+  | { state: 'success'; message: string }
+  | { state: 'error'; message: string }
+  | { state: 'info'; message: string };
+
 export type ArtistSearchMode = 'all' | 'name' | 'tag';
 
 const ensureArray = <T,>(value: MaybeArray<T>): T[] => {
@@ -823,6 +834,11 @@ type ClipCreationPayload = {
   originalComposers?: LocalizedTextInput[];
 };
 
+type VideoMetadataUpdatePayload = {
+  title?: string;
+  originalComposer?: string;
+};
+
 type ArtistFormState = {
   name: string;
   channelId: string;
@@ -1405,6 +1421,12 @@ export default function App() {
   const [clipEditStatus, setClipEditStatus] = useState<ClipEditStatus | null>(null);
   const [videoCategoryStatusMap, setVideoCategoryStatusMap] = useState<
     Record<number, VideoCategoryMutationStatus>
+  >({});
+  const [videoMetadataDraftMap, setVideoMetadataDraftMap] = useState<
+    Record<number, VideoMetadataDraftState>
+  >({});
+  const [videoMetadataStatusMap, setVideoMetadataStatusMap] = useState<
+    Record<number, VideoMetadataMutationStatus>
   >({});
   const autoDetectInFlightRef = useRef(false);
   const autoDetectedVideoIdRef = useRef<number | null>(null);
@@ -2526,6 +2548,171 @@ export default function App() {
       }
     },
     [creationDisabled, http, authHeaders, applyVideoUpdate]
+  );
+
+  const openVideoMetadataEditor = useCallback(
+    (video: VideoResponse) => {
+      setVideoMetadataDraftMap((prev) => ({
+        ...prev,
+        [video.id]: {
+          title: typeof video.title === 'string' ? video.title : '',
+          originalComposer: typeof video.originalComposer === 'string' ? video.originalComposer : ''
+        }
+      }));
+      setVideoMetadataStatusMap((prev) => {
+        if (!prev[video.id]) {
+          return prev;
+        }
+        const next = { ...prev };
+        delete next[video.id];
+        return next;
+      });
+    },
+    [setVideoMetadataDraftMap, setVideoMetadataStatusMap]
+  );
+
+  const closeVideoMetadataEditor = useCallback(
+    (videoId: number) => {
+      setVideoMetadataDraftMap((prev) => {
+        if (!prev[videoId]) {
+          return prev;
+        }
+        const next = { ...prev };
+        delete next[videoId];
+        return next;
+      });
+      setVideoMetadataStatusMap((prev) => {
+        if (!prev[videoId]) {
+          return prev;
+        }
+        const next = { ...prev };
+        delete next[videoId];
+        return next;
+      });
+    },
+    [setVideoMetadataDraftMap, setVideoMetadataStatusMap]
+  );
+
+  const handleVideoMetadataFieldChange = useCallback(
+    (videoId: number, field: keyof VideoMetadataDraftState) =>
+      (event: ChangeEvent<HTMLInputElement>) => {
+        const { value } = event.target;
+        setVideoMetadataDraftMap((prev) => {
+          const current = prev[videoId];
+          if (!current || current[field] === value) {
+            return prev;
+          }
+          return {
+            ...prev,
+            [videoId]: { ...current, [field]: value }
+          };
+        });
+        setVideoMetadataStatusMap((prev) => {
+          const current = prev[videoId];
+          if (!current || current.state === 'saving') {
+            return prev;
+          }
+          const next = { ...prev };
+          delete next[videoId];
+          return next;
+        });
+      },
+    [setVideoMetadataDraftMap, setVideoMetadataStatusMap]
+  );
+
+  const handleVideoMetadataSubmit = useCallback(
+    async (video: VideoResponse) => {
+      const draft = videoMetadataDraftMap[video.id];
+      if (!draft || creationDisabled) {
+        return;
+      }
+
+      const trimmedTitle = draft.title.trim();
+      const trimmedComposer = draft.originalComposer.trim();
+      const previousTitle = (video.title ?? '').trim();
+      const previousComposer = (video.originalComposer ?? '').trim();
+      const titleChanged = trimmedTitle !== previousTitle;
+      const composerChanged = trimmedComposer !== previousComposer;
+
+      if (!titleChanged && !composerChanged) {
+        setVideoMetadataStatusMap((prev) => ({
+          ...prev,
+          [video.id]: { state: 'info', message: '변경된 내용이 없습니다.' }
+        }));
+        return;
+      }
+
+      if (titleChanged && trimmedTitle.length === 0) {
+        setVideoMetadataStatusMap((prev) => ({
+          ...prev,
+          [video.id]: { state: 'error', message: '제목을 입력해 주세요.' }
+        }));
+        return;
+      }
+
+      const payload: VideoMetadataUpdatePayload = {};
+      if (titleChanged) {
+        payload.title = trimmedTitle;
+      }
+      if (composerChanged) {
+        payload.originalComposer = trimmedComposer;
+      }
+
+      setVideoMetadataStatusMap((prev) => ({
+        ...prev,
+        [video.id]: { state: 'saving' }
+      }));
+
+      try {
+        const response = await http.patch<VideoResponse>(`/videos/${video.id}`, payload, {
+          headers: authHeaders
+        });
+
+        const updatedVideo = response.data;
+        applyVideoUpdate(updatedVideo);
+
+        setVideoMetadataDraftMap((prev) => ({
+          ...prev,
+          [video.id]: {
+            title: typeof updatedVideo.title === 'string' ? updatedVideo.title : '',
+            originalComposer:
+              typeof updatedVideo.originalComposer === 'string' ? updatedVideo.originalComposer : ''
+          }
+        }));
+
+        setVideoMetadataStatusMap((prev) => ({
+          ...prev,
+          [video.id]: { state: 'success', message: '메타데이터가 저장되었습니다.' }
+        }));
+
+        window.setTimeout(() => {
+          setVideoMetadataStatusMap((prev) => {
+            const current = prev[video.id];
+            if (!current || current.state !== 'success') {
+              return prev;
+            }
+            const next = { ...prev };
+            delete next[video.id];
+            return next;
+          });
+        }, 2400);
+      } catch (error) {
+        const message = extractAxiosErrorMessage(error, '영상 메타데이터를 저장하지 못했습니다.');
+        setVideoMetadataStatusMap((prev) => ({
+          ...prev,
+          [video.id]: { state: 'error', message }
+        }));
+      }
+    },
+    [
+      videoMetadataDraftMap,
+      creationDisabled,
+      http,
+      authHeaders,
+      applyVideoUpdate,
+      setVideoMetadataDraftMap,
+      setVideoMetadataStatusMap
+    ]
   );
 
   const createClip = useCallback(
@@ -4754,6 +4941,10 @@ export default function App() {
       videoOriginalComposer ? `원곡:${videoOriginalComposer}` : null,
       videoCategory !== 'live' && videoArtistName ? `보컬:${videoArtistName}` : null
     );
+    const metadataDraft = videoMetadataDraftMap[video.id];
+    const metadataStatus = videoMetadataStatusMap[video.id];
+    const isEditingMetadata = Boolean(metadataDraft);
+    const metadataSaving = metadataStatus?.state === 'saving';
 
     return (
       <li key={video.id} className="artist-library__video-item">
@@ -4824,6 +5015,98 @@ export default function App() {
               >
                 {isVideoQueued ? '재생목록 추가됨' : '재생목록에 추가'}
               </button>
+            </div>
+            <div
+              className="artist-library__video-metadata"
+              onClick={(event) => event.stopPropagation()}
+              onKeyDown={(event) => event.stopPropagation()}
+            >
+              {isEditingMetadata ? (
+                <form
+                  className="video-metadata-form"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    void handleVideoMetadataSubmit(video);
+                  }}
+                >
+                  <div className="video-metadata-form__fields">
+                    <div className="video-metadata-form__field">
+                      <label htmlFor={`video-metadata-title-${video.id}`}>제목</label>
+                      <input
+                        id={`video-metadata-title-${video.id}`}
+                        type="text"
+                        value={metadataDraft.title}
+                        onChange={handleVideoMetadataFieldChange(video.id, 'title')}
+                        disabled={metadataSaving}
+                      />
+                    </div>
+                    <div className="video-metadata-form__field">
+                      <label htmlFor={`video-metadata-composer-${video.id}`}>원곡자</label>
+                      <input
+                        id={`video-metadata-composer-${video.id}`}
+                        type="text"
+                        value={metadataDraft.originalComposer}
+                        onChange={handleVideoMetadataFieldChange(video.id, 'originalComposer')}
+                        disabled={metadataSaving}
+                      />
+                    </div>
+                  </div>
+                  {metadataStatus?.state === 'saving' && (
+                    <p className="video-metadata-status" role="status">
+                      저장 중...
+                    </p>
+                  )}
+                  {metadataStatus?.state === 'success' && (
+                    <p className="video-metadata-status video-metadata-status--success" role="status">
+                      {metadataStatus.message}
+                    </p>
+                  )}
+                  {metadataStatus?.state === 'error' && (
+                    <p className="video-metadata-status video-metadata-status--error" role="alert">
+                      {metadataStatus.message}
+                    </p>
+                  )}
+                  {metadataStatus?.state === 'info' && (
+                    <p className="video-metadata-status" role="status">
+                      {metadataStatus.message}
+                    </p>
+                  )}
+                  <div className="video-metadata-form__actions">
+                    <button type="submit" disabled={metadataSaving}>
+                      저장
+                    </button>
+                    <button
+                      type="button"
+                      className="video-metadata-cancel"
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        closeVideoMetadataEditor(video.id);
+                      }}
+                      disabled={metadataSaving}
+                    >
+                      취소
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <button
+                  type="button"
+                  className={`artist-library__video-action artist-library__video-action--edit${
+                    creationDisabled ? ' is-disabled' : ''
+                  }`}
+                  aria-disabled={creationDisabled}
+                  disabled={creationDisabled}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    openVideoMetadataEditor(video);
+                  }}
+                >
+                  메타데이터 수정
+                </button>
+              )}
             </div>
             <div
               className="artist-library__video-category-field"

@@ -116,4 +116,29 @@ class VideoControllerIntegrationTest {
                 .extracting(Video::getCategory)
                 .isEqualTo("cover");
     }
+
+    @Test
+    void updateMetadataUpdatesTitleAndOriginalComposer() throws Exception {
+        Video video = new Video(artist, "existingvideo2", "Old Title");
+        video.setOriginalComposer("Old Composer");
+        videoRepository.save(video);
+
+        Map<String, Object> payload = Map.of(
+                "title", "New Video Title",
+                "originalComposer", "New Composer"
+        );
+
+        mockMvc.perform(patch("/api/videos/{id}", video.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(payload)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(video.getId()))
+                .andExpect(jsonPath("$.title").value("New Video Title"))
+                .andExpect(jsonPath("$.originalComposer").value("New Composer"));
+
+        assertThat(videoRepository.findById(video.getId()))
+                .get()
+                .extracting(Video::getTitle, Video::getOriginalComposer)
+                .containsExactly("New Video Title", "New Composer");
+    }
 }
