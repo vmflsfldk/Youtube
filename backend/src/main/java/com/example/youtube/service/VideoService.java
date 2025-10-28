@@ -7,6 +7,7 @@ import com.example.youtube.dto.VideoCategoryUpdateRequest;
 import com.example.youtube.dto.VideoClipSuggestionsRequest;
 import com.example.youtube.dto.VideoClipSuggestionsResponse;
 import com.example.youtube.dto.VideoCreateRequest;
+import com.example.youtube.dto.VideoMetadataUpdateRequest;
 import com.example.youtube.dto.VideoResponse;
 import com.example.youtube.dto.VideoSectionResponse;
 import com.example.youtube.model.Artist;
@@ -27,6 +28,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -166,6 +168,43 @@ public class VideoService {
         return map(saved, sections);
     }
 
+    @Transactional
+    public VideoResponse updateMetadata(Long videoId, VideoMetadataUpdateRequest request) {
+        Video video = getVideo(videoId);
+
+        boolean titleProvided = request.title() != null;
+        boolean composerProvided = request.originalComposer() != null;
+
+        if (!titleProvided && !composerProvided) {
+            return map(video);
+        }
+
+        if (titleProvided) {
+            String trimmedTitle = request.title().trim();
+            if (trimmedTitle.isEmpty()) {
+                throw new ValidationException("Title cannot be blank");
+            }
+            video.setTitle(trimmedTitle);
+            updatePrimarySongTitle(video, trimmedTitle);
+        }
+
+        if (composerProvided) {
+            String trimmedComposer = request.originalComposer() == null
+                    ? ""
+                    : request.originalComposer().trim();
+            if (trimmedComposer.isEmpty()) {
+                video.setOriginalComposer(null);
+                video.setComposerNames(Collections.emptyList());
+            } else {
+                video.setOriginalComposer(trimmedComposer);
+                updatePrimaryComposerName(video, trimmedComposer);
+            }
+        }
+
+        Video saved = videoRepository.save(video);
+        return map(saved);
+    }
+
     @Transactional(readOnly = true)
     public Video getVideo(Long id) {
         return videoRepository.findById(id)
@@ -222,6 +261,40 @@ public class VideoService {
         video.setCategory(resolvedCategory);
         Video saved = videoRepository.save(video);
         return map(saved);
+    }
+
+    private void updatePrimarySongTitle(Video video, String title) {
+        List<SongTitle> titles = video.getTitles();
+        SongTitle primary = titles.stream()
+                .filter(Objects::nonNull)
+                .filter(current -> "und".equals(normalizeLanguageCode(current.getLanguageCode())))
+                .findFirst()
+                .orElseGet(() -> titles.isEmpty() ? null : titles.get(0));
+
+        if (primary == null) {
+            video.addTitle(new SongTitle(video, null, "und", title));
+            return;
+        }
+
+        primary.setLanguageCode(normalizeLanguageCode(primary.getLanguageCode()));
+        primary.setValue(title);
+    }
+
+    private void updatePrimaryComposerName(Video video, String composer) {
+        List<ComposerName> composerNames = video.getComposerNames();
+        ComposerName primary = composerNames.stream()
+                .filter(Objects::nonNull)
+                .filter(current -> "und".equals(normalizeLanguageCode(current.getLanguageCode())))
+                .findFirst()
+                .orElseGet(() -> composerNames.isEmpty() ? null : composerNames.get(0));
+
+        if (primary == null) {
+            video.addComposerName(new ComposerName(video, null, "und", composer));
+            return;
+        }
+
+        primary.setLanguageCode(normalizeLanguageCode(primary.getLanguageCode()));
+        primary.setValue(composer);
     }
 
     private Optional<String> extractVideoId(String url) {
