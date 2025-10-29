@@ -41,6 +41,16 @@ interface ArtistResponse {
   tags: string[];
 }
 
+interface VideoArtistResponse {
+  id: number;
+  name: string;
+  displayName: string;
+  youtubeChannelId: string;
+  youtubeChannelTitle?: string | null;
+  profileImageUrl?: string | null;
+  isPrimary: boolean;
+}
+
 const VIDEO_CONTENT_TYPES = ["OFFICIAL", "CLIP_SOURCE"] as const;
 type VideoContentType = (typeof VIDEO_CONTENT_TYPES)[number];
 
@@ -136,6 +146,7 @@ interface VideoSectionResponse {
 interface VideoResponse {
   id: number;
   artistId: number;
+  primaryArtistId: number | null;
   youtubeVideoId: string;
   title: string;
   durationSec?: number | null;
@@ -152,6 +163,7 @@ interface VideoResponse {
   artistYoutubeChannelId?: string;
   artistYoutubeChannelTitle?: string | null;
   artistProfileImageUrl?: string | null;
+  artists: VideoArtistResponse[];
 }
 
 interface ClipResponse {
@@ -166,11 +178,13 @@ interface ClipResponse {
   videoTitle?: string | null;
   videoOriginalComposer?: string | null;
   artistId?: number;
+  primaryArtistId?: number | null;
   artistName?: string;
   artistDisplayName?: string;
   artistYoutubeChannelId?: string;
   artistYoutubeChannelTitle?: string | null;
   artistProfileImageUrl?: string | null;
+  artists?: VideoArtistResponse[];
   createdAt?: string | null;
   updatedAt?: string | null;
 }
@@ -443,6 +457,7 @@ let hasEnsuredVideoHiddenColumn = false;
 let hasEnsuredVideoCategoryColumn = false;
 let hasEnsuredVideoOriginalComposerColumn = false;
 let hasEnsuredClipOriginalComposerColumn = false;
+let hasEnsuredVideoArtistsTable = false;
 let hasWarnedMissingYouTubeApiKey = false;
 
 const warnMissingYouTubeApiKey = (): void => {
@@ -1008,6 +1023,179 @@ async function ensureVideoOriginalComposerColumn(db: D1Database): Promise<void> 
   hasEnsuredVideoOriginalComposerColumn = true;
 }
 
+async function ensureVideoArtistsTable(db: D1Database): Promise<void> {
+  if (hasEnsuredVideoArtistsTable) {
+    return;
+  }
+
+  const createResult = await db
+    .prepare(`
+      CREATE TABLE IF NOT EXISTS video_artists (
+        video_id INTEGER NOT NULL,
+        artist_id INTEGER NOT NULL,
+        is_primary INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+        PRIMARY KEY (video_id, artist_id),
+        FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE CASCADE,
+        FOREIGN KEY (artist_id) REFERENCES artists(id) ON DELETE CASCADE
+      )
+    `)
+    .run();
+  if (!createResult.success) {
+    throw new Error(createResult.error ?? "Failed to ensure video_artists table");
+  }
+
+  const indexResult = await db
+    .prepare("CREATE INDEX IF NOT EXISTS idx_video_artists_artist ON video_artists(artist_id, video_id)")
+    .run();
+  if (!indexResult.success) {
+    throw new Error(indexResult.error ?? "Failed to ensure video_artists index");
+  }
+
+  hasEnsuredVideoArtistsTable = true;
+}
+
+async function upsertVideoArtistLink(
+  env: Env,
+  videoId: number,
+  artistId: number,
+  isPrimary: boolean
+): Promise<void> {
+  await ensureVideoArtistsTable(env.DB);
+  const result = await env.DB
+    .prepare(
+      `INSERT INTO video_artists (video_id, artist_id, is_primary)
+         VALUES (?, ?, ?)
+         ON CONFLICT(video_id, artist_id) DO UPDATE SET is_primary = excluded.is_primary`
+    )
+    .bind(videoId, artistId, isPrimary ? 1 : 0)
+    .run();
+  if (!result.success) {
+    throw new Error(result.error ?? "Failed to upsert video artist link");
+  }
+}
+
+async function setVideoPrimaryArtist(env: Env, videoId: number, artistId: number): Promise<void> {
+  await ensureVideoArtistsTable(env.DB);
+  const result = await env.DB
+    .prepare(
+      `UPDATE video_artists
+          SET is_primary = CASE WHEN artist_id = ? THEN 1 ELSE 0 END
+        WHERE video_id = ?`
+    )
+    .bind(artistId, videoId)
+    .run();
+  if (!result.success) {
+    throw new Error(result.error ?? "Failed to update primary video artist");
+  }
+}
+
+async function fetchVideoArtistMap(
+  env: Env,
+  videoIds: number[]
+): Promise<Map<number, VideoArtistResponse[]>> {
+  await ensureVideoArtistsTable(env.DB);
+  if (videoIds.length === 0) {
+    return new Map();
+  }
+
+  const placeholders = videoIds.map(() => "?").join(", ");
+  const { results } = await env.DB
+    .prepare(
+      `SELECT
+          va.video_id,
+          va.artist_id,
+          va.is_primary,
+          a.name,
+          a.display_name,
+          a.youtube_channel_id,
+          a.youtube_channel_title,
+          a.profile_image_url
+        FROM video_artists va
+        JOIN artists a ON a.id = va.artist_id
+       WHERE va.video_id IN (${placeholders})
+       ORDER BY va.video_id, va.is_primary DESC, a.id`
+    )
+    .bind(...videoIds)
+    .all<VideoArtistJoinRow>();
+
+  const map = new Map<number, VideoArtistResponse[]>();
+  for (const row of results ?? []) {
+    const displayName = row.display_name?.trim() || row.name;
+    const entry: VideoArtistResponse = {
+      id: row.artist_id,
+      name: row.name,
+      displayName,
+      youtubeChannelId: row.youtube_channel_id,
+      youtubeChannelTitle: row.youtube_channel_title ?? null,
+      profileImageUrl: row.profile_image_url ?? null,
+      isPrimary: Number(row.is_primary ?? 0) === 1
+    };
+    const bucket = map.get(row.video_id);
+    if (bucket) {
+      bucket.push(entry);
+    } else {
+      map.set(row.video_id, [entry]);
+    }
+  }
+
+  for (const [videoId, artists] of map.entries()) {
+    artists.sort((a, b) => {
+      if (a.isPrimary !== b.isPrimary) {
+        return a.isPrimary ? -1 : 1;
+      }
+      return a.id - b.id;
+    });
+    map.set(videoId, artists);
+  }
+
+  return map;
+}
+
+async function loadVideoResponseMap(env: Env, videoIds: number[]): Promise<Map<number, VideoResponse>> {
+  if (videoIds.length === 0) {
+    return new Map();
+  }
+
+  const placeholders = videoIds.map(() => "?").join(", ");
+  const { results } = await env.DB
+    .prepare(
+      `SELECT
+          v.id,
+          v.artist_id,
+          v.youtube_video_id,
+          v.title,
+          v.duration_sec,
+          v.thumbnail_url,
+          v.channel_id,
+          v.description,
+          v.captions_json,
+          v.category,
+          v.content_type,
+          v.hidden,
+          v.original_composer,
+          v.created_at,
+          v.updated_at,
+          a.name AS artist_name,
+          a.display_name AS artist_display_name,
+          a.youtube_channel_id AS artist_youtube_channel_id,
+          a.youtube_channel_title AS artist_youtube_channel_title,
+          a.profile_image_url AS artist_profile_image_url
+        FROM videos v
+        LEFT JOIN artists a ON a.id = v.artist_id
+       WHERE v.id IN (${placeholders})`
+    )
+    .bind(...videoIds)
+    .all<VideoLibraryRow>();
+
+  const artistMap = await fetchVideoArtistMap(env, videoIds);
+  const map = new Map<number, VideoResponse>();
+  for (const row of results ?? []) {
+    map.set(row.id, toVideoLibraryResponse(row, { artists: artistMap.get(row.id) ?? [] }));
+  }
+  return map;
+}
+
 async function ensureClipOriginalComposerColumn(db: D1Database): Promise<void> {
   if (hasEnsuredClipOriginalComposerColumn) {
     return;
@@ -1050,6 +1238,18 @@ interface VideoLibraryRow extends VideoRow {
   artist_youtube_channel_id: string;
   artist_youtube_channel_title: string | null;
   artist_profile_image_url: string | null;
+  requested_artist_id?: number | null;
+}
+
+interface VideoArtistJoinRow {
+  video_id: number;
+  artist_id: number;
+  is_primary: number | null;
+  name: string;
+  display_name: string | null;
+  youtube_channel_id: string;
+  youtube_channel_title: string | null;
+  profile_image_url: string | null;
 }
 
 interface ClipRow {
@@ -1680,6 +1880,7 @@ async function getOrCreateVideoByUrl(
   await ensureVideoHiddenColumn(env.DB);
   await ensureVideoCategoryColumn(env.DB);
   await ensureVideoOriginalComposerColumn(env.DB);
+  await ensureVideoArtistsTable(env.DB);
 
   const videoId = extractVideoId(videoUrl);
   if (!videoId) {
@@ -1727,9 +1928,7 @@ async function getOrCreateVideoByUrl(
     .first<VideoRow | null>();
 
   if (existing) {
-    if (existing.artist_id !== artistId) {
-      throw new HttpError(409, "다른 아티스트에 이미 등록된 영상입니다.");
-    }
+    const primaryArtistId = existing.artist_id ?? artistId;
 
     const nextOriginalComposer = sanitizedOriginalComposer ?? existing.original_composer ?? null;
     const nextCategory =
@@ -1751,7 +1950,7 @@ async function getOrCreateVideoByUrl(
         WHERE id = ?`
     )
       .bind(
-        artistId,
+        primaryArtistId,
         metadata.title ?? "Untitled",
         metadata.durationSec,
         metadata.thumbnailUrl,
@@ -1769,6 +1968,10 @@ async function getOrCreateVideoByUrl(
     if (!updateResult.success) {
       throw new HttpError(500, updateResult.error ?? "Failed to update video");
     }
+
+    await upsertVideoArtistLink(env, existing.id, artistId, primaryArtistId === artistId);
+    await upsertVideoArtistLink(env, existing.id, primaryArtistId, true);
+    await setVideoPrimaryArtist(env, existing.id, primaryArtistId);
 
     const row = await env.DB.prepare("SELECT * FROM videos WHERE id = ?")
       .bind(existing.id)
@@ -1806,6 +2009,8 @@ async function getOrCreateVideoByUrl(
   }
 
   const insertedId = numberFromRowId(insertResult.meta.last_row_id);
+  await upsertVideoArtistLink(env, insertedId, artistId, true);
+  await setVideoPrimaryArtist(env, insertedId, artistId);
   const row = await env.DB.prepare("SELECT * FROM videos WHERE id = ?")
     .bind(insertedId)
     .first<VideoRow>();
@@ -2063,6 +2268,7 @@ async function listVideos(
   await ensureVideoHiddenColumn(env.DB);
   await ensureVideoCategoryColumn(env.DB);
   await ensureVideoOriginalComposerColumn(env.DB);
+  await ensureVideoArtistsTable(env.DB);
 
   const requestedContentType = normalizeVideoContentType(url.searchParams.get("contentType"));
 
@@ -2084,10 +2290,12 @@ async function listVideos(
         a.display_name AS artist_display_name,
         a.youtube_channel_id AS artist_youtube_channel_id,
         a.youtube_channel_title AS artist_youtube_channel_title,
-        a.profile_image_url AS artist_profile_image_url
-      FROM videos v
-      JOIN artists a ON a.id = v.artist_id
-     WHERE v.artist_id = ?
+        a.profile_image_url AS artist_profile_image_url,
+        va.artist_id AS requested_artist_id
+      FROM video_artists va
+      JOIN videos v ON v.id = va.video_id
+      LEFT JOIN artists a ON a.id = v.artist_id
+     WHERE va.artist_id = ?
        AND COALESCE(v.hidden, 0) = 0`;
 
   let statement: D1PreparedStatement;
@@ -2101,7 +2309,16 @@ async function listVideos(
   }
 
   const { results } = await statement.all<VideoLibraryRow>();
-  const videos = (results ?? []).map(toVideoLibraryResponse);
+  const rows = results ?? [];
+  const filteredRows = rows.filter((row) => normalizeVideoCategory(row.category) !== "live");
+  const videoIds = filteredRows.map((row) => row.id);
+  const artistMap = await fetchVideoArtistMap(env, videoIds);
+  const videos = filteredRows.map((row) =>
+    toVideoLibraryResponse(row, {
+      artists: artistMap.get(row.id) ?? [],
+      currentArtistId: row.requested_artist_id ?? artistId
+    })
+  );
   return jsonResponse(videos, 200, cors);
 }
 
@@ -2129,6 +2346,7 @@ async function loadMediaLibrary(
   await ensureVideoCategoryColumn(env.DB);
   await ensureVideoOriginalComposerColumn(env.DB);
   await ensureClipOriginalComposerColumn(env.DB);
+  await ensureVideoArtistsTable(env.DB);
 
   const predicates: string[] = [];
   if (!options.includeHidden) {
@@ -2159,12 +2377,17 @@ async function loadMediaLibrary(
         a.youtube_channel_title AS artist_youtube_channel_title,
         a.profile_image_url AS artist_profile_image_url
       FROM videos v
-      JOIN artists a ON a.id = v.artist_id
+      LEFT JOIN artists a ON a.id = v.artist_id
       ${visibilityPredicate}
      ORDER BY v.id DESC`
   ).all<VideoLibraryRow>();
 
-  const videos = (results ?? []).map(toVideoLibraryResponse);
+  const videoRows = results ?? [];
+  const videoIds = videoRows.map((row) => row.id);
+  const artistMap = await fetchVideoArtistMap(env, videoIds);
+  const videos = videoRows.map((row) =>
+    toVideoLibraryResponse(row, { artists: artistMap.get(row.id) ?? [] })
+  );
 
   const songVideos = videos.filter((video) => {
     const contentType = (video.contentType ?? "").toUpperCase();
@@ -2182,15 +2405,15 @@ async function loadMediaLibrary(
     return { videos, clips: [], songVideos };
   }
 
-  const videoIds = videos.map((video) => video.id);
-  const placeholders = videoIds.map(() => "?").join(", ");
+  const libraryVideoIds = videos.map((video) => video.id);
+  const placeholders = libraryVideoIds.map(() => "?").join(", ");
   const { results: clipRows } = await env.DB.prepare(
     `SELECT id, video_id, title, start_sec, end_sec, original_composer, created_at
        FROM clips
       WHERE video_id IN (${placeholders})
       ORDER BY video_id, start_sec`
   )
-    .bind(...videoIds)
+    .bind(...libraryVideoIds)
     .all<ClipRow>();
 
   const clips = await attachTags(env, clipRows ?? [], { includeVideoMeta: true });
@@ -2258,7 +2481,11 @@ async function createClip(
       .first<VideoRow>();
 
     if (existingVideo) {
-      if (existingVideo.artist_id !== artistIdParam) {
+      const association = await env.DB
+        .prepare("SELECT 1 FROM video_artists WHERE video_id = ? AND artist_id = ?")
+        .bind(existingVideo.id, artistIdParam)
+        .first<{ 1: number }>();
+      if (!association) {
         throw new HttpError(400, "Video is already registered for a different artist");
       }
       resolvedVideoId = existingVideo.id;
@@ -2298,6 +2525,8 @@ async function createClip(
         throw new HttpError(500, insertClipSource.error ?? "Failed to register clip source video");
       }
       resolvedVideoId = numberFromRowId(insertClipSource.meta.last_row_id);
+      await upsertVideoArtistLink(env, resolvedVideoId, artistIdParam, true);
+      await setVideoPrimaryArtist(env, resolvedVideoId, artistIdParam);
     }
   }
 
@@ -2477,6 +2706,7 @@ async function listClips(
   const videoIdParam = url.searchParams.get("videoId");
   await ensureClipOriginalComposerColumn(env.DB);
   await ensureVideoOriginalComposerColumn(env.DB);
+  await ensureVideoArtistsTable(env.DB);
   if (artistIdParam) {
     const artistId = Number(artistIdParam);
     if (!Number.isFinite(artistId)) {
@@ -2486,8 +2716,8 @@ async function listClips(
     const { results } = await env.DB.prepare(
       `SELECT c.id, c.video_id, c.title, c.start_sec, c.end_sec, c.original_composer, c.created_at
          FROM clips c
-         JOIN videos v ON v.id = c.video_id
-        WHERE v.artist_id = ?
+         JOIN video_artists va ON va.video_id = c.video_id
+        WHERE va.artist_id = ?
         ORDER BY c.start_sec`
     ).bind(artistId).all<ClipRow>();
     const clips = await attachTags(env, results ?? [], { includeVideoMeta: true });
@@ -2974,38 +3204,7 @@ async function hydratePlaylists(
   let videoMap = new Map<number, VideoResponse>();
   if (videoIdSet.size > 0) {
     const videoIds = Array.from(videoIdSet);
-    const videoPlaceholders = videoIds.map(() => "?").join(", ");
-    const { results: videoRows } = await env.DB
-      .prepare(
-        `SELECT
-            v.id,
-            v.artist_id,
-            v.youtube_video_id,
-            v.title,
-            v.duration_sec,
-            v.thumbnail_url,
-            v.channel_id,
-            v.description,
-            v.captions_json,
-            v.category,
-            v.content_type,
-            v.hidden,
-            v.original_composer,
-            v.created_at,
-            v.updated_at,
-            a.name AS artist_name,
-            a.display_name AS artist_display_name,
-            a.youtube_channel_id AS artist_youtube_channel_id,
-            a.youtube_channel_title AS artist_youtube_channel_title,
-            a.profile_image_url AS artist_profile_image_url
-          FROM videos v
-          JOIN artists a ON a.id = v.artist_id
-         WHERE v.id IN (${videoPlaceholders})`
-      )
-      .bind(...videoIds)
-      .all<VideoLibraryRow>();
-
-    videoMap = new Map((videoRows ?? []).map((row) => [row.id, toVideoLibraryResponse(row)]));
+    videoMap = await loadVideoResponseMap(env, videoIds);
   }
 
   const clipResponses =
@@ -3016,11 +3215,13 @@ async function hydratePlaylists(
     clipMap.set(clip.id, {
       ...clip,
       artistId: video?.artistId,
+      primaryArtistId: video?.primaryArtistId ?? null,
       artistName: video?.artistName,
       artistDisplayName: video?.artistDisplayName,
       artistYoutubeChannelId: video?.artistYoutubeChannelId,
       artistYoutubeChannelTitle: video?.artistYoutubeChannelTitle ?? null,
-      artistProfileImageUrl: video?.artistProfileImageUrl ?? null
+      artistProfileImageUrl: video?.artistProfileImageUrl ?? null,
+      artists: video?.artists ?? []
     });
   }
 
@@ -3176,10 +3377,46 @@ function toArtistResponse(row: ArtistRow): ArtistResponse {
   };
 }
 
-function toVideoResponse(row: VideoRow): VideoResponse {
+function toVideoResponse(
+  row: VideoRow,
+  options: {
+    artists?: VideoArtistResponse[];
+    currentArtistId?: number | null;
+    primaryArtist?: {
+      name?: string | null;
+      displayName?: string | null;
+      youtubeChannelId?: string | null;
+      youtubeChannelTitle?: string | null;
+      profileImageUrl?: string | null;
+    };
+  } = {}
+): VideoResponse {
+  const artists = options.artists ?? [];
+  const primaryArtistFromList = artists.find((artist) => artist.isPrimary) ?? null;
+  const requestedArtist =
+    (options.currentArtistId != null
+      ? artists.find((artist) => artist.id === options.currentArtistId)
+      : null) ?? primaryArtistFromList;
+
+  const fallbackPrimaryId = primaryArtistFromList?.id ?? row.artist_id ?? null;
+  const fallbackName = options.primaryArtist?.name ?? null;
+  const fallbackDisplayName =
+    options.primaryArtist?.displayName?.trim() || options.primaryArtist?.name || null;
+  const fallbackChannelId = options.primaryArtist?.youtubeChannelId ?? null;
+  const fallbackChannelTitle = options.primaryArtist?.youtubeChannelTitle ?? null;
+  const fallbackProfileImageUrl = options.primaryArtist?.profileImageUrl ?? null;
+
+  const resolvedArtistName = requestedArtist?.name ?? fallbackName ?? null;
+  const resolvedArtistDisplayName =
+    requestedArtist?.displayName ?? fallbackDisplayName ?? requestedArtist?.name ?? fallbackName ?? null;
+  const resolvedChannelId = requestedArtist?.youtubeChannelId ?? fallbackChannelId ?? null;
+  const resolvedChannelTitle = requestedArtist?.youtubeChannelTitle ?? fallbackChannelTitle ?? null;
+  const resolvedProfileImage = requestedArtist?.profileImageUrl ?? fallbackProfileImageUrl ?? null;
+
   return {
     id: row.id,
-    artistId: row.artist_id,
+    artistId: requestedArtist?.id ?? row.artist_id,
+    primaryArtistId: fallbackPrimaryId,
     youtubeVideoId: row.youtube_video_id,
     title: row.title,
     durationSec: row.duration_sec ?? null,
@@ -3190,20 +3427,31 @@ function toVideoResponse(row: VideoRow): VideoResponse {
     hidden: Number(row.hidden ?? 0) === 1,
     createdAt: row.created_at ?? null,
     updatedAt: row.updated_at ?? null,
-    originalComposer: row.original_composer ?? null
+    originalComposer: row.original_composer ?? null,
+    artistName: resolvedArtistName ?? undefined,
+    artistDisplayName: resolvedArtistDisplayName ?? undefined,
+    artistYoutubeChannelId: resolvedChannelId ?? undefined,
+    artistYoutubeChannelTitle: resolvedChannelTitle ?? null,
+    artistProfileImageUrl: resolvedProfileImage ?? null,
+    artists
   };
 }
 
-function toVideoLibraryResponse(row: VideoLibraryRow): VideoResponse {
-  const base = toVideoResponse(row);
-  return {
-    ...base,
-    artistName: row.artist_name,
-    artistDisplayName: row.artist_display_name?.trim() || row.artist_name,
-    artistYoutubeChannelId: row.artist_youtube_channel_id,
-    artistYoutubeChannelTitle: row.artist_youtube_channel_title ?? null,
-    artistProfileImageUrl: row.artist_profile_image_url ?? null
-  };
+function toVideoLibraryResponse(
+  row: VideoLibraryRow,
+  context: { artists?: VideoArtistResponse[]; currentArtistId?: number | null } = {}
+): VideoResponse {
+  return toVideoResponse(row, {
+    artists: context.artists,
+    currentArtistId: context.currentArtistId ?? row.requested_artist_id ?? null,
+    primaryArtist: {
+      name: row.artist_name ?? null,
+      displayName: row.artist_display_name ?? null,
+      youtubeChannelId: row.artist_youtube_channel_id ?? null,
+      youtubeChannelTitle: row.artist_youtube_channel_title ?? null,
+      profileImageUrl: row.artist_profile_image_url ?? null
+    }
+  });
 }
 
 async function hydrateVideoRow(env: Env, row: VideoRow): Promise<VideoResponse> {
@@ -3230,17 +3478,20 @@ async function hydrateVideoRow(env: Env, row: VideoRow): Promise<VideoResponse> 
         a.youtube_channel_title AS artist_youtube_channel_title,
         a.profile_image_url AS artist_profile_image_url
       FROM videos v
-      JOIN artists a ON a.id = v.artist_id
+      LEFT JOIN artists a ON a.id = v.artist_id
      WHERE v.id = ?`
   )
     .bind(row.id)
     .first<VideoLibraryRow>();
 
+  const artistMap = await fetchVideoArtistMap(env, [row.id]);
+  const artists = artistMap.get(row.id) ?? [];
+
   if (!hydrated) {
-    return toVideoResponse(row);
+    return toVideoResponse(row, { artists });
   }
 
-  return toVideoLibraryResponse(hydrated);
+  return toVideoLibraryResponse(hydrated, { artists });
 }
 
 interface AttachTagsOptions {
@@ -3269,75 +3520,11 @@ async function attachTags(
     tagsMap.get(entry.clip_id)!.push(entry.tag);
   }
 
-  let videoMeta:
-    | Map<
-        number,
-        {
-          youtubeVideoId: string | null;
-          title: string | null;
-          originalComposer: string | null;
-          createdAt: string | null;
-          updatedAt: string | null;
-          artistId: number | null;
-          artistName: string | null;
-          artistDisplayName: string | null;
-          artistYoutubeChannelId: string | null;
-          artistYoutubeChannelTitle: string | null;
-          artistProfileImageUrl: string | null;
-        }
-      >
-    | null = null;
+  let videoMeta: Map<number, VideoResponse> | null = null;
   if (options.includeVideoMeta) {
     const videoIds = Array.from(new Set(clips.map((clip) => clip.video_id)));
     if (videoIds.length > 0) {
-      const videoPlaceholders = videoIds.map(() => "?").join(", ");
-      const { results: videoRows } = await env.DB.prepare(
-        `SELECT
-            v.id,
-            v.youtube_video_id,
-            v.title,
-            v.original_composer,
-            v.created_at,
-            v.updated_at,
-            v.artist_id,
-            a.name AS artist_name,
-            a.display_name AS artist_display_name,
-            a.youtube_channel_id AS artist_youtube_channel_id,
-            a.youtube_channel_title AS artist_youtube_channel_title,
-            a.profile_image_url AS artist_profile_image_url
-          FROM videos v
-          JOIN artists a ON a.id = v.artist_id
-         WHERE v.id IN (${videoPlaceholders})`
-      )
-        .bind(...videoIds)
-        .all<{
-          id: number;
-          youtube_video_id: string | null;
-          title: string | null;
-          original_composer: string | null;
-          artist_id: number;
-          artist_name: string | null;
-          artist_display_name: string | null;
-          artist_youtube_channel_id: string | null;
-          artist_youtube_channel_title: string | null;
-          artist_profile_image_url: string | null;
-        }>();
-      videoMeta = new Map();
-      for (const row of videoRows ?? []) {
-        videoMeta.set(row.id, {
-          youtubeVideoId: row.youtube_video_id ?? null,
-          title: row.title ?? null,
-          originalComposer: row.original_composer ?? null,
-          createdAt: row.created_at ?? null,
-          updatedAt: row.updated_at ?? null,
-          artistId: row.artist_id ?? null,
-          artistName: row.artist_name ?? null,
-          artistDisplayName: row.artist_display_name ?? null,
-          artistYoutubeChannelId: row.artist_youtube_channel_id ?? null,
-          artistYoutubeChannelTitle: row.artist_youtube_channel_title ?? null,
-          artistProfileImageUrl: row.artist_profile_image_url ?? null
-        });
-      }
+      videoMeta = await loadVideoResponseMap(env, videoIds);
     }
   }
 
@@ -3357,11 +3544,13 @@ async function attachTags(
       createdAt: clip.created_at ?? null,
       updatedAt: clip.updated_at ?? null,
       artistId: meta?.artistId ?? undefined,
+      primaryArtistId: meta?.primaryArtistId ?? null,
       artistName: meta?.artistName ?? undefined,
       artistDisplayName: meta?.artistDisplayName ?? undefined,
       artistYoutubeChannelId: meta?.artistYoutubeChannelId ?? undefined,
       artistYoutubeChannelTitle: meta?.artistYoutubeChannelTitle ?? null,
-      artistProfileImageUrl: meta?.artistProfileImageUrl ?? null
+      artistProfileImageUrl: meta?.artistProfileImageUrl ?? null,
+      artists: meta?.artists ?? []
     } satisfies ClipResponse;
   });
 }
@@ -4870,6 +5059,7 @@ export function __resetWorkerTestState(): void {
   hasEnsuredVideoCategoryColumn = false;
   hasEnsuredVideoOriginalComposerColumn = false;
   hasEnsuredClipOriginalComposerColumn = false;
+  hasEnsuredVideoArtistsTable = false;
 }
 
 export function __setHasEnsuredVideoColumnsForTests(value: boolean): void {
@@ -4883,6 +5073,7 @@ export function __setHasEnsuredVideoColumnsForTests(value: boolean): void {
   hasEnsuredVideoCategoryColumn = value;
   hasEnsuredVideoOriginalComposerColumn = value;
   hasEnsuredClipOriginalComposerColumn = value;
+  hasEnsuredVideoArtistsTable = value;
 }
 
 export {

@@ -5,9 +5,20 @@ export interface VideoSectionResponse {
   source: string;
 }
 
+export interface VideoArtistResponse {
+  id: number;
+  name: string;
+  displayName: string;
+  youtubeChannelId: string;
+  youtubeChannelTitle?: string | null;
+  profileImageUrl?: string | null;
+  isPrimary: boolean;
+}
+
 export interface VideoResponse {
   id: number;
   artistId: number;
+  primaryArtistId?: number | null;
   youtubeVideoId: string;
   title: string;
   durationSec?: number | string | null;
@@ -25,6 +36,7 @@ export interface VideoResponse {
   artistYoutubeChannelId?: string | null;
   artistYoutubeChannelTitle?: string | null;
   artistProfileImageUrl?: string | null;
+  artists?: VideoArtistResponse[];
 }
 
 export interface ClipResponse {
@@ -39,11 +51,13 @@ export interface ClipResponse {
   videoTitle?: string | null;
   videoOriginalComposer?: string | null;
   artistId?: number | null;
+  primaryArtistId?: number | null;
   artistName?: string | null;
   artistDisplayName?: string | null;
   artistYoutubeChannelId?: string | null;
   artistYoutubeChannelTitle?: string | null;
   artistProfileImageUrl?: string | null;
+  artists?: VideoArtistResponse[];
   createdAt?: string | null;
   updatedAt?: string | null;
 }

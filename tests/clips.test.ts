@@ -48,6 +48,12 @@ type VideoRow = {
   original_composer: string | null;
 };
 
+type VideoArtistLink = {
+  video_id: number;
+  artist_id: number;
+  is_primary: number;
+};
+
 type ClipRow = {
   id: number;
   video_id: number;
@@ -90,12 +96,25 @@ class FakeD1Database implements D1Database {
   private readonly videos: VideoRow[];
   private clips: ClipRow[];
   private readonly clipTags: ClipTagRow[];
+  private readonly videoArtists: VideoArtistLink[];
 
-  constructor(artists: ArtistRow[], videos: VideoRow[], clips: ClipRow[], clipTags: ClipTagRow[]) {
+  constructor(
+    artists: ArtistRow[],
+    videos: VideoRow[],
+    clips: ClipRow[],
+    clipTags: ClipTagRow[],
+    videoArtists?: VideoArtistLink[]
+  ) {
     this.artists = artists.map((row) => ({ ...row }));
     this.videos = videos.map((row) => ({ ...row }));
     this.clips = clips.map((row) => ({ ...row }));
     this.clipTags = clipTags.map((row) => ({ ...row }));
+    this.videoArtists = (videoArtists ?? []).map((link) => ({ ...link }));
+    if (!videoArtists) {
+      for (const video of videos) {
+        this.videoArtists.push({ video_id: video.id, artist_id: video.artist_id, is_primary: 1 });
+      }
+    }
   }
 
   prepare(query: string): D1PreparedStatement {
@@ -132,9 +151,16 @@ class FakeD1Database implements D1Database {
       const video = this.videos.find((row) => row.id === videoId);
       return (video ? ({ id: video.id } as unknown as T) : null);
     }
+    if (normalized.startsWith("select 1 from video_artists where video_id = ? and artist_id = ?")) {
+      const [videoId, artistId] = values as [number, number];
+      const found = this.videoArtists.some(
+        (link) => link.video_id === videoId && link.artist_id === artistId
+      );
+      return (found ? ({ 1: 1 } as unknown as T) : null);
+    }
     if (
       normalized.startsWith("select v.id, v.artist_id") &&
-      normalized.includes("from videos v join artists a on a.id = v.artist_id where v.id = ?")
+      normalized.includes("from videos v left join artists a on a.id = v.artist_id where v.id = ?")
     ) {
       const [videoId] = values as [number];
       const video = this.videos.find((row) => row.id === videoId);
@@ -142,16 +168,13 @@ class FakeD1Database implements D1Database {
         return null;
       }
       const artist = this.artists.find((row) => row.id === video.artist_id);
-      if (!artist) {
-        return null;
-      }
       return {
         ...video,
-        artist_name: artist.name,
-        artist_display_name: artist.display_name,
-        artist_youtube_channel_id: artist.youtube_channel_id,
-        artist_youtube_channel_title: artist.youtube_channel_title,
-        artist_profile_image_url: artist.profile_image_url
+        artist_name: artist?.name ?? null,
+        artist_display_name: artist?.display_name ?? null,
+        artist_youtube_channel_id: artist?.youtube_channel_id ?? null,
+        artist_youtube_channel_title: artist?.youtube_channel_title ?? null,
+        artist_profile_image_url: artist?.profile_image_url ?? null
       } as unknown as T;
     }
     if (
@@ -191,6 +214,18 @@ class FakeD1Database implements D1Database {
       normalized.startsWith("select c.id, c.video_id, c.title, c.start_sec, c.end_sec") ||
       normalized.startsWith("select id, video_id, title, start_sec, end_sec, original_composer")
     ) {
+      if (
+        normalized.includes("from clips c join video_artists va on va.video_id = c.video_id where va.artist_id = ?")
+      ) {
+        const [artistId] = values as [number];
+        const rows = this.clips
+          .filter((clip) =>
+            this.videoArtists.some((link) => link.video_id === clip.video_id && link.artist_id === artistId)
+          )
+          .sort((a, b) => a.start_sec - b.start_sec)
+          .map((clip) => ({ ...clip } as unknown as T));
+        return { success: true, meta: { duration: 0, changes: 0 }, results: rows };
+      }
       if (normalized.includes("from clips c join videos v on v.id = c.video_id where v.artist_id = ?")) {
         const [artistId] = values as [number];
         const rows = this.clips
@@ -238,6 +273,63 @@ class FakeD1Database implements D1Database {
           } as unknown as T;
         })
         .filter((row): row is T => row !== null);
+      return { success: true, meta: { duration: 0, changes: 0 }, results: rows };
+    }
+    if (
+      normalized.startsWith("select v.id, v.artist_id") &&
+      normalized.includes("from videos v left join artists a on a.id = v.artist_id where v.id in")
+    ) {
+      const videoIds = values as number[];
+      const rows = this.videos
+        .filter((video) => videoIds.includes(video.id))
+        .map((video) => {
+          const artist = this.artists.find((item) => item.id === video.artist_id);
+          return {
+            ...video,
+            artist_name: artist?.name ?? null,
+            artist_display_name: artist?.display_name ?? null,
+            artist_youtube_channel_id: artist?.youtube_channel_id ?? null,
+            artist_youtube_channel_title: artist?.youtube_channel_title ?? null,
+            artist_profile_image_url: artist?.profile_image_url ?? null
+          } as unknown as T;
+        });
+      return { success: true, meta: { duration: 0, changes: 0 }, results: rows };
+    }
+    if (
+      normalized.startsWith("select va.video_id, va.artist_id, va.is_primary") &&
+      normalized.includes("from video_artists va join artists a on a.id = va.artist_id")
+    ) {
+      const videoIds = values as number[];
+      const rows = this.videoArtists
+        .filter((link) => videoIds.includes(link.video_id))
+        .map((link) => {
+          const artist = this.artists.find((row) => row.id === link.artist_id);
+          if (!artist) {
+            return null;
+          }
+          return {
+            video_id: link.video_id,
+            artist_id: link.artist_id,
+            is_primary: link.is_primary,
+            name: artist.name,
+            display_name: artist.display_name,
+            youtube_channel_id: artist.youtube_channel_id,
+            youtube_channel_title: artist.youtube_channel_title,
+            profile_image_url: artist.profile_image_url
+          } as unknown as T;
+        })
+        .filter((row): row is T => row !== null)
+        .sort((a, b) => {
+          const left = a as unknown as { video_id: number; is_primary: number; artist_id: number };
+          const right = b as unknown as { video_id: number; is_primary: number; artist_id: number };
+          if (left.video_id !== right.video_id) {
+            return left.video_id - right.video_id;
+          }
+          if (right.is_primary !== left.is_primary) {
+            return right.is_primary - left.is_primary;
+          }
+          return left.artist_id - right.artist_id;
+        });
       return { success: true, meta: { duration: 0, changes: 0 }, results: rows };
     }
     return { success: true, meta: { duration: 0, changes: 0 }, results: [] };
