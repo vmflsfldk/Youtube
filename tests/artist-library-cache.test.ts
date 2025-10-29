@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+import { mediaMatchesArtist } from "../frontend/src/library/mediaMatchesArtist";
 import { createReloadArtistVideos } from "../frontend/src/library/reloadArtistVideos";
 import type { VideoResponse } from "../frontend/src/types/media";
 
@@ -131,4 +132,49 @@ test("artist detail cache persists after closing and reopening", async () => {
     true,
     "Reopening the artist should immediately show cached videos"
   );
+});
+
+test("mediaMatchesArtist handles string and numeric identifiers", () => {
+  const mixedMedia = {
+    artistId: "123",
+    primaryArtistId: null,
+    artists: [{ id: "789" }, { id: 456 }]
+  };
+
+  assert.equal(mediaMatchesArtist(mixedMedia, 123), true);
+  assert.equal(mediaMatchesArtist(mixedMedia, "123"), true);
+
+  const primaryMatch = {
+    artistId: 999,
+    primaryArtistId: "456",
+    artists: []
+  };
+
+  assert.equal(mediaMatchesArtist(primaryMatch, 456), true);
+
+  const associatedArtists = {
+    artistId: null,
+    primaryArtistId: null,
+    artists: [{ id: "321" }, { id: "654" }]
+  };
+
+  assert.equal(mediaMatchesArtist(associatedArtists, "654"), true);
+  assert.equal(mediaMatchesArtist(associatedArtists, 654), true);
+
+  const noMatches = {
+    artistId: "abc",
+    primaryArtistId: "def",
+    artists: [{ id: "ghi" }]
+  };
+
+  assert.equal(mediaMatchesArtist(noMatches, 123), false);
+  assert.equal(mediaMatchesArtist(noMatches, ""), false);
+
+  const nullSelection = {
+    artistId: 123,
+    primaryArtistId: null,
+    artists: null
+  };
+
+  assert.equal(mediaMatchesArtist(nullSelection, null), true);
 });

@@ -34,6 +34,7 @@ import {
 } from './utils/videos';
 import { useTranslations } from './locales/translations';
 import { createReloadArtistVideos } from './library/reloadArtistVideos';
+import { mediaMatchesArtist } from './library/mediaMatchesArtist';
 
 const ClipPlayer = lazy(() => import('./components/ClipPlayer'));
 
@@ -200,27 +201,7 @@ const formatSeconds = (value: number): string => {
 
 const clamp = (value: number, min: number, max: number): number => Math.min(Math.max(value, min), max);
 
-type ArtistMatchable = {
-  artistId?: number | null;
-  primaryArtistId?: number | null;
-  artists?: { id: number }[] | null;
-};
-
-const mediaMatchesArtist = (media: ArtistMatchable, artistId: number | null): boolean => {
-  if (artistId === null) {
-    return true;
-  }
-  if (typeof media.artistId === 'number' && media.artistId === artistId) {
-    return true;
-  }
-  if (typeof media.primaryArtistId === 'number' && media.primaryArtistId === artistId) {
-    return true;
-  }
-  if (Array.isArray(media.artists)) {
-    return media.artists.some((artist) => artist.id === artistId);
-  }
-  return false;
-};
+export { mediaMatchesArtist } from './library/mediaMatchesArtist';
 
 const sanitizeTimePartInput = (value: string, options: { maxLength?: number; maxValue?: number | null }) => {
   const digitsOnly = value.replace(/\D/g, '');
