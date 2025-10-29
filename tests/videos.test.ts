@@ -7,6 +7,7 @@ import {
   __setHasEnsuredVideoColumnsForTests,
   __setWorkerTestOverrides,
   __updateVideoCategoryForTests as updateVideoCategory,
+  __updateVideoMetadataForTests as updateVideoMetadata,
   __resetWorkerTestState
 } from "../src/worker";
 import type { Env } from "../src/worker";
@@ -85,7 +86,7 @@ class FakeStatement implements D1PreparedStatement {
 class FakeD1Database implements D1Database {
   constructor(
     private readonly artists: ArtistTableRow[],
-    private readonly videos: VideoTableRow[]
+    readonly videos: VideoTableRow[]
   ) {}
 
   prepare(query: string): D1PreparedStatement {
@@ -130,6 +131,11 @@ class FakeD1Database implements D1Database {
         artist_youtube_channel_title: artist.youtube_channel_title,
         artist_profile_image_url: artist.profile_image_url
       } as unknown as T;
+    }
+    if (normalized.startsWith("select id from videos where id = ?")) {
+      const [videoId] = values as [number];
+      const video = this.videos.find((row) => row.id === videoId);
+      return (video ? ({ id: video.id } as unknown as T) : null);
     }
     if (normalized.startsWith("select * from videos where id = ?")) {
       const [videoId] = values as [number];
@@ -233,6 +239,34 @@ class FakeD1Database implements D1Database {
       video.original_composer = originalComposer;
       video.content_type = contentType;
       video.hidden = hidden;
+      return { success: true, meta: { duration: 0, changes: 1 } };
+    }
+    if (normalized.startsWith("update videos set title = ?, original_composer = ? where id = ?")) {
+      const [title, originalComposer, videoId] = values as [string, string | null, number];
+      const video = this.videos.find((row) => row.id === videoId);
+      if (!video) {
+        return { success: false, error: "Video not found", meta: { duration: 0, changes: 0 } };
+      }
+      video.title = title;
+      video.original_composer = originalComposer ?? null;
+      return { success: true, meta: { duration: 0, changes: 1 } };
+    }
+    if (normalized.startsWith("update videos set title = ? where id = ?")) {
+      const [title, videoId] = values as [string, number];
+      const video = this.videos.find((row) => row.id === videoId);
+      if (!video) {
+        return { success: false, error: "Video not found", meta: { duration: 0, changes: 0 } };
+      }
+      video.title = title;
+      return { success: true, meta: { duration: 0, changes: 1 } };
+    }
+    if (normalized.startsWith("update videos set original_composer = ? where id = ?")) {
+      const [originalComposer, videoId] = values as [string | null, number];
+      const video = this.videos.find((row) => row.id === videoId);
+      if (!video) {
+        return { success: false, error: "Video not found", meta: { duration: 0, changes: 0 } };
+      }
+      video.original_composer = originalComposer ?? null;
       return { success: true, meta: { duration: 0, changes: 1 } };
     }
     return { success: true, meta: { duration: 0, changes: 0 } };
@@ -469,6 +503,110 @@ test("updateVideoCategory updates and clears categories", async (t) => {
   const cleared = (await clearResponse.json()) as any;
   assert.equal(cleared.category, null);
   assert.equal(db.videos[0].category, null);
+});
+
+test("updateVideoMetadata updates title and composer", async (t) => {
+  __resetWorkerTestState();
+  __setHasEnsuredVideoColumnsForTests(true);
+  t.after(() => __resetWorkerTestState());
+
+  const artists: ArtistTableRow[] = [
+    {
+      id: 6,
+      created_by: 21,
+      name: "Metadata Artist",
+      display_name: "Metadata Artist",
+      youtube_channel_id: "chan-6",
+      youtube_channel_title: "Channel Six",
+      profile_image_url: null
+    }
+  ];
+  const videos: VideoTableRow[] = [
+    {
+      id: 601,
+      artist_id: 6,
+      youtube_video_id: "videometadata",
+      title: "Old Title",
+      duration_sec: 210,
+      thumbnail_url: "thumb",
+      channel_id: "channel",
+      description: null,
+      captions_json: null,
+      category: null,
+      content_type: "OFFICIAL",
+      hidden: 0,
+      original_composer: "Original"
+    }
+  ];
+
+  const db = new FakeD1Database(artists, videos);
+  const env: Env = { DB: db };
+  const user = { id: 21, email: "editor@example.com", displayName: null };
+
+  const request = new Request("https://example.com/api/videos/601", {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ title: "  Updated Title  ", originalComposer: "  New Composer  " })
+  });
+
+  const response = await updateVideoMetadata(request, env, user, corsConfig, 601);
+  assert.equal(response.status, 200);
+  const payload = (await response.json()) as any;
+  assert.equal(payload.title, "Updated Title");
+  assert.equal(payload.originalComposer, "New Composer");
+  assert.equal(db.videos[0].title, "Updated Title");
+  assert.equal(db.videos[0].original_composer, "New Composer");
+});
+
+test("updateVideoMetadata clears composer with blank input", async (t) => {
+  __resetWorkerTestState();
+  __setHasEnsuredVideoColumnsForTests(true);
+  t.after(() => __resetWorkerTestState());
+
+  const artists: ArtistTableRow[] = [
+    {
+      id: 7,
+      created_by: 22,
+      name: "Composer Artist",
+      display_name: "Composer Artist",
+      youtube_channel_id: "chan-7",
+      youtube_channel_title: "Channel Seven",
+      profile_image_url: null
+    }
+  ];
+  const videos: VideoTableRow[] = [
+    {
+      id: 701,
+      artist_id: 7,
+      youtube_video_id: "videocomposer",
+      title: "Existing Title",
+      duration_sec: 180,
+      thumbnail_url: "thumb",
+      channel_id: "channel",
+      description: null,
+      captions_json: null,
+      category: null,
+      content_type: "OFFICIAL",
+      hidden: 0,
+      original_composer: "Existing Composer"
+    }
+  ];
+
+  const db = new FakeD1Database(artists, videos);
+  const env: Env = { DB: db };
+  const user = { id: 22, email: "owner@example.com", displayName: null };
+
+  const request = new Request("https://example.com/api/videos/701", {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ originalComposer: "   " })
+  });
+
+  const response = await updateVideoMetadata(request, env, user, corsConfig, 701);
+  assert.equal(response.status, 200);
+  const payload = (await response.json()) as any;
+  assert.equal(payload.originalComposer, null);
+  assert.equal(db.videos[0].original_composer, null);
 });
 
 test("getOrCreateVideoByUrl allows updates from a different user", async (t) => {

@@ -1258,6 +1258,11 @@ async function handleApi(
         return await listVideos(url, env, user, cors);
       }
     }
+    const updateVideoMetadataMatch = path.match(/^\/api\/videos\/(\d+)$/);
+    if (request.method === "PATCH" && updateVideoMetadataMatch) {
+      const videoId = Number(updateVideoMetadataMatch[1]);
+      return await updateVideoMetadata(request, env, requireUser(user), cors, videoId);
+    }
     const updateVideoCategoryMatch = path.match(/^\/api\/videos\/(\d+)\/category$/);
     if (request.method === "PATCH" && updateVideoCategoryMatch) {
       const videoId = Number(updateVideoCategoryMatch[1]);
@@ -1911,6 +1916,78 @@ async function updateVideoCategory(
 
   if (!updateResult.success) {
     throw new HttpError(500, updateResult.error ?? "Failed to update video category");
+  }
+
+  const row = await env.DB.prepare("SELECT * FROM videos WHERE id = ?")
+    .bind(videoId)
+    .first<VideoRow>();
+
+  if (!row) {
+    throw new HttpError(500, "Failed to load updated video");
+  }
+
+  return jsonResponse(await hydrateVideoRow(env, row), 200, cors);
+}
+
+async function updateVideoMetadata(
+  request: Request,
+  env: Env,
+  _user: UserContext,
+  cors: CorsConfig,
+  videoIdParam: number
+): Promise<Response> {
+  const videoId = Number(videoIdParam);
+  if (!Number.isFinite(videoId)) {
+    throw new HttpError(400, "videoId must be a number");
+  }
+
+  await ensureVideoExists(env, videoId);
+  await ensureVideoOriginalComposerColumn(env.DB);
+
+  const body = await readJson(request);
+
+  const setClauses: string[] = [];
+  const values: unknown[] = [];
+
+  if (Object.prototype.hasOwnProperty.call(body, "title")) {
+    const rawTitle = (body as { title?: unknown }).title;
+    if (typeof rawTitle !== "string") {
+      throw new HttpError(400, "title must be a string");
+    }
+    const trimmedTitle = rawTitle.trim();
+    if (trimmedTitle.length === 0) {
+      throw new HttpError(400, "title cannot be empty");
+    }
+    setClauses.push("title = ?");
+    values.push(trimmedTitle);
+  }
+
+  if (Object.prototype.hasOwnProperty.call(body, "originalComposer")) {
+    const rawComposer = (body as { originalComposer?: unknown }).originalComposer;
+    if (typeof rawComposer === "string") {
+      const trimmedComposer = rawComposer.trim();
+      setClauses.push("original_composer = ?");
+      values.push(trimmedComposer.length > 0 ? trimmedComposer : null);
+    } else if (rawComposer === null) {
+      setClauses.push("original_composer = ?");
+      values.push(null);
+    } else if (rawComposer !== undefined) {
+      throw new HttpError(400, "originalComposer must be a string or null");
+    }
+  }
+
+  if (setClauses.length === 0) {
+    throw new HttpError(400, "No updatable fields provided");
+  }
+
+  const updateResult = await env.DB.prepare(
+    `UPDATE videos SET ${setClauses.join(", ")} WHERE id = ?`
+  )
+    .bind(...values, videoId)
+    .run();
+
+  if (!updateResult.success) {
+    throw new HttpError(500, updateResult.error ?? "Failed to update video metadata");
   }
 
   const row = await env.DB.prepare("SELECT * FROM videos WHERE id = ?")
@@ -4812,6 +4889,7 @@ export {
   suggestClipCandidates as __suggestClipCandidatesForTests,
   getOrCreateVideoByUrl as __getOrCreateVideoByUrlForTests,
   updateVideoCategory as __updateVideoCategoryForTests,
+  updateVideoMetadata as __updateVideoMetadataForTests,
   updateClip as __updateClipForTests,
   listClips as __listClipsForTests,
   listMediaLibrary as __listMediaLibraryForTests,
