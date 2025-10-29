@@ -172,14 +172,25 @@ class FakeD1Database implements D1Database {
 
     if (
       normalized.startsWith("select v.id, v.artist_id") &&
-      normalized.includes("from video_artists va join videos v on v.id = va.video_id")
+      normalized.includes("from videos v left join video_artists va on va.video_id = v.id") &&
+      normalized.includes("where (va.artist_id is not null or v.artist_id = ?)")
     ) {
       const filterByContentType = normalized.includes("and v.content_type = ?");
-      const [artistId, maybeContentType] = values as [number, string?];
-      const rows = this.videoArtists
-        .filter((link) => link.artist_id === artistId)
-        .map((link) => this.videos.find((video) => video.id === link.video_id))
-        .filter((video): video is VideoTableRow => Boolean(video))
+      const [selectArtistId, joinArtistId, whereArtistId, maybeContentType] = values as [
+        number,
+        number,
+        number,
+        string?
+      ];
+      const artistId = whereArtistId ?? joinArtistId ?? selectArtistId;
+      const requestedArtistId = selectArtistId ?? artistId;
+      const rows = this.videos
+        .filter((video) => {
+          const hasLink = this.videoArtists.some(
+            (link) => link.video_id === video.id && link.artist_id === artistId
+          );
+          return hasLink || video.artist_id === artistId;
+        })
         .filter((video) => Number(video.hidden ?? 0) === 0)
         .filter((video) =>
           !filterByContentType ||
@@ -194,7 +205,7 @@ class FakeD1Database implements D1Database {
             artist_youtube_channel_id: artist?.youtube_channel_id ?? null,
             artist_youtube_channel_title: artist?.youtube_channel_title ?? null,
             artist_profile_image_url: artist?.profile_image_url ?? null,
-            requested_artist_id: artistId
+            requested_artist_id: requestedArtistId
           } as unknown as T;
         })
         .sort((a, b) => (b as unknown as { id: number }).id - (a as unknown as { id: number }).id);
@@ -533,6 +544,61 @@ test("listVideos allows unauthenticated access", async (t) => {
   assert.equal(payload[0].artists.length, 1);
   assert.equal(payload[0].artists[0].id, 3);
   assert.equal(payload[0].artists[0].isPrimary, true);
+});
+
+test("listVideos falls back to primary artist when join table is empty", async (t) => {
+  __resetWorkerTestState();
+  __setHasEnsuredVideoColumnsForTests(true);
+  t.after(() => __resetWorkerTestState());
+
+  const artists: ArtistTableRow[] = [
+    {
+      id: 4,
+      created_by: 7,
+      name: "Fallback Artist",
+      display_name: "Fallback",
+      youtube_channel_id: "chan-4",
+      youtube_channel_title: "Channel Four",
+      profile_image_url: "https://example.com/artist4.png"
+    }
+  ];
+  const videos: VideoTableRow[] = [
+    {
+      id: 411,
+      artist_id: 4,
+      youtube_video_id: "fallbackvid",
+      title: "Fallback Video",
+      duration_sec: 180,
+      thumbnail_url: "thumb",
+      channel_id: "channel",
+      description: null,
+      captions_json: null,
+      category: null,
+      content_type: "OFFICIAL",
+      hidden: 0,
+      original_composer: null
+    }
+  ];
+
+  const db = new FakeD1Database(artists, videos, []);
+  const env: Env = { DB: db };
+  const url = new URL("https://example.com/api/videos?artistId=4");
+
+  const response = await listVideos(url, env, null, corsConfig);
+  assert.equal(response.status, 200);
+
+  const payload = (await response.json()) as any[];
+  assert.equal(payload.length, 1);
+  assert.equal(payload[0].artistId, 4);
+  assert.equal(payload[0].primaryArtistId, 4);
+  assert.equal(payload[0].artistName, "Fallback Artist");
+  assert.equal(payload[0].artistDisplayName, "Fallback");
+  assert.equal(payload[0].artistYoutubeChannelId, "chan-4");
+  assert.equal(payload[0].artistYoutubeChannelTitle, "Channel Four");
+  assert.equal(payload[0].artistProfileImageUrl, "https://example.com/artist4.png");
+  assert.equal(payload[0].youtubeVideoId, "fallbackvid");
+  assert(Array.isArray(payload[0].artists));
+  assert.equal(payload[0].artists.length, 0);
 });
 
 test("listVideos includes live videos", async (t) => {

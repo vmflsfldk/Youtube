@@ -150,29 +150,42 @@ class FakeD1Database implements D1Database {
 
     if (
       normalized.startsWith("select v.id, v.artist_id") &&
-      normalized.includes("from video_artists va join videos v on v.id = va.video_id")
+      normalized.includes("from videos v left join video_artists va on va.video_id = v.id") &&
+      normalized.includes("where (va.artist_id is not null or v.artist_id = ?)")
     ) {
-      const requestedArtistId = Number(values[0]);
       const hasContentTypeFilter = normalized.includes("and v.content_type = ?");
-      const contentTypeFilter = hasContentTypeFilter ? String(values[1] ?? "").toUpperCase() : null;
+      const [selectArtistId, joinArtistId, whereArtistId, maybeContentType] = values as [
+        number,
+        number,
+        number,
+        string?
+      ];
+      const requestedArtistId = whereArtistId ?? joinArtistId ?? selectArtistId;
+      const coalescedArtistId = selectArtistId ?? requestedArtistId;
+      const contentTypeFilter = hasContentTypeFilter
+        ? String(maybeContentType ?? "").toUpperCase()
+        : null;
 
-      const rows = this.videoArtists
-        .filter((link) => link.artist_id === requestedArtistId)
-        .map((link) => {
-          const video = this.videos.find((item) => item.id === link.video_id);
-          if (!video) {
-            return null;
+      const rows = this.videos
+        .filter((video) => {
+          const hasLink = this.videoArtists.some(
+            (link) => link.video_id === video.id && link.artist_id === requestedArtistId
+          );
+          if (!hasLink && video.artist_id !== requestedArtistId) {
+            return false;
           }
           if ((video.hidden ?? 0) !== 0) {
-            return null;
+            return false;
           }
           if (contentTypeFilter) {
             const videoContentType = String(video.content_type ?? "").toUpperCase();
             if (videoContentType !== contentTypeFilter) {
-              return null;
+              return false;
             }
           }
-
+          return true;
+        })
+        .map((video) => {
           const artist = this.artists.find((item) => item.id === video.artist_id);
 
           return {
@@ -182,10 +195,9 @@ class FakeD1Database implements D1Database {
             artist_youtube_channel_id: artist?.youtube_channel_id ?? null,
             artist_youtube_channel_title: artist?.youtube_channel_title ?? null,
             artist_profile_image_url: artist?.profile_image_url ?? null,
-            requested_artist_id: link.artist_id
+            requested_artist_id: coalescedArtistId
           } as unknown as T;
         })
-        .filter((row): row is T => row !== null)
         .sort((a, b) => (b as unknown as { id: number }).id - (a as unknown as { id: number }).id);
 
       return { success: true, meta: { duration: 0, changes: 0 }, results: rows };
