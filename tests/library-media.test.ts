@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   __listMediaLibraryForTests as listMediaLibrary,
   __listSongLibraryForTests as listSongLibrary,
+  __listVideosForTests as listVideos,
   __setHasEnsuredVideoColumnsForTests,
   __resetWorkerTestState
 } from "../src/worker";
@@ -137,6 +138,58 @@ class FakeD1Database implements D1Database {
 
   async handleAll<T>(query: string, values: unknown[]): Promise<D1Result<T>> {
     const normalized = query.replace(/\s+/g, " ").trim().toLowerCase();
+
+    if (normalized === "select id from artists where id = ?") {
+      const artistId = Number(values[0]);
+      const artist = this.artists.find((item) => item.id === artistId);
+      const results = artist
+        ? ([{ id: artist.id }] as unknown as T[])
+        : ([] as unknown as T[]);
+      return { success: true, meta: { duration: 0, changes: 0 }, results };
+    }
+
+    if (
+      normalized.startsWith("select v.id, v.artist_id") &&
+      normalized.includes("from video_artists va join videos v on v.id = va.video_id")
+    ) {
+      const requestedArtistId = Number(values[0]);
+      const hasContentTypeFilter = normalized.includes("and v.content_type = ?");
+      const contentTypeFilter = hasContentTypeFilter ? String(values[1] ?? "").toUpperCase() : null;
+
+      const rows = this.videoArtists
+        .filter((link) => link.artist_id === requestedArtistId)
+        .map((link) => {
+          const video = this.videos.find((item) => item.id === link.video_id);
+          if (!video) {
+            return null;
+          }
+          if ((video.hidden ?? 0) !== 0) {
+            return null;
+          }
+          if (contentTypeFilter) {
+            const videoContentType = String(video.content_type ?? "").toUpperCase();
+            if (videoContentType !== contentTypeFilter) {
+              return null;
+            }
+          }
+
+          const artist = this.artists.find((item) => item.id === video.artist_id);
+
+          return {
+            ...video,
+            artist_name: artist?.name ?? null,
+            artist_display_name: artist?.display_name ?? null,
+            artist_youtube_channel_id: artist?.youtube_channel_id ?? null,
+            artist_youtube_channel_title: artist?.youtube_channel_title ?? null,
+            artist_profile_image_url: artist?.profile_image_url ?? null,
+            requested_artist_id: link.artist_id
+          } as unknown as T;
+        })
+        .filter((row): row is T => row !== null)
+        .sort((a, b) => (b as unknown as { id: number }).id - (a as unknown as { id: number }).id);
+
+      return { success: true, meta: { duration: 0, changes: 0 }, results: rows };
+    }
 
     if (
       normalized.startsWith("select v.id, v.artist_id") &&
@@ -416,6 +469,27 @@ test("listMediaLibrary returns media and clips for requesting user", async () =>
   );
 
   const env: Env = { DB: db };
+
+  const videosResponse = await listVideos(
+    new URL("https://example.com/videos?artistId=10"),
+    env,
+    null,
+    cors
+  );
+  assert.equal(videosResponse.status, 200);
+  const artistVideos = (await videosResponse.json()) as Array<{
+    id: number;
+    category?: string | null;
+  }>;
+  assert.deepEqual(
+    artistVideos.map((video) => video.id),
+    [2, 1],
+    "artist video listing should return videos ordered by id desc"
+  );
+  assert(
+    artistVideos.some((video) => (video.category ?? null) === "live"),
+    "artist video listing should include live videos"
+  );
 
   const user = { id: 1, email: "owner@example.com", displayName: "Owner" };
   const response = await listMediaLibrary(env, user, cors);

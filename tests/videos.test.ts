@@ -535,7 +535,7 @@ test("listVideos allows unauthenticated access", async (t) => {
   assert.equal(payload[0].artists[0].isPrimary, true);
 });
 
-test("listVideos excludes live videos", async (t) => {
+test("listVideos includes live videos", async (t) => {
   __resetWorkerTestState();
   __setHasEnsuredVideoColumnsForTests(true);
   t.after(() => __resetWorkerTestState());
@@ -593,7 +593,11 @@ test("listVideos excludes live videos", async (t) => {
   const defaultPayload = (await defaultResponse.json()) as any[];
   assert.deepEqual(
     defaultPayload.map((video) => video.youtubeVideoId),
-    ["coverallowed"]
+    ["coverallowed", "livenotallowed"]
+  );
+  assert(
+    defaultPayload.some((video) => (video.category ?? "").toLowerCase() === "live"),
+    "expected at least one live video"
   );
   assert(defaultPayload.every((video) => video.artistName === "Live Artist"));
   assert(defaultPayload.every((video) => video.primaryArtistId === 4));
@@ -606,7 +610,7 @@ test("listVideos excludes live videos", async (t) => {
   const filteredPayload = (await filteredResponse.json()) as any[];
   assert.deepEqual(
     filteredPayload.map((video) => video.youtubeVideoId),
-    ["coverallowed"]
+    ["coverallowed", "livenotallowed"]
   );
   assert(filteredPayload.every((video) => video.artistDisplayName === "Performer"));
   assert(filteredPayload.every((video) => video.primaryArtistId === 4));
