@@ -1974,16 +1974,57 @@ export default function App() {
     return headers;
   }, [authToken]);
 
+  const isDevEnvironment = import.meta.env.MODE !== 'production';
+
   const fetchArtistVideos = useCallback(
     async (artistId: number, signal?: AbortSignal): Promise<VideoResponse[]> => {
-      const response = await http.get<VideoResponse[]>('/videos', {
-        headers: authHeaders,
-        params: { artistId },
-        signal
-      });
-      return ensureArray(response.data).map(normalizeVideo);
+      if (isDevEnvironment) {
+        console.debug('[fetchArtistVideos] Request started', {
+          artistId,
+          hasAuthToken: Boolean(authHeaders.Authorization)
+        });
+      }
+
+      try {
+        const response = await http.get<VideoResponse[]>('/videos', {
+          headers: authHeaders,
+          params: { artistId },
+          signal
+        });
+        const videos = ensureArray(response.data);
+
+        if (isDevEnvironment) {
+          console.info('[fetchArtistVideos] Response received', {
+            artistId,
+            status: response.status,
+            videoCount: videos.length
+          });
+        }
+
+        return videos.map(normalizeVideo);
+      } catch (error: unknown) {
+        if (isDevEnvironment) {
+          if (axios.isAxiosError(error)) {
+            console.error('[fetchArtistVideos] Request failed', {
+              artistId,
+              status: error.response?.status,
+              statusText: error.response?.statusText,
+              code: error.code,
+              message: error.message
+            });
+          } else {
+            const fallbackMessage =
+              error instanceof Error ? error.message : String(error);
+            console.error('[fetchArtistVideos] Request failed with unknown error', {
+              artistId,
+              message: fallbackMessage
+            });
+          }
+        }
+        throw error;
+      }
     },
-    [authHeaders]
+    [authHeaders, isDevEnvironment]
   );
 
   const compareVideos = useCallback((a: VideoResponse, b: VideoResponse): number => {
