@@ -199,6 +199,28 @@ const formatSeconds = (value: number): string => {
 
 const clamp = (value: number, min: number, max: number): number => Math.min(Math.max(value, min), max);
 
+type ArtistMatchable = {
+  artistId?: number | null;
+  primaryArtistId?: number | null;
+  artists?: { id: number }[] | null;
+};
+
+const mediaMatchesArtist = (media: ArtistMatchable, artistId: number | null): boolean => {
+  if (artistId === null) {
+    return true;
+  }
+  if (typeof media.artistId === 'number' && media.artistId === artistId) {
+    return true;
+  }
+  if (typeof media.primaryArtistId === 'number' && media.primaryArtistId === artistId) {
+    return true;
+  }
+  if (Array.isArray(media.artists)) {
+    return media.artists.some((artist) => artist.id === artistId);
+  }
+  return false;
+};
+
 const sanitizeTimePartInput = (value: string, options: { maxLength?: number; maxValue?: number | null }) => {
   const digitsOnly = value.replace(/\D/g, '');
   const truncated = options.maxLength ? digitsOnly.slice(0, options.maxLength) : digitsOnly;
@@ -714,12 +736,14 @@ interface ClipResponse {
   description?: string | null;
   originalComposer?: string | null;
   videoOriginalComposer?: string | null;
-  artistId?: number;
+  artistId?: number | null;
+  primaryArtistId?: number | null;
   artistName?: string | null;
   artistDisplayName?: string | null;
   artistYoutubeChannelId?: string | null;
   artistYoutubeChannelTitle?: string | null;
   artistProfileImageUrl?: string | null;
+  artists?: { id: number }[];
   hidden?: boolean;
   createdAt?: string | null;
   updatedAt?: string | null;
@@ -3829,25 +3853,27 @@ export default function App() {
     if (selectedArtistId === null) {
       return libraryVideos;
     }
-    return libraryVideos.filter((video) => video.artistId === selectedArtistId);
+    return libraryVideos.filter((video) => mediaMatchesArtist(video, selectedArtistId));
   }, [libraryVideos, selectedArtistId]);
   const artistLibraryVideoIdSet = useMemo(() => {
     if (selectedArtistId === null) {
       return null;
     }
     const ids = new Set<number>();
-    artistLibraryVideos.forEach((video) => {
-      ids.add(video.id);
+    libraryVideos.forEach((video) => {
+      if (mediaMatchesArtist(video, selectedArtistId)) {
+        ids.add(video.id);
+      }
     });
     return ids;
-  }, [artistLibraryVideos, selectedArtistId]);
+  }, [libraryVideos, selectedArtistId]);
   const artistLibraryClips = useMemo(() => {
     if (selectedArtistId === null) {
       return libraryClips;
     }
     return libraryClips.filter((clip) => {
-      if (typeof clip.artistId === 'number') {
-        return clip.artistId === selectedArtistId;
+      if (mediaMatchesArtist(clip, selectedArtistId)) {
+        return true;
       }
       return artistLibraryVideoIdSet?.has(clip.videoId) ?? false;
     });
@@ -3856,7 +3882,7 @@ export default function App() {
     if (selectedArtistId === null) {
       return librarySongVideos;
     }
-    return librarySongVideos.filter((video) => video.artistId === selectedArtistId);
+    return librarySongVideos.filter((video) => mediaMatchesArtist(video, selectedArtistId));
   }, [librarySongVideos, selectedArtistId]);
   const isCatalogEmpty =
     artistLibraryClips.length === 0 &&
