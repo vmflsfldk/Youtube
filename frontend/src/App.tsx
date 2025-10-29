@@ -33,6 +33,7 @@ import {
   normalizeVideo
 } from './utils/videos';
 import { useTranslations } from './locales/translations';
+import { createReloadArtistVideos } from './library/reloadArtistVideos';
 
 const ClipPlayer = lazy(() => import('./components/ClipPlayer'));
 
@@ -1992,6 +1993,28 @@ export default function App() {
     return headers;
   }, [authToken]);
 
+  const fetchArtistVideos = useCallback(
+    async (artistId: number, signal?: AbortSignal): Promise<VideoResponse[]> => {
+      const response = await http.get<VideoResponse[]>('/videos', {
+        headers: authHeaders,
+        params: { artistId },
+        signal
+      });
+      return ensureArray(response.data).map(normalizeVideo);
+    },
+    [authHeaders]
+  );
+
+  const compareVideos = useCallback((a: VideoResponse, b: VideoResponse): number => {
+    const diff =
+      resolveDescendingSortValue(b.createdAt ?? null, b.id) -
+      resolveDescendingSortValue(a.createdAt ?? null, a.id);
+    if (diff !== 0) {
+      return diff;
+    }
+    return b.id - a.id;
+  }, []);
+
   const shouldAutoPromptGoogle = !authToken && !isLoadingUser;
   const creationDisabled = !isAuthenticated;
 
@@ -2402,71 +2425,25 @@ export default function App() {
   );
 
   const reloadArtistVideos = useCallback(
-    async (options?: { signal?: AbortSignal }) => {
-      const currentArtistId = Number(videoForm.artistId);
-      if (!videoForm.artistId || Number.isNaN(currentArtistId)) {
-        if (!options?.signal?.aborted) {
-          setVideos([]);
-          setSelectedVideo(null);
-          setArtistVideosLoading(false);
-        }
-        return;
-      }
-
-      if (!options?.signal?.aborted) {
-        setArtistVideosLoading(true);
-      }
-
-      try {
-        const response = await http.get<VideoResponse[]>('/videos', {
-          headers: authHeaders,
-          params: { artistId: currentArtistId }
-        });
-
-        if (options?.signal?.aborted) {
-          return;
-        }
-
-        const fetchedVideos = ensureArray(response.data).map(normalizeVideo);
-        const fetchedVideoIdSet = new Set(fetchedVideos.map((video) => video.id));
-
-        setVideos((previousVideos) => {
-          const preservedVideos = previousVideos.filter((video) => {
-            if (video.artistId !== currentArtistId) {
-              return true;
-            }
-            if (video.hidden === true && !fetchedVideoIdSet.has(video.id)) {
-              return true;
-            }
-            return false;
-          });
-
-          const mergedVideos = [...preservedVideos, ...fetchedVideos];
-          mergedVideos.sort((a, b) => {
-            const diff =
-              resolveDescendingSortValue(b.createdAt ?? null, b.id) -
-              resolveDescendingSortValue(a.createdAt ?? null, a.id);
-            if (diff !== 0) {
-              return diff;
-            }
-            return b.id - a.id;
-          });
-          return mergedVideos;
-        });
-
-        setHiddenVideoIds((prev) => prev.filter((id) => !fetchedVideoIdSet.has(id)));
-      } catch (error) {
-        if (options?.signal?.aborted) {
-          return;
-        }
-        console.error('Failed to load videos', error);
-      } finally {
-        if (!options?.signal?.aborted) {
-          setArtistVideosLoading(false);
-        }
-      }
-    },
-    [videoForm.artistId, authHeaders]
+    createReloadArtistVideos({
+      artistId: videoForm.artistId,
+      fetchVideos: fetchArtistVideos,
+      setVideos,
+      setHiddenVideoIds,
+      setSelectedVideo,
+      setArtistVideosLoading,
+      compareVideos,
+      onError: (error: unknown) => console.error('Failed to load videos', error)
+    }),
+    [
+      videoForm.artistId,
+      fetchArtistVideos,
+      setVideos,
+      setHiddenVideoIds,
+      setSelectedVideo,
+      setArtistVideosLoading,
+      compareVideos
+    ]
   );
 
   const applyVideoUpdate = useCallback(
@@ -3553,7 +3530,6 @@ export default function App() {
   const handleArtistClear = () => {
     setVideoForm((prev) => ({ ...prev, artistId: '' }));
     setSelectedVideo(null);
-    setVideos([]);
     setClipCandidates([]);
     setActiveLibraryView('videoList');
     setVideoSubmissionStatus(null);
