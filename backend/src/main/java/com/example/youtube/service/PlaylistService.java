@@ -5,8 +5,10 @@ import com.example.youtube.dto.LocalizedTextResponse;
 import com.example.youtube.dto.PlaylistItemRequest;
 import com.example.youtube.dto.PlaylistItemResponse;
 import com.example.youtube.dto.PlaylistResponse;
+import com.example.youtube.dto.VideoArtistResponse;
 import com.example.youtube.dto.VideoResponse;
 import com.example.youtube.dto.VideoSectionResponse;
+import com.example.youtube.model.Artist;
 import com.example.youtube.model.Clip;
 import com.example.youtube.model.ComposerName;
 import com.example.youtube.model.Playlist;
@@ -177,19 +179,36 @@ public class PlaylistService {
                             section.getSource().name()))
                     .collect(Collectors.toList());
         }
+        Artist artist = video.getArtist();
+        Long artistId = artist != null ? artist.getId() : null;
+        List<VideoArtistResponse> artists = artist != null
+                ? List.of(mapArtist(artist, true))
+                : List.of();
+
         return new VideoResponse(
                 video.getId(),
-                video.getArtist() != null ? video.getArtist().getId() : null,
+                artistId,
+                artistId,
                 video.getYoutubeVideoId(),
                 video.getTitle(),
                 video.getDurationSec(),
                 video.getThumbnailUrl(),
                 video.getChannelId(),
+                "OFFICIAL",
                 video.getCategory(),
+                Boolean.FALSE,
+                null,
+                null,
                 video.getOriginalComposer(),
+                artist != null ? artist.getName() : null,
+                artist != null ? defaultDisplayName(artist) : null,
+                artist != null ? artist.getYoutubeChannelId() : null,
+                artist != null ? artist.getYoutubeChannelTitle() : null,
+                artist != null ? artist.getProfileImageUrl() : null,
                 mapSongTitles(video.getTitles()),
                 mapComposerNames(video.getComposerNames()),
-                sections
+                sections,
+                artists
         );
     }
 
@@ -197,17 +216,62 @@ public class PlaylistService {
         if (clip == null) {
             return null;
         }
+        Video video = clip.getVideo();
+        Artist artist = video != null ? video.getArtist() : null;
+        Long videoId = video != null ? video.getId() : null;
+        Long artistId = artist != null ? artist.getId() : null;
+        List<VideoArtistResponse> artists = artist != null
+                ? List.of(mapArtist(artist, true))
+                : List.of();
+        List<String> tags = clip.getTags() == null ? List.of() : clip.getTags();
+
         return new ClipResponse(
                 clip.getId(),
-                clip.getVideo() != null ? clip.getVideo().getId() : null,
+                videoId,
                 clip.getTitle(),
                 clip.getStartSec(),
                 clip.getEndSec(),
-                clip.getTags(),
+                tags,
                 clip.getOriginalComposer(),
+                video != null ? video.getYoutubeVideoId() : null,
+                video != null ? video.getTitle() : null,
+                video != null ? video.getOriginalComposer() : null,
+                artistId,
+                artistId,
+                artist != null ? artist.getName() : null,
+                artist != null ? defaultDisplayName(artist) : null,
+                artist != null ? artist.getYoutubeChannelId() : null,
+                artist != null ? artist.getYoutubeChannelTitle() : null,
+                artist != null ? artist.getProfileImageUrl() : null,
+                artists,
                 mapSongTitles(clip.getTitles()),
-                mapComposerNames(clip.getComposerNames())
+                mapComposerNames(clip.getComposerNames()),
+                null,
+                null
         );
+    }
+
+    private VideoArtistResponse mapArtist(Artist artist, boolean primary) {
+        if (artist == null) {
+            return null;
+        }
+        return new VideoArtistResponse(artist.getId(),
+                artist.getName(),
+                defaultDisplayName(artist),
+                artist.getYoutubeChannelId(),
+                artist.getYoutubeChannelTitle(),
+                artist.getProfileImageUrl(),
+                primary);
+    }
+
+    private String defaultDisplayName(Artist artist) {
+        if (artist == null) {
+            return null;
+        }
+        if (artist.getDisplayName() != null && !artist.getDisplayName().isBlank()) {
+            return artist.getDisplayName();
+        }
+        return artist.getName();
     }
 
     private List<LocalizedTextResponse> mapSongTitles(List<SongTitle> titles) {

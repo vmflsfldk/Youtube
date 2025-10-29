@@ -3,6 +3,7 @@ package com.example.youtube.service;
 import com.example.youtube.dto.ClipCandidateResponse;
 import com.example.youtube.dto.LocalizedTextRequest;
 import com.example.youtube.dto.LocalizedTextResponse;
+import com.example.youtube.dto.VideoArtistResponse;
 import com.example.youtube.dto.VideoCategoryUpdateRequest;
 import com.example.youtube.dto.VideoClipSuggestionsRequest;
 import com.example.youtube.dto.VideoClipSuggestionsResponse;
@@ -33,6 +34,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -226,6 +228,19 @@ public class VideoService {
                 .collect(Collectors.toList());
     }
 
+    @Transactional(readOnly = true)
+    public List<VideoResponse> listAll() {
+        List<Video> videos = videoRepository.findAll(Sort.by(Sort.Direction.DESC, "id"));
+        if (videos.isEmpty()) {
+            return List.of();
+        }
+        Map<Long, List<VideoSection>> sectionsByVideo = videoSectionRepository.findByVideoIn(videos).stream()
+                .collect(Collectors.groupingBy(section -> section.getVideo().getId()));
+        return videos.stream()
+                .map(video -> map(video, sectionsByVideo.getOrDefault(video.getId(), Collections.emptyList())))
+                .collect(Collectors.toList());
+    }
+
     private VideoResponse map(Video video) {
         List<VideoSection> sections = videoSectionRepository.findByVideo(video);
         return map(video, sections);
@@ -240,18 +255,58 @@ public class VideoService {
                         section.getSource().name()))
                 .collect(Collectors.toList());
 
+        Artist artist = video.getArtist();
+        Long artistId = artist != null ? artist.getId() : null;
+        List<VideoArtistResponse> artists = artist != null
+                ? List.of(mapArtist(artist, true))
+                : List.of();
+
         return new VideoResponse(video.getId(),
-                video.getArtist().getId(),
+                artistId,
+                artistId,
                 video.getYoutubeVideoId(),
                 video.getTitle(),
                 video.getDurationSec(),
                 video.getThumbnailUrl(),
                 video.getChannelId(),
+                "OFFICIAL",
                 video.getCategory(),
+                Boolean.FALSE,
+                null,
+                null,
                 video.getOriginalComposer(),
+                artist != null ? artist.getName() : null,
+                artist != null ? defaultDisplayName(artist) : null,
+                artist != null ? artist.getYoutubeChannelId() : null,
+                artist != null ? artist.getYoutubeChannelTitle() : null,
+                artist != null ? artist.getProfileImageUrl() : null,
                 mapSongTitles(video.getTitles()),
                 mapComposerNames(video.getComposerNames()),
-                sectionResponses);
+                sectionResponses,
+                artists);
+    }
+
+    private VideoArtistResponse mapArtist(Artist artist, boolean primary) {
+        if (artist == null) {
+            return null;
+        }
+        return new VideoArtistResponse(artist.getId(),
+                artist.getName(),
+                defaultDisplayName(artist),
+                artist.getYoutubeChannelId(),
+                artist.getYoutubeChannelTitle(),
+                artist.getProfileImageUrl(),
+                primary);
+    }
+
+    private String defaultDisplayName(Artist artist) {
+        if (artist == null) {
+            return null;
+        }
+        if (artist.getDisplayName() != null && !artist.getDisplayName().isBlank()) {
+            return artist.getDisplayName();
+        }
+        return artist.getName();
     }
 
     @Transactional

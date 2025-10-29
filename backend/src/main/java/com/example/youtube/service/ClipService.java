@@ -5,6 +5,7 @@ import com.example.youtube.dto.ClipResponse;
 import com.example.youtube.dto.ClipUpdateRequest;
 import com.example.youtube.dto.LocalizedTextRequest;
 import com.example.youtube.dto.LocalizedTextResponse;
+import com.example.youtube.dto.VideoArtistResponse;
 import com.example.youtube.model.Artist;
 import com.example.youtube.model.Clip;
 import com.example.youtube.model.ComposerName;
@@ -79,6 +80,13 @@ public class ClipService {
     }
 
     @Transactional(readOnly = true)
+    public List<ClipResponse> listAll() {
+        return clipRepository.findAllWithTags().stream()
+                .map(this::map)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
     public List<ClipResponse> listByVideo(Long videoId) {
         Video video = videoRepository.findById(videoId)
                 .orElseThrow(() -> new EntityNotFoundException("Video not found: " + videoId));
@@ -134,15 +142,61 @@ public class ClipService {
     }
 
     private ClipResponse map(Clip clip) {
+        Video video = clip.getVideo();
+        Artist artist = video != null ? video.getArtist() : null;
+        Long videoId = video != null ? video.getId() : null;
+        Long artistId = artist != null ? artist.getId() : null;
+        List<VideoArtistResponse> artists = artist != null
+                ? List.of(mapArtist(artist, true))
+                : List.of();
+
+        List<String> tags = clip.getTags() == null ? List.of() : clip.getTags();
+
         return new ClipResponse(clip.getId(),
-                clip.getVideo().getId(),
+                videoId,
                 clip.getTitle(),
                 clip.getStartSec(),
                 clip.getEndSec(),
-                clip.getTags(),
+                tags,
                 clip.getOriginalComposer(),
+                video != null ? video.getYoutubeVideoId() : null,
+                video != null ? video.getTitle() : null,
+                video != null ? video.getOriginalComposer() : null,
+                artistId,
+                artistId,
+                artist != null ? artist.getName() : null,
+                artist != null ? defaultDisplayName(artist) : null,
+                artist != null ? artist.getYoutubeChannelId() : null,
+                artist != null ? artist.getYoutubeChannelTitle() : null,
+                artist != null ? artist.getProfileImageUrl() : null,
+                artists,
                 mapSongTitles(clip.getTitles()),
-                mapComposerNames(clip.getComposerNames()));
+                mapComposerNames(clip.getComposerNames()),
+                null,
+                null);
+    }
+
+    private VideoArtistResponse mapArtist(Artist artist, boolean primary) {
+        if (artist == null) {
+            return null;
+        }
+        return new VideoArtistResponse(artist.getId(),
+                artist.getName(),
+                defaultDisplayName(artist),
+                artist.getYoutubeChannelId(),
+                artist.getYoutubeChannelTitle(),
+                artist.getProfileImageUrl(),
+                primary);
+    }
+
+    private String defaultDisplayName(Artist artist) {
+        if (artist == null) {
+            return null;
+        }
+        if (artist.getDisplayName() != null && !artist.getDisplayName().isBlank()) {
+            return artist.getDisplayName();
+        }
+        return artist.getName();
     }
 
     private List<SongTitle> toClipSongTitles(Clip clip, List<LocalizedTextRequest> titles) {
