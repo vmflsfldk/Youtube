@@ -2299,11 +2299,9 @@ async function updateClip(
     `SELECT c.id, c.video_id, c.title, c.start_sec, c.end_sec, c.original_composer, c.created_at
        FROM clips c
        JOIN videos v ON v.id = c.video_id
-       JOIN artists a ON a.id = v.artist_id
-      WHERE c.id = ?
-        AND a.created_by = ?`
+      WHERE c.id = ?`
   )
-    .bind(clipId, user.id)
+    .bind(clipId)
     .first<ClipRow>();
 
   if (!existingClip) {
@@ -2311,6 +2309,17 @@ async function updateClip(
   }
 
   const body = await readJson(request);
+
+  const requestedVideoIdRaw = body.videoId ?? body.video_id;
+  if (typeof requestedVideoIdRaw !== "undefined" && requestedVideoIdRaw !== null) {
+    const requestedVideoId = Number(requestedVideoIdRaw);
+    if (!Number.isFinite(requestedVideoId)) {
+      throw new HttpError(400, "videoId must be a number");
+    }
+    if (requestedVideoId !== existingClip.video_id) {
+      throw new HttpError(404, `Clip not found: ${clipId}`);
+    }
+  }
 
   const parseTimeField = (value: unknown, field: string): number => {
     if (typeof value === "number") {
@@ -4803,6 +4812,7 @@ export {
   suggestClipCandidates as __suggestClipCandidatesForTests,
   getOrCreateVideoByUrl as __getOrCreateVideoByUrlForTests,
   updateVideoCategory as __updateVideoCategoryForTests,
+  updateClip as __updateClipForTests,
   listClips as __listClipsForTests,
   listMediaLibrary as __listMediaLibraryForTests,
   listVideos as __listVideosForTests,
