@@ -2403,18 +2403,39 @@ export default function App() {
           return;
         }
 
-        const fetchedVideos = ensureArray(response.data);
-        setVideos(fetchedVideos);
-        setHiddenVideoIds((prev) =>
-          prev.filter((id) => !fetchedVideos.some((video) => video.id === id))
-        );
+        const fetchedVideos = ensureArray(response.data).map(normalizeVideo);
+        const fetchedVideoIdSet = new Set(fetchedVideos.map((video) => video.id));
+
+        setVideos((previousVideos) => {
+          const preservedVideos = previousVideos.filter((video) => {
+            if (video.artistId !== currentArtistId) {
+              return true;
+            }
+            if (video.hidden === true && !fetchedVideoIdSet.has(video.id)) {
+              return true;
+            }
+            return false;
+          });
+
+          const mergedVideos = [...preservedVideos, ...fetchedVideos];
+          mergedVideos.sort((a, b) => {
+            const diff =
+              resolveDescendingSortValue(b.createdAt ?? null, b.id) -
+              resolveDescendingSortValue(a.createdAt ?? null, a.id);
+            if (diff !== 0) {
+              return diff;
+            }
+            return b.id - a.id;
+          });
+          return mergedVideos;
+        });
+
+        setHiddenVideoIds((prev) => prev.filter((id) => !fetchedVideoIdSet.has(id)));
       } catch (error) {
         if (options?.signal?.aborted) {
           return;
         }
         console.error('Failed to load videos', error);
-        setVideos([]);
-        setSelectedVideo(null);
       } finally {
         if (!options?.signal?.aborted) {
           setArtistVideosLoading(false);
