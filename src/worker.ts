@@ -1447,8 +1447,14 @@ async function handleApi(
     if (request.method === "GET" && path === "/api/library/media") {
       return await listMediaLibrary(env, user, cors);
     }
+    if (request.method === "GET" && path === "/api/library/songs") {
+      return await listSongLibrary(env, user, cors);
+    }
     if (request.method === "GET" && path === "/api/public/library") {
       return await listPublicLibrary(env, cors);
+    }
+    if (request.method === "GET" && path === "/api/public/songs") {
+      return await listPublicSongs(env, cors);
     }
     if (path === "/api/videos") {
       if (request.method === "POST") {
@@ -2329,15 +2335,76 @@ async function listMediaLibrary(env: Env, user: UserContext | null, cors: CorsCo
   return jsonResponse(payload, 200, cors);
 }
 
+async function listSongLibrary(env: Env, user: UserContext | null, cors: CorsConfig): Promise<Response> {
+  requireUser(user);
+
+  const songVideos = await loadSongLibrary(env, { includeHidden: true });
+  return jsonResponse({ songVideos }, 200, cors);
+}
+
 async function listPublicLibrary(env: Env, cors: CorsConfig): Promise<Response> {
   const payload = await loadMediaLibrary(env, { includeHidden: false });
   return jsonResponse(payload, 200, cors);
 }
 
+async function listPublicSongs(env: Env, cors: CorsConfig): Promise<Response> {
+  const songVideos = await loadSongLibrary(env, { includeHidden: false });
+  return jsonResponse({ songVideos }, 200, cors);
+}
+
 async function loadMediaLibrary(
   env: Env,
   options: { includeHidden: boolean }
-): Promise<{ videos: VideoResponse[]; clips: ClipResponse[]; songVideos: VideoResponse[] }> {
+): Promise<{ videos: VideoResponse[]; clips: ClipResponse[] }> {
+  await ensureCommonLibrarySchema(env);
+  await ensureClipOriginalComposerColumn(env.DB);
+
+  const videoRows = await queryLibraryVideos(env, options);
+  const videos = await hydrateLibraryVideos(env, videoRows);
+
+  if (videos.length === 0) {
+    return { videos, clips: [] };
+  }
+
+  const libraryVideoIds = videos.map((video) => video.id);
+  const placeholders = libraryVideoIds.map(() => "?").join(", ");
+  const { results: clipRows } = await env.DB.prepare(
+    `SELECT id, video_id, title, start_sec, end_sec, original_composer, created_at
+       FROM clips
+      WHERE video_id IN (${placeholders})
+      ORDER BY video_id, start_sec`
+  )
+    .bind(...libraryVideoIds)
+    .all<ClipRow>();
+
+  const clips = await attachTags(env, clipRows ?? [], { includeVideoMeta: true });
+
+  return { videos, clips };
+}
+
+async function loadSongLibrary(
+  env: Env,
+  options: { includeHidden: boolean }
+): Promise<VideoResponse[]> {
+  await ensureCommonLibrarySchema(env);
+
+  const videoRows = await queryLibraryVideos(env, options);
+  const videos = await hydrateLibraryVideos(env, videoRows);
+
+  return videos.filter((video) => {
+    const contentType = (video.contentType ?? "").toUpperCase();
+    if (contentType === "CLIP_SOURCE") {
+      return false;
+    }
+    const category = (video.category ?? "").toLowerCase();
+    if (category === "live") {
+      return false;
+    }
+    return true;
+  });
+}
+
+async function ensureCommonLibrarySchema(env: Env): Promise<void> {
   await ensureArtistDisplayNameColumn(env.DB);
   await ensureArtistProfileImageColumn(env.DB);
   await ensureArtistChannelTitleColumn(env.DB);
@@ -2345,9 +2412,13 @@ async function loadMediaLibrary(
   await ensureVideoHiddenColumn(env.DB);
   await ensureVideoCategoryColumn(env.DB);
   await ensureVideoOriginalComposerColumn(env.DB);
-  await ensureClipOriginalComposerColumn(env.DB);
   await ensureVideoArtistsTable(env.DB);
+}
 
+async function queryLibraryVideos(
+  env: Env,
+  options: { includeHidden: boolean }
+): Promise<VideoLibraryRow[]> {
   const predicates: string[] = [];
   if (!options.includeHidden) {
     predicates.push("COALESCE(v.hidden, 0) = 0");
@@ -2382,43 +2453,13 @@ async function loadMediaLibrary(
      ORDER BY v.id DESC`
   ).all<VideoLibraryRow>();
 
-  const videoRows = results ?? [];
-  const videoIds = videoRows.map((row) => row.id);
+  return results ?? [];
+}
+
+async function hydrateLibraryVideos(env: Env, rows: VideoLibraryRow[]): Promise<VideoResponse[]> {
+  const videoIds = rows.map((row) => row.id);
   const artistMap = await fetchVideoArtistMap(env, videoIds);
-  const videos = videoRows.map((row) =>
-    toVideoLibraryResponse(row, { artists: artistMap.get(row.id) ?? [] })
-  );
-
-  const songVideos = videos.filter((video) => {
-    const contentType = (video.contentType ?? "").toUpperCase();
-    if (contentType === "CLIP_SOURCE") {
-      return false;
-    }
-    const category = (video.category ?? "").toLowerCase();
-    if (category === "live") {
-      return false;
-    }
-    return true;
-  });
-
-  if (videos.length === 0) {
-    return { videos, clips: [], songVideos };
-  }
-
-  const libraryVideoIds = videos.map((video) => video.id);
-  const placeholders = libraryVideoIds.map(() => "?").join(", ");
-  const { results: clipRows } = await env.DB.prepare(
-    `SELECT id, video_id, title, start_sec, end_sec, original_composer, created_at
-       FROM clips
-      WHERE video_id IN (${placeholders})
-      ORDER BY video_id, start_sec`
-  )
-    .bind(...libraryVideoIds)
-    .all<ClipRow>();
-
-  const clips = await attachTags(env, clipRows ?? [], { includeVideoMeta: true });
-
-  return { videos, clips, songVideos };
+  return rows.map((row) => toVideoLibraryResponse(row, { artists: artistMap.get(row.id) ?? [] }));
 }
 
 async function createClip(
@@ -5084,6 +5125,7 @@ export {
   updateClip as __updateClipForTests,
   listClips as __listClipsForTests,
   listMediaLibrary as __listMediaLibraryForTests,
+  listSongLibrary as __listSongLibraryForTests,
   listVideos as __listVideosForTests,
   createArtist as __createArtistForTests,
   listArtists as __listArtistsForTests,

@@ -1295,6 +1295,8 @@ export default function App() {
   const [publicVideos, setPublicVideos] = useState<VideoResponse[]>([]);
   const [songVideos, setSongVideos] = useState<VideoResponse[]>([]);
   const [publicSongVideos, setPublicSongVideos] = useState<VideoResponse[]>([]);
+  const [hasLoadedSongs, setHasLoadedSongs] = useState(false);
+  const [hasLoadedPublicSongs, setHasLoadedPublicSongs] = useState(false);
   const videosRef = useRef<VideoResponse[]>([]);
   const songVideosRef = useRef<VideoResponse[]>([]);
   useEffect(() => {
@@ -1332,6 +1334,7 @@ export default function App() {
   const [clipCandidates, setClipCandidates] = useState<ClipCandidateResponse[]>([]);
   const libraryVideos = isAuthenticated ? videos : publicVideos;
   const librarySongVideos = isAuthenticated ? songVideos : publicSongVideos;
+  const hasLoadedLibrarySongs = isAuthenticated ? hasLoadedSongs : hasLoadedPublicSongs;
   const libraryClips = isAuthenticated ? clips : publicClips;
   const libraryVideoMap = useMemo(() => {
     const map = new Map<number, VideoResponse>();
@@ -3091,7 +3094,6 @@ export default function App() {
         const response = await http.get<{
           videos?: MaybeArray<VideoResponse>;
           clips?: MaybeArray<ClipResponse>;
-          songVideos?: MaybeArray<VideoResponse>;
         }>('/public/library', {
           signal: controller.signal
         });
@@ -3101,8 +3103,6 @@ export default function App() {
         const fetchedVideos = ensureArray(response.data?.videos).map(normalizeVideo);
         const normalizedClips = ensureArray(response.data?.clips).map(normalizeClip);
         setPublicVideos(fetchedVideos);
-        const fetchedSongVideos = ensureArray(response.data?.songVideos).map(normalizeVideo);
-        setPublicSongVideos(fetchedSongVideos);
         setPublicClips(normalizedClips);
         setSelectedVideo((previous) =>
           previous && fetchedVideos.some((video) => video.id === previous) ? previous : null
@@ -3135,9 +3135,57 @@ export default function App() {
   }, [http, isAuthenticated]);
 
   useEffect(() => {
+    if (isAuthenticated) {
+      setPublicSongVideos([]);
+      setHasLoadedPublicSongs(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    let cancelled = false;
+
+    setHasLoadedPublicSongs(false);
+
+    const loadPublicSongs = async () => {
+      try {
+        const response = await http.get<{
+          songVideos?: MaybeArray<VideoResponse>;
+        }>(
+          '/public/songs',
+          {
+            signal: controller.signal
+          }
+        );
+        if (cancelled) {
+          return;
+        }
+        const fetchedSongVideos = ensureArray(response.data?.songVideos).map(normalizeVideo);
+        setPublicSongVideos(fetchedSongVideos);
+      } catch (error) {
+        if (controller.signal.aborted) {
+          return;
+        }
+        console.error('Failed to load public songs', error);
+      } finally {
+        if (!cancelled) {
+          setHasLoadedPublicSongs(true);
+        }
+      }
+    };
+
+    void loadPublicSongs();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [http, isAuthenticated]);
+
+  useEffect(() => {
     if (!isAuthenticated) {
       setVideos([]);
       setSongVideos([]);
+      setHasLoadedSongs(false);
       setClips([]);
       setHiddenVideoIds([]);
       setSelectedVideo(null);
@@ -3158,7 +3206,6 @@ export default function App() {
         const response = await http.get<{
           videos?: MaybeArray<VideoResponse>;
           clips?: MaybeArray<ClipResponse>;
-          songVideos?: MaybeArray<VideoResponse>;
         }>(
           '/library/media',
           {
@@ -3172,8 +3219,6 @@ export default function App() {
         const fetchedVideos = ensureArray(response.data?.videos).map(normalizeVideo);
         const normalizedClips = ensureArray(response.data?.clips).map(normalizeClip);
         setVideos(fetchedVideos);
-        const fetchedSongVideos = ensureArray(response.data?.songVideos).map(normalizeVideo);
-        setSongVideos(fetchedSongVideos);
         setClips(normalizedClips);
         setHiddenVideoIds((previous) =>
           previous.filter((id) => fetchedVideos.some((video) => video.id === id))
@@ -3192,6 +3237,7 @@ export default function App() {
         if (!cancelled) {
           setVideos([]);
           setSongVideos([]);
+          setHasLoadedSongs(false);
           setClips([]);
           setHiddenVideoIds([]);
           setSelectedVideo(null);
@@ -3206,6 +3252,53 @@ export default function App() {
       cancelled = true;
       controller.abort();
       setClipsLoading(false);
+    };
+  }, [authHeaders, http, isAuthenticated]);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setHasLoadedSongs(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    let cancelled = false;
+
+    setHasLoadedSongs(false);
+
+    const loadSongs = async () => {
+      try {
+        const response = await http.get<{
+          songVideos?: MaybeArray<VideoResponse>;
+        }>(
+          '/library/songs',
+          {
+            headers: authHeaders,
+            signal: controller.signal
+          }
+        );
+        if (cancelled) {
+          return;
+        }
+        const fetchedSongVideos = ensureArray(response.data?.songVideos).map(normalizeVideo);
+        setSongVideos(fetchedSongVideos);
+      } catch (error) {
+        if (controller.signal.aborted) {
+          return;
+        }
+        console.error('Failed to load songs', error);
+      } finally {
+        if (!cancelled) {
+          setHasLoadedSongs(true);
+        }
+      }
+    };
+
+    void loadSongs();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
     };
   }, [authHeaders, http, isAuthenticated]);
 
@@ -3744,6 +3837,10 @@ export default function App() {
     }
     return librarySongVideos.filter((video) => video.artistId === selectedArtistId);
   }, [librarySongVideos, selectedArtistId]);
+  const isCatalogEmpty =
+    artistLibraryClips.length === 0 &&
+    hasLoadedLibrarySongs &&
+    artistLibrarySongVideos.length === 0;
 
   useEffect(() => {
     setSelectedVideo((previous) => {
@@ -7096,7 +7193,7 @@ export default function App() {
                 <div className="catalog-panel__status" role="status" aria-live="polite">
                   {translate('catalog.loading')}
                 </div>
-              ) : artistLibraryClips.length === 0 && artistLibrarySongVideos.length === 0 ? (
+              ) : isCatalogEmpty ? (
                 <div className="catalog-panel__empty-state">
                   <h3>{translate('catalog.emptyHeading')}</h3>
                   <p>{translate('catalog.emptyDescription')}</p>
