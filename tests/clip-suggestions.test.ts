@@ -98,17 +98,10 @@ class FakeD1Database implements D1Database {
       const artist = this.artists.find((row) => row.id === artistId);
       return (artist ? ({ id: artist.id } as unknown as T) : null);
     }
-    if (normalized.startsWith("select v.*, a.created_by from videos") && normalized.includes("youtube_video_id")) {
+    if (normalized.startsWith("select * from videos where youtube_video_id = ?")) {
       const [youtubeVideoId] = values as [string];
       const video = this.videos.find((row) => row.youtube_video_id === youtubeVideoId);
-      if (!video) {
-        return null;
-      }
-      const artist = this.artists.find((row) => row.id === video.artist_id);
-      if (!artist) {
-        return null;
-      }
-      return ({ ...video, created_by: artist.created_by } as unknown as T);
+      return (video ? ({ ...video } as unknown as T) : null);
     }
     if (normalized.startsWith("select * from videos where id =")) {
       const [videoId] = values as [number];

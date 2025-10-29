@@ -2,10 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  __getOrCreateVideoByUrlForTests as getOrCreateVideoByUrl,
   __listVideosForTests as listVideos,
+  __setHasEnsuredVideoColumnsForTests,
+  __setWorkerTestOverrides,
   __updateVideoCategoryForTests as updateVideoCategory,
-  __resetWorkerTestState,
-  __setHasEnsuredVideoColumnsForTests
+  __resetWorkerTestState
 } from "../src/worker";
 import type { Env } from "../src/worker";
 
@@ -102,20 +104,10 @@ class FakeD1Database implements D1Database {
       const artist = this.artists.find((row) => row.id === artistId);
       return (artist ? ({ id: artist.id } as unknown as T) : null);
     }
-    if (
-      normalized.startsWith("select v.*, a.created_by from videos") &&
-      normalized.includes("where v.id = ?")
-    ) {
-      const [videoId] = values as [number];
-      const video = this.videos.find((row) => row.id === videoId);
-      if (!video) {
-        return null;
-      }
-      const artist = this.artists.find((row) => row.id === video.artist_id);
-      if (!artist) {
-        return null;
-      }
-      return ({ ...video, created_by: artist.created_by } as unknown as T);
+    if (normalized.startsWith("select * from videos where youtube_video_id = ?")) {
+      const [youtubeId] = values as [string];
+      const video = this.videos.find((row) => row.youtube_video_id === youtubeId);
+      return (video ? ({ ...video } as unknown as T) : null);
     }
     if (
       normalized.startsWith("select v.id, v.artist_id") &&
@@ -192,6 +184,55 @@ class FakeD1Database implements D1Database {
         return { success: false, error: "Video not found", meta: { duration: 0, changes: 0 } };
       }
       video.category = category ?? null;
+      return { success: true, meta: { duration: 0, changes: 1 } };
+    }
+    if (
+      normalized.startsWith(
+        "update videos set artist_id = ?, title = ?, duration_sec = ?, thumbnail_url = ?, channel_id = ?, description = ?, captions_json = ?, category = ?, original_composer = ?, content_type = ?, hidden = ? where id = ?"
+      )
+    ) {
+      const [
+        artistId,
+        title,
+        durationSec,
+        thumbnailUrl,
+        channelId,
+        description,
+        captionsJson,
+        category,
+        originalComposer,
+        contentType,
+        hidden,
+        videoId
+      ] = values as [
+        number,
+        string,
+        number | null,
+        string | null,
+        string | null,
+        string | null,
+        string | null,
+        string | null,
+        string | null,
+        string | null,
+        number,
+        number
+      ];
+      const video = this.videos.find((row) => row.id === videoId);
+      if (!video) {
+        return { success: false, error: "Video not found", meta: { duration: 0, changes: 0 } };
+      }
+      video.artist_id = artistId;
+      video.title = title;
+      video.duration_sec = durationSec;
+      video.thumbnail_url = thumbnailUrl;
+      video.channel_id = channelId;
+      video.description = description;
+      video.captions_json = captionsJson;
+      video.category = category;
+      video.original_composer = originalComposer;
+      video.content_type = contentType;
+      video.hidden = hidden;
       return { success: true, meta: { duration: 0, changes: 1 } };
     }
     return { success: true, meta: { duration: 0, changes: 0 } };
@@ -428,4 +469,59 @@ test("updateVideoCategory updates and clears categories", async (t) => {
   const cleared = (await clearResponse.json()) as any;
   assert.equal(cleared.category, null);
   assert.equal(db.videos[0].category, null);
+});
+
+test("getOrCreateVideoByUrl allows updates from a different user", async (t) => {
+  __resetWorkerTestState();
+  __setHasEnsuredVideoColumnsForTests(true);
+  __setWorkerTestOverrides({
+    fetchVideoMetadata: async () => ({
+      title: "Updated Title",
+      durationSec: 321,
+      thumbnailUrl: "https://example.com/thumb-updated.jpg",
+      channelId: "channel-updated",
+      description: "Automatically fetched description"
+    })
+  });
+  t.after(() => __resetWorkerTestState());
+
+  const artists: ArtistTableRow[] = [
+    { id: 9, created_by: 11, name: "", display_name: null, youtube_channel_id: "", youtube_channel_title: null, profile_image_url: null }
+  ];
+  const videos: VideoTableRow[] = [
+    {
+      id: 701,
+      artist_id: 9,
+      youtube_video_id: "existingvid",
+      title: "Old Title",
+      duration_sec: 200,
+      thumbnail_url: "https://example.com/thumb-old.jpg",
+      channel_id: "channel-old",
+      description: "Old description",
+      captions_json: null,
+      category: "cover",
+      content_type: "OFFICIAL",
+      hidden: 0,
+      original_composer: "Composer",
+      created_at: "2024-01-01T00:00:00.000Z",
+      updated_at: "2024-01-02T00:00:00.000Z"
+    }
+  ];
+
+  const db = new FakeD1Database(artists, videos);
+  const env: Env = { DB: db };
+  const user = { id: 77, email: "editor@example.com", displayName: null };
+
+  const { row, created } = await getOrCreateVideoByUrl(env, user, {
+    artistId: 9,
+    videoUrl: "https://www.youtube.com/watch?v=existingvid"
+  });
+
+  assert.equal(created, false);
+  assert.equal(row.id, 701);
+  assert.equal(row.artist_id, 9);
+  assert.equal(row.title, "Updated Title");
+  assert.equal(db.videos[0].title, "Updated Title");
+  assert.equal(db.videos[0].channel_id, "channel-updated");
+  assert.equal(db.videos[0].description, "Automatically fetched description");
 });

@@ -460,3 +460,61 @@ test("listMediaLibrary throws for unauthenticated requests", async () => {
     }
   );
 });
+
+test("listMediaLibrary allows editing videos from other contributors", async () => {
+  __resetWorkerTestState();
+  __setHasEnsuredVideoColumnsForTests(true);
+
+  const db = new FakeD1Database(
+    [
+      {
+        id: 50,
+        created_by: 5,
+        name: "Shared Artist",
+        display_name: "Shared",
+        youtube_channel_id: "channel-shared",
+        youtube_channel_title: "Shared Channel",
+        profile_image_url: "https://example.com/shared.png",
+        available_ko: 1,
+        available_en: 1,
+        available_jp: 1,
+        agency: null
+      }
+    ],
+    [
+      {
+        id: 5001,
+        artist_id: 50,
+        youtube_video_id: "sharedvideo1",
+        title: "Shared Video",
+        duration_sec: 210,
+        thumbnail_url: "https://example.com/shared-video.png",
+        channel_id: "channel-shared",
+        description: "",
+        captions_json: null,
+        category: "cover",
+        content_type: "OFFICIAL",
+        hidden: 0,
+        original_composer: null,
+        created_at: "2024-01-01T00:00:00.000Z",
+        updated_at: "2024-01-01T00:00:00.000Z"
+      }
+    ],
+    [],
+    []
+  );
+
+  const env: Env = { DB: db };
+
+  const response = await listMediaLibrary(
+    env,
+    { id: 99, email: "editor@example.com", displayName: "Editor" },
+    cors
+  );
+
+  assert.equal(response.status, 200);
+  const payload = (await response.json()) as { videos: Array<{ id: number; artistId: number }>; clips: unknown[] };
+  assert.equal(payload.videos.length, 1);
+  assert.equal(payload.videos[0].id, 5001);
+  assert.equal(payload.videos[0].artistId, 50);
+});

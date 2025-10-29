@@ -1714,18 +1714,14 @@ async function getOrCreateVideoByUrl(
         : undefined;
 
   const existing = await env.DB.prepare(
-    `SELECT v.*, a.created_by
-       FROM videos v
-       JOIN artists a ON a.id = v.artist_id
-      WHERE v.youtube_video_id = ?`
+    `SELECT *
+       FROM videos
+      WHERE youtube_video_id = ?`
   )
     .bind(videoId)
-    .first<(VideoRow & { created_by: number }) | null>();
+    .first<VideoRow | null>();
 
   if (existing) {
-    if (existing.created_by !== user.id) {
-      throw new HttpError(403, "이 영상에 접근할 권한이 없습니다.");
-    }
     if (existing.artist_id !== artistId) {
       throw new HttpError(409, "다른 아티스트에 이미 등록된 영상입니다.");
     }
@@ -1877,20 +1873,15 @@ async function updateVideoCategory(
   }
 
   const existing = await env.DB.prepare(
-    `SELECT v.*, a.created_by
-       FROM videos v
-       JOIN artists a ON a.id = v.artist_id
-      WHERE v.id = ?`
+    `SELECT *
+       FROM videos
+      WHERE id = ?`
   )
     .bind(videoId)
-    .first<(VideoRow & { created_by: number }) | null>();
+    .first<VideoRow | null>();
 
   if (!existing) {
     throw new HttpError(404, `Video not found: ${videoId}`);
-  }
-
-  if (existing.created_by !== user.id) {
-    throw new HttpError(403, "이 영상에 접근할 권한이 없습니다.");
   }
 
   const body = await readJson(request);
