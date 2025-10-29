@@ -3879,11 +3879,8 @@ export default function App() {
     });
   }, [artistLibraryVideoIdSet, libraryClips, selectedArtistId]);
   const artistLibrarySongVideos = useMemo(() => {
-    if (selectedArtistId === null) {
-      return librarySongVideos;
-    }
-    return librarySongVideos.filter((video) => mediaMatchesArtist(video, selectedArtistId));
-  }, [librarySongVideos, selectedArtistId]);
+    return librarySongVideos;
+  }, [librarySongVideos]);
   const isCatalogEmpty =
     artistLibraryClips.length === 0 &&
     hasLoadedLibrarySongs &&
