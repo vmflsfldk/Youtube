@@ -1,7 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { __listClipsForTests as listClips, __resetWorkerTestState } from "../src/worker";
+import {
+  __listClipsForTests as listClips,
+  __resetWorkerTestState,
+  __updateClipForTests as updateClip
+} from "../src/worker";
 import type { Env } from "../src/worker";
 
 interface D1Result<T> {
@@ -82,12 +86,17 @@ class FakeStatement implements D1PreparedStatement {
 }
 
 class FakeD1Database implements D1Database {
-  constructor(
-    private readonly artists: ArtistRow[],
-    private readonly videos: VideoRow[],
-    private readonly clips: ClipRow[],
-    private readonly clipTags: ClipTagRow[]
-  ) {}
+  private readonly artists: ArtistRow[];
+  private readonly videos: VideoRow[];
+  private clips: ClipRow[];
+  private readonly clipTags: ClipTagRow[];
+
+  constructor(artists: ArtistRow[], videos: VideoRow[], clips: ClipRow[], clipTags: ClipTagRow[]) {
+    this.artists = artists.map((row) => ({ ...row }));
+    this.videos = videos.map((row) => ({ ...row }));
+    this.clips = clips.map((row) => ({ ...row }));
+    this.clipTags = clipTags.map((row) => ({ ...row }));
+  }
 
   prepare(query: string): D1PreparedStatement {
     return new FakeStatement(this, query);
@@ -144,6 +153,34 @@ class FakeD1Database implements D1Database {
         artist_youtube_channel_title: artist.youtube_channel_title,
         artist_profile_image_url: artist.profile_image_url
       } as unknown as T;
+    }
+    if (
+      normalized.startsWith(
+        "select c.id, c.video_id, c.title, c.start_sec, c.end_sec, c.original_composer, c.created_at"
+      ) && normalized.includes("from clips c join videos v on v.id = c.video_id where c.id = ?")
+    ) {
+      const [clipId] = values as [number];
+      const clip = this.clips.find((row) => row.id === clipId);
+      if (!clip) {
+        return null;
+      }
+      const video = this.videos.find((row) => row.id === clip.video_id);
+      if (!video) {
+        return null;
+      }
+      return { ...clip, created_at: "2023-01-01T00:00:00.000Z" } as unknown as T;
+    }
+    if (
+      normalized.startsWith(
+        "select id, video_id, title, start_sec, end_sec, original_composer, created_at from clips where id = ?"
+      )
+    ) {
+      const [clipId] = values as [number];
+      const clip = this.clips.find((row) => row.id === clipId);
+      if (!clip) {
+        return null;
+      }
+      return { ...clip, created_at: "2023-01-01T00:00:00.000Z" } as unknown as T;
     }
     return null;
   }
@@ -206,7 +243,18 @@ class FakeD1Database implements D1Database {
     return { success: true, meta: { duration: 0, changes: 0 }, results: [] };
   }
 
-  async handleRun<T>(_query: string, _values: unknown[]): Promise<D1Result<T>> {
+  async handleRun<T>(query: string, values: unknown[]): Promise<D1Result<T>> {
+    const normalized = query.replace(/\s+/g, " ").trim().toLowerCase();
+    if (normalized.startsWith("update clips set start_sec = ?, end_sec = ? where id = ?")) {
+      const [startSec, endSec, clipId] = values as [number, number, number];
+      const clip = this.clips.find((row) => row.id === clipId);
+      if (clip) {
+        clip.start_sec = startSec;
+        clip.end_sec = endSec;
+        return { success: true, meta: { duration: 0, changes: 1 } };
+      }
+      return { success: true, meta: { duration: 0, changes: 0 } };
+    }
     return { success: true, meta: { duration: 0, changes: 0 } };
   }
 }
@@ -387,4 +435,113 @@ test("listClips allows access to clips for another user's video", async (t) => {
   assert.equal(payload[0].artistYoutubeChannelTitle, "Channel Two");
   assert.equal(payload[0].artistProfileImageUrl, "https://example.com/artist2.png");
   assert.equal(payload[0].originalComposer, "Composer Highlight");
+});
+
+test("updateClip allows non-creator to update clip timings", async (t) => {
+  __resetWorkerTestState();
+  t.after(() => __resetWorkerTestState());
+
+  const artists: ArtistRow[] = [
+    {
+      id: 1,
+      created_by: 1,
+      name: "Artist One",
+      display_name: "One",
+      youtube_channel_id: "chan-1",
+      youtube_channel_title: "Channel One",
+      profile_image_url: "https://example.com/artist1.png"
+    }
+  ];
+  const videos: VideoRow[] = [
+    {
+      id: 401,
+      artist_id: 1,
+      youtube_video_id: "video401",
+      title: "Collaboration",
+      original_composer: "Composer"
+    }
+  ];
+  const clips: ClipRow[] = [
+    {
+      id: 901,
+      video_id: 401,
+      title: "Best Moment",
+      start_sec: 15,
+      end_sec: 45,
+      original_composer: "Composer"
+    }
+  ];
+  const clipTags: ClipTagRow[] = [{ clip_id: 901, tag: "chorus" }];
+
+  const db = new FakeD1Database(artists, videos, clips, clipTags);
+  const env: Env = { DB: db };
+  const user = { id: 2, email: "other@example.com", displayName: null };
+
+  const request = new Request("https://example.com/api/clips/901", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ startSec: 20, endSec: 50 })
+  });
+
+  const response = await updateClip(request, env, user, corsConfig, 901);
+  assert.equal(response.status, 200);
+
+  const payload = (await response.json()) as any;
+  assert.equal(payload.id, 901);
+  assert.equal(payload.videoId, 401);
+  assert.equal(payload.startSec, 20);
+  assert.equal(payload.endSec, 50);
+  assert.deepEqual(payload.tags, ["chorus"]);
+});
+
+test("updateClip rejects updates for mismatched video", async (t) => {
+  __resetWorkerTestState();
+  t.after(() => __resetWorkerTestState());
+
+  const artists: ArtistRow[] = [
+    {
+      id: 2,
+      created_by: 2,
+      name: "Artist Two",
+      display_name: "Two",
+      youtube_channel_id: "chan-2",
+      youtube_channel_title: "Channel Two",
+      profile_image_url: "https://example.com/artist2.png"
+    }
+  ];
+  const videos: VideoRow[] = [
+    {
+      id: 402,
+      artist_id: 2,
+      youtube_video_id: "video402",
+      title: "Solo",
+      original_composer: null
+    }
+  ];
+  const clips: ClipRow[] = [
+    {
+      id: 902,
+      video_id: 402,
+      title: "Intro",
+      start_sec: 0,
+      end_sec: 30,
+      original_composer: null
+    }
+  ];
+  const clipTags: ClipTagRow[] = [];
+
+  const db = new FakeD1Database(artists, videos, clips, clipTags);
+  const env: Env = { DB: db };
+  const user = { id: 3, email: "other@example.com", displayName: null };
+
+  const request = new Request("https://example.com/api/clips/902", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ startSec: 5, endSec: 35, videoId: 999 })
+  });
+
+  await assert.rejects(
+    () => updateClip(request, env, user, corsConfig, 902),
+    (error: unknown) => error instanceof Error && (error as any).status === 404
+  );
 });
