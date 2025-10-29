@@ -3738,6 +3738,12 @@ export default function App() {
       return artistLibraryVideoIdSet?.has(clip.videoId) ?? false;
     });
   }, [artistLibraryVideoIdSet, libraryClips, selectedArtistId]);
+  const artistLibrarySongVideos = useMemo(() => {
+    if (selectedArtistId === null) {
+      return librarySongVideos;
+    }
+    return librarySongVideos.filter((video) => video.artistId === selectedArtistId);
+  }, [librarySongVideos, selectedArtistId]);
 
   useEffect(() => {
     setSelectedVideo((previous) => {
@@ -7090,7 +7096,7 @@ export default function App() {
                 <div className="catalog-panel__status" role="status" aria-live="polite">
                   {translate('catalog.loading')}
                 </div>
-              ) : artistLibraryClips.length === 0 ? (
+              ) : artistLibraryClips.length === 0 && artistLibrarySongVideos.length === 0 ? (
                 <div className="catalog-panel__empty-state">
                   <h3>{translate('catalog.emptyHeading')}</h3>
                   <p>{translate('catalog.emptyDescription')}</p>
@@ -7099,7 +7105,7 @@ export default function App() {
                 <SongCatalogTable
                   clips={artistLibraryClips}
                   videos={libraryVideos}
-                  songs={librarySongVideos}
+                  songs={artistLibrarySongVideos}
                 />
               )}
             </div>
