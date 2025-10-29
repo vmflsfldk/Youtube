@@ -2316,10 +2316,10 @@ async function listVideos(
 
   const { results } = await statement.all<VideoLibraryRow>();
   const rows = results ?? [];
-  const filteredRows = rows.filter((row) => normalizeVideoCategory(row.category) !== "live");
-  const videoIds = filteredRows.map((row) => row.id);
+  const visibleRows = rows;
+  const videoIds = visibleRows.map((row) => row.id);
   const artistMap = await fetchVideoArtistMap(env, videoIds);
-  const videos = filteredRows.map((row) =>
+  const videos = visibleRows.map((row) =>
     toVideoLibraryResponse(row, {
       artists: artistMap.get(row.id) ?? [],
       currentArtistId: row.requested_artist_id ?? artistId
