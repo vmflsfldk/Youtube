@@ -2297,21 +2297,23 @@ async function listVideos(
         a.youtube_channel_id AS artist_youtube_channel_id,
         a.youtube_channel_title AS artist_youtube_channel_title,
         a.profile_image_url AS artist_profile_image_url,
-        va.artist_id AS requested_artist_id
-      FROM video_artists va
-      JOIN videos v ON v.id = va.video_id
+        COALESCE(va.artist_id, ?) AS requested_artist_id
+      FROM videos v
+      LEFT JOIN video_artists va
+        ON va.video_id = v.id
+       AND va.artist_id = ?
       LEFT JOIN artists a ON a.id = v.artist_id
-     WHERE va.artist_id = ?
+     WHERE (va.artist_id IS NOT NULL OR v.artist_id = ?)
        AND COALESCE(v.hidden, 0) = 0`;
 
   let statement: D1PreparedStatement;
   if (requestedContentType) {
     statement = env.DB.prepare(`${baseQuery}
        AND v.content_type = ?
-     ORDER BY v.id DESC`).bind(artistId, requestedContentType);
+     ORDER BY v.id DESC`).bind(artistId, artistId, artistId, requestedContentType);
   } else {
     statement = env.DB.prepare(`${baseQuery}
-     ORDER BY v.id DESC`).bind(artistId);
+     ORDER BY v.id DESC`).bind(artistId, artistId, artistId);
   }
 
   const { results } = await statement.all<VideoLibraryRow>();
