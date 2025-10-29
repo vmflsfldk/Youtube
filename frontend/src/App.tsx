@@ -1974,7 +1974,7 @@ export default function App() {
     return headers;
   }, [authToken]);
 
-  const isDevEnvironment = process.env.NODE_ENV !== 'production';
+  const isDevEnvironment = import.meta.env.MODE !== 'production';
 
   const fetchArtistVideos = useCallback(
     async (artistId: number, signal?: AbortSignal): Promise<VideoResponse[]> => {
