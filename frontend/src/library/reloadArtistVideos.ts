@@ -1,3 +1,5 @@
+import axios from 'axios';
+
 import type { VideoResponse } from '../types/media';
 
 type StateUpdater<T> = (value: T | ((previous: T) => T)) => void;
@@ -27,7 +29,15 @@ export const createReloadArtistVideos = ({
 }: ReloadArtistVideosOptions) =>
   async (options?: { signal?: AbortSignal }) => {
     const currentArtistId = Number(artistId);
+    console.debug('[reloadArtistVideos] Reload requested', {
+      artistId,
+      parsedArtistId: currentArtistId,
+      aborted: options?.signal?.aborted ?? false,
+    });
     if (!artistId || Number.isNaN(currentArtistId)) {
+      console.debug('[reloadArtistVideos] Skipping reload due to invalid artistId', {
+        artistId,
+      });
       if (!options?.signal?.aborted) {
         setSelectedVideo(null);
         setArtistVideosLoading(false);
@@ -42,10 +52,17 @@ export const createReloadArtistVideos = ({
     try {
       const fetchedVideos = await fetchVideos(currentArtistId, options?.signal);
       if (options?.signal?.aborted) {
+        console.debug('[reloadArtistVideos] Reload aborted after fetch', {
+          artistId: currentArtistId,
+        });
         return;
       }
 
       const fetchedVideoIdSet = new Set(fetchedVideos.map((video) => video.id));
+      console.debug('[reloadArtistVideos] Videos fetched', {
+        artistId: currentArtistId,
+        fetchedCount: fetchedVideos.length,
+      });
 
       setVideos((previousVideos) => {
         const preservedVideos = previousVideos.filter((video) => {
@@ -60,15 +77,41 @@ export const createReloadArtistVideos = ({
 
         const mergedVideos = [...preservedVideos, ...fetchedVideos];
         mergedVideos.sort(compareVideos);
+        console.debug('[reloadArtistVideos] Videos merged', {
+          artistId: currentArtistId,
+          preservedCount: preservedVideos.length,
+          fetchedCount: fetchedVideos.length,
+          mergedCount: mergedVideos.length,
+        });
         return mergedVideos;
       });
 
-      setHiddenVideoIds((prev) => prev.filter((id) => !fetchedVideoIdSet.has(id)));
+      setHiddenVideoIds((prev) => {
+        const remainingHiddenIds = prev.filter((id) => !fetchedVideoIdSet.has(id));
+        console.debug('[reloadArtistVideos] Remaining hidden video IDs updated', {
+          artistId: currentArtistId,
+          remainingHiddenCount: remainingHiddenIds.length,
+          remainingHiddenIds,
+        });
+        return remainingHiddenIds;
+      });
     } catch (error) {
       if (options?.signal?.aborted) {
+        console.debug('[reloadArtistVideos] Reload aborted during error handling', {
+          artistId: currentArtistId,
+        });
         return;
       }
-      onError(error);
+      const isAxiosError = axios.isAxiosError(error);
+      const enrichedError = {
+        artistId: currentArtistId,
+        isAxiosError,
+        message: isAxiosError ? error.message : undefined,
+        status: isAxiosError ? error.response?.status : undefined,
+        originalError: error,
+      };
+      console.error('[reloadArtistVideos] Failed to load videos', enrichedError);
+      onError(enrichedError);
     } finally {
       if (!options?.signal?.aborted) {
         setArtistVideosLoading(false);
