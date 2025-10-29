@@ -52,6 +52,12 @@ type ArtistTableRow = {
   created_by: number;
 };
 
+type VideoArtistLink = {
+  video_id: number;
+  artist_id: number;
+  is_primary: number;
+};
+
 class FakeStatement implements D1PreparedStatement {
   private values: unknown[] = [];
 
@@ -77,9 +83,20 @@ class FakeStatement implements D1PreparedStatement {
 
 class FakeD1Database implements D1Database {
   private lastVideoId: number;
+  readonly videoArtists: VideoArtistLink[];
 
-  constructor(readonly artists: ArtistTableRow[], readonly videos: VideoTableRow[] = []) {
+  constructor(
+    readonly artists: ArtistTableRow[],
+    readonly videos: VideoTableRow[] = [],
+    videoArtists?: VideoArtistLink[]
+  ) {
     this.lastVideoId = videos.reduce((max, row) => Math.max(max, row.id), 0);
+    this.videoArtists = (videoArtists ?? []).map((link) => ({ ...link }));
+    if (!videoArtists) {
+      for (const video of videos) {
+        this.videoArtists.push({ video_id: video.id, artist_id: video.artist_id, is_primary: 1 });
+      }
+    }
   }
 
   prepare(query: string): D1PreparedStatement {
@@ -103,6 +120,13 @@ class FakeD1Database implements D1Database {
       const video = this.videos.find((row) => row.youtube_video_id === youtubeVideoId);
       return (video ? ({ ...video } as unknown as T) : null);
     }
+    if (normalized.startsWith("select 1 from video_artists where video_id = ? and artist_id = ?")) {
+      const [videoId, artistId] = values as [number, number];
+      const found = this.videoArtists.some(
+        (link) => link.video_id === videoId && link.artist_id === artistId
+      );
+      return (found ? ({ 1: 1 } as unknown as T) : null);
+    }
     if (normalized.startsWith("select * from videos where id =")) {
       const [videoId] = values as [number];
       const video = this.videos.find((row) => row.id === videoId);
@@ -111,7 +135,45 @@ class FakeD1Database implements D1Database {
     return null;
   }
 
-  async handleAll<T>(_query: string, _values: unknown[]): Promise<D1Result<T>> {
+  async handleAll<T>(query: string, values: unknown[]): Promise<D1Result<T>> {
+    const normalized = query.replace(/\s+/g, " ").trim().toLowerCase();
+    if (
+      normalized.startsWith("select va.video_id, va.artist_id, va.is_primary") &&
+      normalized.includes("from video_artists va join artists a on a.id = va.artist_id")
+    ) {
+      const videoIds = values as number[];
+      const rows = this.videoArtists
+        .filter((link) => videoIds.includes(link.video_id))
+        .map((link) => {
+          const artist = this.artists.find((row) => row.id === link.artist_id);
+          if (!artist) {
+            return null;
+          }
+          return {
+            video_id: link.video_id,
+            artist_id: link.artist_id,
+            is_primary: link.is_primary,
+            name: "",
+            display_name: null,
+            youtube_channel_id: "",
+            youtube_channel_title: null,
+            profile_image_url: null
+          } as unknown as T;
+        })
+        .filter((row): row is T => row !== null)
+        .sort((a, b) => {
+          const left = a as unknown as { video_id: number; is_primary: number; artist_id: number };
+          const right = b as unknown as { video_id: number; is_primary: number; artist_id: number };
+          if (left.video_id !== right.video_id) {
+            return left.video_id - right.video_id;
+          }
+          if (right.is_primary !== left.is_primary) {
+            return right.is_primary - left.is_primary;
+          }
+          return left.artist_id - right.artist_id;
+        });
+      return { success: true, meta: { duration: 0, changes: 0 }, results: rows };
+    }
     return { success: true, meta: { duration: 0, changes: 0 }, results: [] };
   }
 
@@ -160,6 +222,31 @@ class FakeD1Database implements D1Database {
       video.original_composer = originalComposer ?? null;
       video.content_type = contentType ?? null;
       video.hidden = hidden ?? 0;
+      return { success: true, meta: { duration: 0, changes: 1 } };
+    }
+    if (normalized.startsWith("insert into video_artists")) {
+      const [videoId, artistId, isPrimary] = values as [number, number, number];
+      const existing = this.videoArtists.find(
+        (link) => link.video_id === videoId && link.artist_id === artistId
+      );
+      if (existing) {
+        existing.is_primary = Number(isPrimary);
+      } else {
+        this.videoArtists.push({ video_id: videoId, artist_id: artistId, is_primary: Number(isPrimary) });
+      }
+      return { success: true, meta: { duration: 0, changes: 1 } };
+    }
+    if (
+      normalized.startsWith(
+        "update video_artists set is_primary = case when artist_id = ? then 1 else 0 end where video_id = ?"
+      )
+    ) {
+      const [artistId, videoId] = values as [number, number];
+      for (const link of this.videoArtists) {
+        if (link.video_id === videoId) {
+          link.is_primary = link.artist_id === artistId ? 1 : 0;
+        }
+      }
       return { success: true, meta: { duration: 0, changes: 1 } };
     }
     if (normalized.startsWith("insert into videos")) {
@@ -433,7 +520,7 @@ test("clip suggestions rejects invalid urls", async () => {
   }
 });
 
-test("clip suggestions fails when video belongs to another artist", async () => {
+test("clip suggestions links existing videos to additional artists", async () => {
   __resetWorkerTestState();
   __setHasEnsuredVideoColumnsForTests(true);
   __setWorkerTestOverrides({
@@ -478,12 +565,14 @@ test("clip suggestions fails when video belongs to another artist", async () => 
   const user = { id: 42, email: "user@example.com", displayName: null };
 
   try {
-    await assert.rejects(async () => {
-      await suggestClipCandidates(request, env, user, corsConfig);
-    }, (error: unknown) => {
-      const err = error as { status?: number; message?: string };
-      return err?.status === 409;
-    });
+    const response = await suggestClipCandidates(request, env, user, corsConfig);
+    assert.equal(response.status, 200);
+    const payload = (await response.json()) as any;
+    assert.equal(payload.video.youtubeVideoId, "abcdefghijk");
+    const links = db.videoArtists.filter((link) => link.video_id === conflictingVideo.id);
+    assert.equal(links.length, 2);
+    assert(links.some((link) => link.artist_id === 1 && link.is_primary === 0));
+    assert(links.some((link) => link.artist_id === 2 && link.is_primary === 1));
   } finally {
     __resetWorkerTestState();
   }

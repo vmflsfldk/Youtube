@@ -8,11 +8,23 @@ test('registering a video updates song catalog without reloading library', () =>
   const existingVideo: VideoResponse = {
     id: 1,
     artistId: 10,
+    primaryArtistId: 10,
     youtubeVideoId: 'existing123',
     title: 'Existing Song',
     durationSec: 180,
     thumbnailUrl: 'thumb1',
-    contentType: 'OFFICIAL'
+    contentType: 'OFFICIAL',
+    artists: [
+      {
+        id: 10,
+        name: 'Artist 10',
+        displayName: 'Artist 10',
+        youtubeChannelId: 'chan-10',
+        youtubeChannelTitle: null,
+        profileImageUrl: null,
+        isPrimary: true
+      }
+    ]
   };
 
   const initialState = {
@@ -23,12 +35,24 @@ test('registering a video updates song catalog without reloading library', () =>
   const rawRegisteredVideo: VideoResponse = {
     id: 2,
     artistId: 10,
+    primaryArtistId: 10,
     youtubeVideoId: 'new456',
     title: 'Newly Registered Song',
     durationSec: '245',
     thumbnailUrl: undefined,
     contentType: 'OFFICIAL',
-    category: 'cover'
+    category: 'cover',
+    artists: [
+      {
+        id: 10,
+        name: 'Artist 10',
+        displayName: 'Artist 10',
+        youtubeChannelId: 'chan-10',
+        youtubeChannelTitle: null,
+        profileImageUrl: null,
+        isPrimary: true
+      }
+    ]
   };
 
   const firstMerge = mergeVideoIntoCollections(initialState, rawRegisteredVideo);
@@ -89,4 +113,78 @@ test('registering a video updates song catalog without reloading library', () =>
   );
   const libraryVideo = thirdMerge.videos.find((video) => video.id === liveVideoUpdate.id);
   assert.equal(libraryVideo?.category, 'live', 'video library should reflect updated category');
+});
+
+test('mergeVideoIntoCollections keeps shared video artist associations intact', () => {
+  const sharedVideo: VideoResponse = {
+    id: 100,
+    artistId: 10,
+    primaryArtistId: 10,
+    youtubeVideoId: 'shared123',
+    title: 'Shared Song',
+    durationSec: 210,
+    thumbnailUrl: null,
+    contentType: 'OFFICIAL',
+    artists: [
+      {
+        id: 10,
+        name: 'Artist 10',
+        displayName: 'Artist 10',
+        youtubeChannelId: 'chan-10',
+        youtubeChannelTitle: null,
+        profileImageUrl: null,
+        isPrimary: true
+      }
+    ]
+  };
+
+  const initialState = { videos: [sharedVideo], songVideos: [sharedVideo] };
+
+  const updateFromPartner: VideoResponse = {
+    id: 100,
+    artistId: 20,
+    primaryArtistId: 10,
+    youtubeVideoId: 'shared123',
+    title: 'Shared Song (updated)',
+    durationSec: 215,
+    thumbnailUrl: null,
+    contentType: 'OFFICIAL',
+    artists: [
+      {
+        id: 10,
+        name: 'Artist 10',
+        displayName: 'Artist 10',
+        youtubeChannelId: 'chan-10',
+        youtubeChannelTitle: null,
+        profileImageUrl: null,
+        isPrimary: true
+      },
+      {
+        id: 20,
+        name: 'Artist 20',
+        displayName: 'Artist 20',
+        youtubeChannelId: 'chan-20',
+        youtubeChannelTitle: null,
+        profileImageUrl: null,
+        isPrimary: false
+      }
+    ]
+  };
+
+  const result = mergeVideoIntoCollections(initialState, updateFromPartner);
+
+  assert.equal(result.videos.length, 1, 'video library should remain deduplicated');
+  assert.equal(result.songVideos.length, 1, 'song catalog should remain deduplicated');
+
+  const merged = result.videos[0];
+  assert.equal(merged.artistId, 20, 'context artist should reflect last update');
+  assert.equal(merged.primaryArtistId, 10, 'primary artist should remain unchanged');
+  assert.deepEqual(
+    merged.artists.map((artist) => ({ id: artist.id, primary: artist.isPrimary })),
+    [
+      { id: 10, primary: true },
+      { id: 20, primary: false }
+    ],
+    'artist associations should include both performers'
+  );
 });
