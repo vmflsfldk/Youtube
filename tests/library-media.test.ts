@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   __listMediaLibraryForTests as listMediaLibrary,
+  __listSongLibraryForTests as listSongLibrary,
   __setHasEnsuredVideoColumnsForTests,
   __resetWorkerTestState
 } from "../src/worker";
@@ -416,7 +417,8 @@ test("listMediaLibrary returns media and clips for requesting user", async () =>
 
   const env: Env = { DB: db };
 
-  const response = await listMediaLibrary(env, { id: 1, email: "owner@example.com", displayName: "Owner" }, cors);
+  const user = { id: 1, email: "owner@example.com", displayName: "Owner" };
+  const response = await listMediaLibrary(env, user, cors);
   assert.equal(response.status, 200);
 
   const payload = (await response.json()) as {
@@ -442,6 +444,12 @@ test("listMediaLibrary returns media and clips for requesting user", async () =>
       videoTitle?: string | null;
       artists?: Array<{ id: number; isPrimary: boolean }>;
     }>;
+  };
+
+  const songResponse = await listSongLibrary(env, user, cors);
+  assert.equal(songResponse.status, 200);
+
+  const songPayload = (await songResponse.json()) as {
     songVideos: Array<{
       id: number;
       primaryArtistId?: number | null;
@@ -613,12 +621,12 @@ test("listMediaLibrary returns media and clips for requesting user", async () =>
   );
 
   assert.deepEqual(
-    payload.songVideos.map((video) => video.id),
+    songPayload.songVideos.map((video) => video.id),
     [3],
     "songVideos should exclude live videos and clip sources"
   );
   assert.deepEqual(
-    payload.songVideos.map((video) => video.primaryArtistId),
+    songPayload.songVideos.map((video) => video.primaryArtistId),
     [20]
   );
 });
@@ -632,6 +640,24 @@ test("listMediaLibrary throws for unauthenticated requests", async () => {
 
   await assert.rejects(
     () => listMediaLibrary(env, null, cors),
+    (error: unknown) => {
+      if (!(error instanceof Error)) {
+        return false;
+      }
+      return (error as { status?: number }).status === 401 && error.message === "Authentication required";
+    }
+  );
+});
+
+test("listSongLibrary throws for unauthenticated requests", async () => {
+  __resetWorkerTestState();
+  __setHasEnsuredVideoColumnsForTests(true);
+
+  const db = new FakeD1Database([], [], [], []);
+  const env: Env = { DB: db };
+
+  await assert.rejects(
+    () => listSongLibrary(env, null, cors),
     (error: unknown) => {
       if (!(error instanceof Error)) {
         return false;
