@@ -160,6 +160,38 @@ npm run dev
 
 로그인 헤더 값, 아티스트/영상/클립을 순차적으로 등록하고 자동 추천 기능을 실행할 수 있습니다.
 
+### Cloudflare Worker API 구현 기능 요약
+
+- **인증 및 사용자 컨텍스트**
+  - `POST /api/users/login`은 Google ID Token을 검증한 뒤 사용자 레코드를 생성하거나 최신 닉네임으로 갱신합니다.【F:src/worker.ts†L339-L384】【F:src/worker.ts†L3021-L3079】
+  - `POST /api/users/me/nickname`은 닉네임 길이를 검증하고 사용자 프로필에 즉시 반영합니다.【F:src/worker.ts†L1661-L1686】
+- **아티스트 및 즐겨찾기 관리**
+  - `POST /api/artists/preview`는 채널 메타데이터와 업로드 영상을 미리 조회해 등록 전 검토를 돕습니다.【F:src/worker.ts†L1507-L1542】
+  - `POST /api/artists`는 채널 정보를 자동 채움하고 언어/태그/소속사 정보를 함께 저장합니다.【F:src/worker.ts†L1545-L1658】
+  - `PUT /api/artists/{id}/profile`은 소속사와 태그를 갱신하며 캐시된 메타데이터를 최신화합니다.【F:src/worker.ts†L1700-L1741】
+  - `GET /api/artists`는 전체 목록과 `mine=true` 즐겨찾기 목록을 제공하고, 필요 시 채널 썸네일과 표시명을 새로고침합니다.【F:src/worker.ts†L1775-L1837】
+  - `POST /api/users/me/favorites`는 즐겨찾기 추가/삭제 토글을 처리합니다.【F:src/worker.ts†L1839-L1866】
+- **영상 등록 및 메타데이터 유지**
+  - `POST /api/videos`는 YouTube URL에서 videoId를 추출해 메타데이터·카테고리·원작자 정보를 가져오고, 이미 등록된 영상이면 내용을 덮어씁니다.【F:src/worker.ts†L1880-L2059】
+  - `PATCH /api/videos/{id}`는 제목과 원작자를 선택적으로 업데이트합니다.【F:src/worker.ts†L2143-L2212】
+  - `PATCH /api/videos/{id}/category`는 제공된 카테고리나 제목 기반 추론값으로 장르를 유지합니다.【F:src/worker.ts†L2079-L2140】
+  - `GET /api/videos?artistId=`는 아티스트별 영상 목록을 반환하고 `contentType` 필터로 공식 영상과 클립 소스를 구분합니다.【F:src/worker.ts†L2261-L2331】
+- **클립 생성 및 자동화**
+  - `POST /api/clips`는 시간 구간을 검증하고 필요 시 영상 레코드를 `CLIP_SOURCE`로 등록한 뒤 태그를 저장합니다.【F:src/worker.ts†L2467-L2633】
+  - `PUT /api/clips/{id}`는 중복 구간을 차단하면서 시작·종료 지점을 수정합니다.【F:src/worker.ts†L2636-L2739】
+  - `GET /api/clips`는 아티스트 또는 영상 기준으로 정렬된 클립을 제공합니다.【F:src/worker.ts†L2742-L2784】
+  - `POST /api/videos/clip-suggestions`는 영상 등록과 동시에 챕터 기반 추천 구간을 반환합니다.【F:src/worker.ts†L2215-L2255】
+  - `POST /api/clips/auto-detect`는 자막·챕터·복합 모드를 선택해 후보 구간을 계산합니다.【F:src/worker.ts†L2955-L3019】
+- **라이브러리 및 공개 조회**
+  - `GET /api/library/media`와 `GET /api/library/songs`는 숨김 여부와 콘텐츠 유형을 고려해 영상/클립을 묶어 제공합니다.【F:src/worker.ts†L2333-L2406】
+  - `GET /api/public/library`와 `GET /api/public/songs`는 인증 없이도 공개 라이브러리를 조회하게 합니다.【F:src/worker.ts†L2347-L2354】
+  - `GET /api/public/clips`는 공개 플레이리스트를 정렬해 반환합니다.【F:src/worker.ts†L2943-L2952】
+- **플레이리스트 관리**
+  - `POST /api/playlists`는 제목과 공개 범위를 검증해 플레이리스트를 생성합니다.【F:src/worker.ts†L2802-L2834】
+  - `GET /api/playlists`는 소유자의 최신 플레이리스트와 항목을 함께 제공합니다.【F:src/worker.ts†L2787-L2800】
+  - `POST /api/playlists/{id}/items`는 영상 또는 클립을 원하는 순서로 추가합니다.【F:src/worker.ts†L2837-L2907】
+  - `DELETE /api/playlists/{id}/items/{itemId}`는 항목 삭제 후 최신 상태를 돌려줍니다.【F:src/worker.ts†L2910-L2940】
+
 #### Cloudflare Pages 배포
 
 - 루트 디렉터리에 있는 `package.json`이 Cloudflare Pages에서 `npm install`과 `npm run build`를 실행하면 자동으로 `frontend` 의존성을 설치하고 빌드를 수행하도록 설정되어 있습니다.
