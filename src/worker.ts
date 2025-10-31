@@ -196,6 +196,20 @@ interface ClipCandidateResponse {
   label: string;
 }
 
+interface LiveBroadcastResponse {
+  videoId: string;
+  title: string | null;
+  thumbnailUrl: string | null;
+  url: string | null;
+  startedAt: string | null;
+  scheduledStartAt: string | null;
+}
+
+interface LiveArtistResponse {
+  artist: ArtistResponse;
+  liveVideos: LiveBroadcastResponse[];
+}
+
 interface PlaylistRow {
   id: number;
   owner_id: number;
@@ -257,6 +271,10 @@ interface ChannelMetadataDebug {
   videoFilterKeywords: string[];
   filteredVideoCount: number;
   videoFetchError: string | null;
+  liveFetchAttempted: boolean;
+  liveFetchStatus: number | null;
+  liveVideoCount: number;
+  liveFetchError: string | null;
 }
 
 interface ChannelMetadata {
@@ -275,6 +293,11 @@ interface WorkerTestOverrides {
     description: string | null;
   }>;
   fetchChannelMetadata(env: Env, channelId: string): Promise<ChannelMetadata>;
+  fetchLiveBroadcastsForChannel(
+    env: Env,
+    channelId: string | null,
+    debug: ChannelMetadataDebug | null | undefined
+  ): Promise<LiveBroadcastVideo[]>;
   detectFromChapterSources(
     env: Env,
     youtubeVideoId: string,
@@ -287,6 +310,7 @@ interface WorkerTestOverrides {
 const testOverrides: WorkerTestOverrides = {
   fetchVideoMetadata,
   fetchChannelMetadata,
+  fetchLiveBroadcastsForChannel,
   detectFromChapterSources,
   detectFromDescription,
   detectFromCaptions
@@ -1416,6 +1440,9 @@ async function handleApi(
     if (request.method === "GET" && path === "/api/artists") {
       return await listArtists(url, env, user, cors);
     }
+    if (request.method === "GET" && path === "/api/artists/live") {
+      return await listLiveArtists(env, requireUser(user), cors);
+    }
     const updateArtistProfileMatch = path.match(/^\/api\/artists\/(\d+)\/profile$/);
     if (request.method === "PUT" && updateArtistProfileMatch) {
       const artistId = Number(updateArtistProfileMatch[1]);
@@ -1834,6 +1861,59 @@ async function listArtists(
   const hydrated = await Promise.all(rows.map((row) => refreshArtistMetadataIfNeeded(env, row)));
   const artists = hydrated.map(toArtistResponse);
   return jsonResponse(artists, 200, cors);
+}
+
+async function listLiveArtists(env: Env, _user: UserContext, cors: CorsConfig): Promise<Response> {
+  await ensureArtistUpdatedAtColumn(env.DB);
+  await ensureArtistDisplayNameColumn(env.DB);
+  await ensureArtistProfileImageColumn(env.DB);
+  await ensureArtistChannelTitleColumn(env.DB);
+  await ensureArtistCountryColumns(env.DB);
+  await ensureArtistAgencyColumn(env.DB);
+
+  const response = await env.DB.prepare(
+    `SELECT a.id,
+            a.name,
+            a.display_name,
+            a.youtube_channel_id,
+            a.youtube_channel_title,
+            a.profile_image_url,
+            a.available_ko,
+            a.available_en,
+            a.available_jp,
+            a.agency,
+            GROUP_CONCAT(at.tag, char(31)) AS tags
+       FROM artists a
+       LEFT JOIN artist_tags at ON at.artist_id = a.id
+   GROUP BY a.id
+      ORDER BY a.id DESC`
+  ).all<ArtistQueryRow>();
+
+  const rows = (response.results ?? []).map(normalizeArtistRow);
+  const hydrated = await Promise.all(rows.map((row) => refreshArtistMetadataIfNeeded(env, row)));
+
+  const liveResults = await Promise.all(
+    hydrated.map(async (row) => {
+      const liveVideos = await testOverrides.fetchLiveBroadcastsForChannel(
+        env,
+        row.youtube_channel_id,
+        null
+      );
+      return {
+        artist: toArtistResponse(row),
+        liveVideos: liveVideos.map((video) => ({
+          videoId: video.videoId,
+          title: video.title,
+          thumbnailUrl: video.thumbnailUrl,
+          url: video.url,
+          startedAt: video.startedAt,
+          scheduledStartAt: video.scheduledStartAt
+        }))
+      } satisfies LiveArtistResponse;
+    })
+  );
+
+  return jsonResponse(liveResults, 200, cors);
 }
 
 async function toggleFavorite(
@@ -3647,9 +3727,16 @@ interface YouTubeContentDetails {
   duration?: string;
 }
 
+interface YouTubeLiveStreamingDetails {
+  actualStartTime?: string;
+  scheduledStartTime?: string;
+}
+
 interface YouTubeVideoItem {
+  id?: string;
   snippet?: YouTubeSnippet;
   contentDetails?: YouTubeContentDetails;
+  liveStreamingDetails?: YouTubeLiveStreamingDetails;
 }
 
 interface YouTubeVideosResponse {
@@ -4278,6 +4365,15 @@ type ChannelUploadVideo = {
   publishedAt: string | null;
 };
 
+type LiveBroadcastVideo = {
+  videoId: string;
+  title: string | null;
+  url: string;
+  thumbnailUrl: string | null;
+  startedAt: string | null;
+  scheduledStartAt: string | null;
+};
+
 async function fetchChannelMetadata(env: Env, channelId: string): Promise<ChannelMetadata> {
   const trimmedChannelId = channelId.trim();
   const baseDebug: ChannelMetadataDebug = {
@@ -4298,7 +4394,11 @@ async function fetchChannelMetadata(env: Env, channelId: string): Promise<Channe
     videoFetchStatus: null,
     videoFilterKeywords: [],
     filteredVideoCount: 0,
-    videoFetchError: null
+    videoFetchError: null,
+    liveFetchAttempted: false,
+    liveFetchStatus: null,
+    liveVideoCount: 0,
+    liveFetchError: null
   };
 
   if (!trimmedChannelId) {
@@ -4561,6 +4661,213 @@ async function fetchChannelMetadata(env: Env, channelId: string): Promise<Channe
   baseDebug.resolvedChannelId = resolvedChannelId;
 
   return { title, profileImageUrl, channelId: resolvedChannelId, debug: baseDebug };
+}
+
+async function fetchLiveBroadcastsForChannel(
+  env: Env,
+  channelId: string | null,
+  debug: ChannelMetadataDebug | null | undefined
+): Promise<LiveBroadcastVideo[]> {
+  const trimmedChannelId = typeof channelId === "string" ? channelId.trim() : "";
+  if (debug) {
+    debug.liveFetchAttempted = false;
+    debug.liveFetchStatus = null;
+    debug.liveVideoCount = 0;
+    debug.liveFetchError = null;
+  }
+
+  if (!trimmedChannelId) {
+    if (debug) {
+      debug.liveFetchError = "channelId missing";
+    }
+    return [];
+  }
+
+  const apiKey = env.YOUTUBE_API_KEY?.trim();
+  if (!apiKey) {
+    warnMissingYouTubeApiKey();
+    if (debug) {
+      const warning = "YOUTUBE_API_KEY missing";
+      debug.liveFetchError = warning;
+      if (!debug.warnings.includes(warning)) {
+        debug.warnings.push(warning);
+      }
+    }
+    return [];
+  }
+
+  const normalizeTimestamp = (value: string | undefined): string | null => {
+    if (!value) {
+      return null;
+    }
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return null;
+    }
+    return date.toISOString();
+  };
+
+  const searchUrl = new URL("https://www.googleapis.com/youtube/v3/search");
+  searchUrl.searchParams.set("part", "snippet");
+  searchUrl.searchParams.set("channelId", trimmedChannelId);
+  searchUrl.searchParams.set("type", "video");
+  searchUrl.searchParams.set("eventType", "live");
+  searchUrl.searchParams.set("order", "date");
+  searchUrl.searchParams.set("maxResults", "25");
+  searchUrl.searchParams.set("key", apiKey);
+
+  let searchResponse: Response;
+  try {
+    searchResponse = await fetch(searchUrl.toString(), { method: "GET" });
+  } catch (error) {
+    if (debug) {
+      debug.liveFetchError = error instanceof Error ? error.message : "Failed to fetch live broadcasts";
+    }
+    console.warn(
+      `[yt-clip] Failed to contact YouTube Data API for live broadcasts of channel ${trimmedChannelId}`,
+      error
+    );
+    return [];
+  }
+
+  if (debug) {
+    debug.liveFetchAttempted = true;
+    debug.liveFetchStatus = searchResponse.status;
+  }
+
+  if (!searchResponse.ok) {
+    if (debug) {
+      debug.liveFetchError = `HTTP ${searchResponse.status}`;
+    }
+    console.warn(
+      `[yt-clip] YouTube Data API responded with status ${searchResponse.status} when listing live broadcasts for channel ${trimmedChannelId}`
+    );
+    return [];
+  }
+
+  let searchPayload: YouTubeSearchResponse;
+  try {
+    searchPayload = (await searchResponse.json()) as YouTubeSearchResponse;
+  } catch (error) {
+    if (debug) {
+      debug.liveFetchError = "Invalid JSON response";
+    }
+    console.error("[yt-clip] Failed to parse YouTube live search response", error);
+    return [];
+  }
+
+  const searchItems = Array.isArray(searchPayload.items) ? searchPayload.items : [];
+  const videoIds: string[] = [];
+  const snippetByVideo = new Map<string, YouTubeSnippet>();
+  for (const item of searchItems) {
+    const rawVideoId = item?.id?.videoId;
+    const videoId = typeof rawVideoId === "string" ? rawVideoId.trim() : "";
+    if (!videoId || videoIds.includes(videoId)) {
+      continue;
+    }
+    videoIds.push(videoId);
+    if (item?.snippet) {
+      snippetByVideo.set(videoId, item.snippet);
+    }
+  }
+
+  if (videoIds.length === 0) {
+    if (debug) {
+      debug.liveVideoCount = 0;
+      debug.liveFetchError = null;
+    }
+    return [];
+  }
+
+  const videosUrl = new URL("https://www.googleapis.com/youtube/v3/videos");
+  videosUrl.searchParams.set("part", "snippet,liveStreamingDetails");
+  videosUrl.searchParams.set("id", videoIds.join(","));
+  videosUrl.searchParams.set("key", apiKey);
+
+  let videosResponse: Response | null = null;
+  try {
+    videosResponse = await fetch(videosUrl.toString(), { method: "GET" });
+  } catch (error) {
+    console.warn(
+      `[yt-clip] Failed to contact YouTube Data API for live video details of channel ${trimmedChannelId}`,
+      error
+    );
+  }
+
+  let videosPayload: YouTubeVideosResponse | null = null;
+  if (videosResponse) {
+    if (!videosResponse.ok) {
+      console.warn(
+        `[yt-clip] YouTube Data API responded with status ${videosResponse.status} when fetching live video details for channel ${trimmedChannelId}`
+      );
+    } else {
+      try {
+        videosPayload = (await videosResponse.json()) as YouTubeVideosResponse;
+      } catch (error) {
+        console.error("[yt-clip] Failed to parse YouTube live video details response", error);
+      }
+    }
+  }
+
+  const detailsByVideo = new Map<string, YouTubeVideoItem>();
+  if (videosPayload?.items && Array.isArray(videosPayload.items)) {
+    for (const item of videosPayload.items) {
+      const videoId = typeof item?.id === "string" ? item.id.trim() : "";
+      if (!videoId) {
+        continue;
+      }
+      detailsByVideo.set(videoId, item);
+      if (!snippetByVideo.has(videoId) && item.snippet) {
+        snippetByVideo.set(videoId, item.snippet);
+      }
+    }
+  }
+
+  const results: LiveBroadcastVideo[] = [];
+  for (const videoId of videoIds) {
+    const snippet = snippetByVideo.get(videoId) ?? null;
+    const details = detailsByVideo.get(videoId) ?? null;
+    const liveDetails = details?.liveStreamingDetails;
+    const actualStartTime = normalizeTimestamp(liveDetails?.actualStartTime);
+    const scheduledStartTime = normalizeTimestamp(liveDetails?.scheduledStartTime);
+    const fallbackStartTime = normalizeTimestamp(snippet?.publishedAt);
+    const title = sanitizeSnippetTitle(snippet);
+    const fallbackTitle = typeof snippet?.title === "string" ? snippet.title.trim() : null;
+    const resolvedTitle = title ?? fallbackTitle;
+    const thumbnail = selectThumbnailUrl(details?.snippet?.thumbnails ?? snippet?.thumbnails) ?? null;
+    results.push({
+      videoId,
+      title: resolvedTitle ?? null,
+      url: `https://www.youtube.com/watch?v=${videoId}`,
+      thumbnailUrl: thumbnail,
+      startedAt: actualStartTime ?? fallbackStartTime,
+      scheduledStartAt: scheduledStartTime
+    });
+  }
+
+  results.sort((a, b) => {
+    const resolveKey = (video: LiveBroadcastVideo): string | null =>
+      video.startedAt ?? video.scheduledStartAt;
+    const aKey = resolveKey(a);
+    const bKey = resolveKey(b);
+    if (aKey && bKey) {
+      return bKey.localeCompare(aKey);
+    }
+    if (aKey) {
+      return -1;
+    }
+    if (bKey) {
+      return 1;
+    }
+    return 0;
+  });
+
+  if (debug) {
+    debug.liveVideoCount = results.length;
+    debug.liveFetchError = null;
+  }
+
+  return results;
 }
 
 async function fetchFilteredChannelUploads(
@@ -5074,6 +5381,9 @@ export function __setWorkerTestOverrides(overrides: Partial<WorkerTestOverrides>
   if (overrides.fetchChannelMetadata) {
     testOverrides.fetchChannelMetadata = overrides.fetchChannelMetadata;
   }
+  if (overrides.fetchLiveBroadcastsForChannel) {
+    testOverrides.fetchLiveBroadcastsForChannel = overrides.fetchLiveBroadcastsForChannel;
+  }
   if (overrides.detectFromChapterSources) {
     testOverrides.detectFromChapterSources = overrides.detectFromChapterSources;
   }
@@ -5088,6 +5398,7 @@ export function __setWorkerTestOverrides(overrides: Partial<WorkerTestOverrides>
 export function __resetWorkerTestState(): void {
   testOverrides.fetchVideoMetadata = fetchVideoMetadata;
   testOverrides.fetchChannelMetadata = fetchChannelMetadata;
+  testOverrides.fetchLiveBroadcastsForChannel = fetchLiveBroadcastsForChannel;
   testOverrides.detectFromChapterSources = detectFromChapterSources;
   testOverrides.detectFromDescription = detectFromDescription;
   testOverrides.detectFromCaptions = detectFromCaptions;
@@ -5131,6 +5442,7 @@ export {
   listVideos as __listVideosForTests,
   createArtist as __createArtistForTests,
   listArtists as __listArtistsForTests,
+  listLiveArtists as __listLiveArtistsForTests,
   fetchVideoSectionsFromComments as __fetchVideoSectionsFromCommentsForTests,
   extractSectionsFromText as __extractSectionsFromTextForTests
 };
