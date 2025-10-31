@@ -27,6 +27,7 @@ import ArtistSearchControls from './components/ArtistSearchControls';
 import ClipPreviewPanel from './components/ClipPreviewPanel';
 import SongCatalogTable from './components/SongCatalogTable';
 import type { VideoResponse, VideoSectionResponse } from './types/media';
+import type { ArtistResponse, LiveArtistResponse, LiveBroadcastResponse } from './types/artists';
 import {
   isClipSourceVideo,
   mergeVideoIntoCollections,
@@ -601,20 +602,6 @@ const ARTIST_COUNTRY_METADATA: ReadonlyArray<{
 const AUTH_TOKEN_STORAGE_KEY = 'yt-clip.auth-token';
 const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000;
 
-interface ArtistResponse {
-  id: number;
-  name: string;
-  displayName: string;
-  youtubeChannelId: string;
-  youtubeChannelTitle?: string | null;
-  profileImageUrl?: string | null;
-  availableKo: boolean;
-  availableEn: boolean;
-  availableJp: boolean;
-  agency?: string | null;
-  tags: string[];
-}
-
 type PreparedArtist = ArtistResponse & {
   searchableFields: string[];
   normalizedTags: string[];
@@ -678,6 +665,39 @@ const prepareArtist = (artist: ArtistResponse): PreparedArtist => {
 };
 
 const prepareArtists = (values: ArtistResponse[]): PreparedArtist[] => values.map(prepareArtist);
+
+type PreparedLiveArtist = {
+  artist: PreparedArtist;
+  liveVideos: LiveBroadcastResponse[];
+};
+
+const normalizeLiveBroadcast = (video: LiveBroadcastResponse): LiveBroadcastResponse | null => {
+  const videoId = typeof video.videoId === 'string' ? video.videoId.trim() : '';
+  if (!videoId) {
+    return null;
+  }
+  const title = typeof video.title === 'string' && video.title.trim().length > 0 ? video.title.trim() : null;
+  const thumbnailUrl =
+    typeof video.thumbnailUrl === 'string' && video.thumbnailUrl.trim().length > 0 ? video.thumbnailUrl.trim() : null;
+  const url =
+    typeof video.url === 'string' && video.url.trim().length > 0
+      ? video.url.trim()
+      : `https://www.youtube.com/watch?v=${videoId}`;
+  const startedAt =
+    typeof video.startedAt === 'string' && video.startedAt.trim().length > 0 ? video.startedAt.trim() : null;
+  const scheduledStartAt =
+    typeof video.scheduledStartAt === 'string' && video.scheduledStartAt.trim().length > 0
+      ? video.scheduledStartAt.trim()
+      : null;
+  return {
+    videoId,
+    title,
+    thumbnailUrl,
+    url,
+    startedAt,
+    scheduledStartAt
+  };
+};
 
 type ArtistProfileFormState = {
   agency: string;
@@ -1013,7 +1033,7 @@ const normalizePlaylist = (playlist: PlaylistLike): PlaylistResponse => {
   };
 };
 
-type SectionKey = 'library' | 'latest' | 'catalog' | 'playlist';
+type SectionKey = 'library' | 'live' | 'latest' | 'catalog' | 'playlist';
 
 const allowCrossOriginApi = String(import.meta.env.VITE_ALLOW_CROSS_ORIGIN_API ?? '')
   .toLowerCase()
@@ -1297,6 +1317,10 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<UserResponse | null>(null);
   const [isLoadingUser, setIsLoadingUser] = useState(false);
   const [artists, setArtists] = useState<PreparedArtist[]>([]);
+  const [liveArtists, setLiveArtists] = useState<PreparedLiveArtist[]>([]);
+  const [isLiveArtistsLoading, setLiveArtistsLoading] = useState(false);
+  const [liveArtistsError, setLiveArtistsError] = useState<string | null>(null);
+  const [hasLoadedLiveArtists, setHasLoadedLiveArtists] = useState(false);
   const [videos, setVideos] = useState<VideoResponse[]>([]);
   const [publicVideos, setPublicVideos] = useState<VideoResponse[]>([]);
   const [songVideos, setSongVideos] = useState<VideoResponse[]>([]);
@@ -1364,6 +1388,10 @@ export default function App() {
     });
     return sorted.slice(0, LATEST_VIDEO_LIMIT);
   }, [libraryVideos, hiddenVideoIdSet]);
+  const liveArtistEntries = useMemo(
+    () => liveArtists.filter((entry) => entry.liveVideos.length > 0),
+    [liveArtists]
+  );
   const latestClipEntries = useMemo<LatestClipEntry[]>(() => {
     const filtered = libraryClips.filter((clip) => clip.hidden !== true);
     const sorted = [...filtered].sort((a, b) => {
@@ -2265,6 +2293,64 @@ export default function App() {
     }
   }, [authHeaders]);
 
+  const fetchLiveArtists = useCallback(async () => {
+    setLiveArtistsLoading(true);
+    setLiveArtistsError(null);
+    try {
+      const response = await http.get<LiveArtistResponse[]>('/artists/live', {
+        headers: authHeaders
+      });
+      const payload = ensureArray(response.data);
+      const prepared = payload.map((entry) => {
+        const preparedArtist = prepareArtist(entry.artist);
+        const liveVideos = Array.isArray(entry.liveVideos)
+          ? entry.liveVideos
+              .map((video) => normalizeLiveBroadcast(video))
+              .filter((video): video is LiveBroadcastResponse => video !== null)
+          : [];
+        return { artist: preparedArtist, liveVideos } satisfies PreparedLiveArtist;
+      });
+      prepared.sort((a, b) => {
+        const resolveTime = (videos: LiveBroadcastResponse[]): string | null => {
+          const first = videos[0];
+          if (!first) {
+            return null;
+          }
+          return first.startedAt ?? first.scheduledStartAt ?? null;
+        };
+        const aTime = resolveTime(a.liveVideos);
+        const bTime = resolveTime(b.liveVideos);
+        if (aTime && bTime) {
+          return bTime.localeCompare(aTime);
+        }
+        if (aTime) {
+          return -1;
+        }
+        if (bTime) {
+          return 1;
+        }
+        return a.artist.id - b.artist.id;
+      });
+      setLiveArtists(prepared);
+      setHasLoadedLiveArtists(true);
+    } catch (error) {
+      console.error('Failed to load live artists', error);
+      setLiveArtists([]);
+      setLiveArtistsError(extractAxiosErrorMessage(error, translate('live.panel.errorFallback')));
+      setHasLoadedLiveArtists(true);
+    } finally {
+      setLiveArtistsLoading(false);
+    }
+  }, [authHeaders, translate]);
+
+  const handleLiveArtistsRetry = useCallback(() => {
+    if (!isAuthenticated) {
+      return;
+    }
+    setHasLoadedLiveArtists(false);
+    setLiveArtistsError(null);
+  }, [isAuthenticated]);
+
   useEffect(() => {
     if (!isAuthenticated) {
       return;
@@ -2276,6 +2362,33 @@ export default function App() {
   useEffect(() => {
     void fetchArtists();
   }, [isAuthenticated, fetchArtists]);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setLiveArtists([]);
+      setHasLoadedLiveArtists(false);
+      setLiveArtistsError(null);
+      setLiveArtistsLoading(false);
+      return;
+    }
+    if (activeSection !== 'live') {
+      return;
+    }
+    if (isLiveArtistsLoading) {
+      return;
+    }
+    if (hasLoadedLiveArtists && !liveArtistsError) {
+      return;
+    }
+    void fetchLiveArtists();
+  }, [
+    isAuthenticated,
+    activeSection,
+    hasLoadedLiveArtists,
+    liveArtistsError,
+    isLiveArtistsLoading,
+    fetchLiveArtists
+  ]);
 
   const handleArtistSubmit = async (event: FormEvent) => {
     event.preventDefault();
@@ -5353,6 +5466,24 @@ export default function App() {
         )
       },
       {
+        id: 'live',
+        label: translate('nav.live.label'),
+        description: translate('nav.live.description'),
+        icon: (
+          <svg viewBox="0 0 24 24" role="presentation" aria-hidden="true">
+            <path d="M12 8.5a3.5 3.5 0 1 1 0 7 3.5 3.5 0 0 1 0-7Z" fill="currentColor" />
+            <path
+              d="M5.05 6.05a9.9 9.9 0 0 1 13.9 0l-1.41 1.41a8 8 0 0 0-11.08 0Z"
+              fill="currentColor"
+            />
+            <path
+              d="M3.64 4.64a12 12 0 0 1 16.97 0l-1.41 1.41a10 10 0 0 0-14.15 0Z"
+              fill="currentColor"
+            />
+          </svg>
+        )
+      },
+      {
         id: 'catalog',
         label: translate('nav.catalog.label'),
         description: translate('nav.catalog.description'),
@@ -6087,6 +6218,98 @@ export default function App() {
                     </p>
                   )}
                 </article>
+              </div>
+            </div>
+          </section>
+
+          <section
+            className={`content-panel${activeSection === 'live' ? ' active' : ''}`}
+            role="tabpanel"
+            aria-labelledby="sidebar-tab-live"
+            hidden={activeSection !== 'live'}
+          >
+            <div className="panel live-panel">
+              <div className="live-panel__header">
+                <h2>{translate('live.panel.heading')}</h2>
+                <p>{translate('live.panel.description')}</p>
+              </div>
+              <div className="live-panel__content" aria-live="polite">
+                {isLiveArtistsLoading ? (
+                  <p className="live-panel__status" role="status">
+                    {translate('live.panel.loading')}
+                  </p>
+                ) : liveArtistsError ? (
+                  <div className="live-panel__error" role="alert">
+                    <p>{liveArtistsError}</p>
+                    <button
+                      type="button"
+                      className="live-panel__retry"
+                      onClick={handleLiveArtistsRetry}
+                      disabled={isLiveArtistsLoading}
+                    >
+                      {translate('live.panel.retry')}
+                    </button>
+                  </div>
+                ) : liveArtistEntries.length === 0 ? (
+                  <p className="live-panel__status">{translate('live.panel.empty')}</p>
+                ) : (
+                  <ul className="live-panel__list">
+                    {liveArtistEntries.map(({ artist, liveVideos }) => (
+                      <li key={`live-artist-${artist.id}`} className="live-panel__item">
+                        <div className="live-panel__artist">
+                          <ArtistLibraryCard
+                            artist={artist}
+                            cardData={artist.cardData}
+                            interactive={false}
+                            showTags={false}
+                          />
+                        </div>
+                        <ul className="live-panel__videos">
+                          {liveVideos.map((video) => {
+                            const title =
+                              (video.title && video.title.trim().length > 0
+                                ? video.title.trim()
+                                : translate('live.panel.untitledStream')) || translate('live.panel.untitledStream');
+                            const timeLabel = video.startedAt
+                              ? `${translate('live.panel.startedLabel')} ${formatTimestamp(video.startedAt)}`
+                              : video.scheduledStartAt
+                              ? `${translate('live.panel.scheduledLabel')} ${formatTimestamp(video.scheduledStartAt)}`
+                              : translate('live.panel.noTiming');
+                            const videoUrl =
+                              video.url && video.url.trim().length > 0
+                                ? video.url
+                                : `https://www.youtube.com/watch?v=${video.videoId}`;
+                            return (
+                              <li key={`live-video-${artist.id}-${video.videoId}`} className="live-panel__video">
+                                <div className="live-panel__video-thumb">
+                                  {video.thumbnailUrl ? (
+                                    <img
+                                      src={video.thumbnailUrl}
+                                      alt={`${title} ${translate('latest.panel.thumbnailAltSuffix')}`}
+                                      loading="lazy"
+                                      decoding="async"
+                                    />
+                                  ) : (
+                                    <div className="live-panel__video-thumb-placeholder" aria-hidden="true">
+                                      {translate('latest.panel.thumbnailPlaceholder')}
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="live-panel__video-body">
+                                  <h4 className="live-panel__video-title">{title}</h4>
+                                  <p className="live-panel__video-time">{timeLabel}</p>
+                                  <a className="live-panel__video-link" href={videoUrl} target="_blank" rel="noreferrer">
+                                    {translate('live.panel.watch')}
+                                  </a>
+                                </div>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
             </div>
           </section>
