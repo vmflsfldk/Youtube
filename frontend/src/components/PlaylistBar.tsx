@@ -33,6 +33,7 @@ export interface PlaylistBarItem {
 
 interface PlaylistBarProps {
   items: PlaylistBarItem[];
+  queueItems?: PlaylistBarItem[];
   currentItemKey: string | null;
   currentIndex: number;
   playbackActivationNonce: number;
@@ -42,6 +43,8 @@ interface PlaylistBarProps {
   showQueueToggle: boolean;
   canCreatePlaylist: boolean;
   canModifyPlaylist: boolean;
+  playlistSearchQuery: string;
+  onPlaylistSearchChange: (query: string) => void;
   onCreatePlaylist: () => void | Promise<unknown>;
   onPlayPause: () => void;
   onNext: () => void;
@@ -144,6 +147,7 @@ const dragHeightSpring = {
 
 export default function PlaylistBar({
   items,
+  queueItems,
   currentItemKey,
   currentIndex,
   playbackActivationNonce,
@@ -153,6 +157,8 @@ export default function PlaylistBar({
   showQueueToggle,
   canCreatePlaylist,
   canModifyPlaylist,
+  playlistSearchQuery,
+  onPlaylistSearchChange,
   onCreatePlaylist,
   onPlayPause,
   onNext,
@@ -191,6 +197,11 @@ export default function PlaylistBar({
   const expandedHeightRef = useRef(0);
   const [collapsedWrapper, setCollapsedWrapper] = useState<HTMLDivElement | null>(null);
   const [expandedLayout, setExpandedLayout] = useState<HTMLDivElement | null>(null);
+  const visibleQueueItems = queueItems ?? items;
+  const normalizedQueueQuery = playlistSearchQuery.trim();
+  const queueEmptyMessage = normalizedQueueQuery.length > 0
+    ? '검색 조건에 맞는 영상이나 클립이 없습니다.'
+    : '재생 목록이 비어 있습니다.';
   const measureCollapsedContentHeight = useCallback((node: HTMLDivElement) => {
     const previousHeight = node.style.height;
     const hadPreviousHeight = previousHeight.length > 0;
@@ -885,11 +896,27 @@ export default function PlaylistBar({
                 onTouchEnd={isMobileViewport ? handleMobileDragEnd : undefined}
                 onTouchCancel={isMobileViewport ? handleMobileDragCancel : undefined}
               >
-                {items.length === 0 ? (
-                  <p className="playback-bar__queue-empty">재생 목록이 비어 있습니다.</p>
+                {isMobileViewport && (
+                  <div className="playback-bar__queue-search">
+                    <label className="playback-bar__queue-search-label" htmlFor="playbackBarQueueSearch">
+                      검색
+                    </label>
+                    <input
+                      id="playbackBarQueueSearch"
+                      className="playback-bar__queue-search-input"
+                      type="search"
+                      value={playlistSearchQuery}
+                      onChange={(event) => onPlaylistSearchChange(event.target.value)}
+                      placeholder="영상 또는 클립 검색"
+                      aria-label="영상 또는 클립 검색"
+                    />
+                  </div>
+                )}
+                {visibleQueueItems.length === 0 ? (
+                  <p className="playback-bar__queue-empty">{queueEmptyMessage}</p>
                 ) : (
                   <ul className="playback-bar__queue-list">
-                    {items.map((item, index) => renderQueueItem(item, index))}
+                    {visibleQueueItems.map((item, index) => renderQueueItem(item, index))}
                   </ul>
                 )}
               </motion.div>

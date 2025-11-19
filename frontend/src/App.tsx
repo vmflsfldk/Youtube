@@ -4888,6 +4888,7 @@ export default function App() {
     });
   }, [playlistEntries, resolvePlaylistEntryKey]);
 
+
   const hasPlaybackItems = playbackBarItems.length > 0;
 
   const currentPlaybackIndex = useMemo(() => {
@@ -5192,6 +5193,14 @@ export default function App() {
   }, [normalizedPlaylistQuery, playlistEntries]);
 
   const playlistHasResults = filteredPlaylistEntries.length > 0;
+
+  const filteredPlaybackBarItems = useMemo(() => {
+    if (normalizedPlaylistQuery.length === 0) {
+      return playbackBarItems;
+    }
+    const filteredIds = new Set(filteredPlaylistEntries.map((entry) => entry.itemId));
+    return playbackBarItems.filter((item) => filteredIds.has(item.itemId));
+  }, [filteredPlaylistEntries, normalizedPlaylistQuery, playbackBarItems]);
 
   useEffect(() => {
     if (!expandedPlaylistEntryId) {
@@ -7735,6 +7744,7 @@ export default function App() {
       {hasPlaybackItems && isMobileViewport && (
         <PlaylistBar
           items={playbackBarItems}
+          queueItems={filteredPlaybackBarItems}
           currentItemKey={activePlaybackKey}
           currentIndex={currentPlaybackIndex}
           playbackActivationNonce={playbackActivationNonce}
@@ -7744,6 +7754,8 @@ export default function App() {
           showQueueToggle={isMobileViewport}
           canCreatePlaylist={isAuthenticated}
           canModifyPlaylist={canModifyActivePlaylist}
+          playlistSearchQuery={playlistSearchQuery}
+          onPlaylistSearchChange={setPlaylistSearchQuery}
           onCreatePlaylist={handleCreatePlaylist}
           onPlayPause={handlePlaybackToggle}
           onNext={handlePlaybackNext}
