@@ -5528,7 +5528,29 @@ export default function App() {
     return entries.slice(0, 5);
   }, [liveArtists]);
 
-  const recommendedArtists = useMemo(() => artists.slice(0, 3), [artists]);
+  const playlistWidgetEntries = useMemo(() => {
+    return availablePlaylists.slice(0, 4).map((playlist) => {
+      const videoCount = playlist.items.filter((item) => item.type === 'video' && item.video).length;
+      const clipCount = playlist.items.filter((item) => item.type === 'clip' && item.clip).length;
+
+      let secondary = '';
+      if (videoCount > 0 && clipCount > 0) {
+        secondary = `${videoCount}개 영상 · ${clipCount}개 클립`;
+      } else if (videoCount > 0) {
+        secondary = `${videoCount}개 영상`;
+      } else if (clipCount > 0) {
+        secondary = `${clipCount}개 클립`;
+      } else {
+        secondary = '비어있는 재생목록';
+      }
+
+      return {
+        key: playlist.id,
+        title: (playlist.title || '').trim() || '재생목록',
+        secondary
+      };
+    });
+  }, [availablePlaylists]);
 
   const mobileAuthOverlayLabel = isAuthenticated
     ? translate('mobile.auth.overlayLabelAuthenticated')
@@ -7610,22 +7632,18 @@ export default function App() {
         </div>
 
         <div className="widget-box">
-          <h3>팔로우 추천</h3>
-          {recommendedArtists.length === 0 ? (
+          <h3>재생목록</h3>
+          {playlistWidgetEntries.length === 0 ? (
             <p className="live-mini-item" aria-live="polite">
-              로딩 중이거나 추천할 아티스트가 없습니다.
+              표시할 재생목록이 없습니다.
             </p>
           ) : (
-            recommendedArtists.map((artist) => {
-              const artistHandle =
-                artist.youtubeChannelId || artist.youtubeChannelTitle || artist.name || `artist-${artist.id}`;
-              return (
-                <div key={artist.id} className="live-mini-item">
-                  <strong>{artist.displayName || artist.name}</strong>
-                  <span className="sidebar__auth-handle">@{artistHandle}</span>
-                </div>
-              );
-            })
+            playlistWidgetEntries.map((entry) => (
+              <div key={entry.key} className="live-mini-item">
+                <strong>{entry.title}</strong>
+                <span className="sidebar__auth-handle">{entry.secondary}</span>
+              </div>
+            ))
           )}
         </div>
       </aside>
