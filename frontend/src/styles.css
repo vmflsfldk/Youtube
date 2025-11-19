@@ -534,6 +534,10 @@ button.primary:hover {
   }
 }
 
+.mobile-appbar {
+  display: none;
+}
+
 /* Mobile Styles */
 @media (max-width: 500px) {
   .app-shell {
