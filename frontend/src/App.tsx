@@ -64,12 +64,6 @@ const LiveIcon = () => (
   </svg>
 );
 
-const PlaylistIcon = () => (
-  <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-    <path d="M20 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2Zm0 14H4V6h16ZM6 10h2v2H6Zm0 4h2v2H6Zm4 0h8v2h-8Zm0-4h8v2h-8Z" />
-  </svg>
-);
-
 type MaybeArray<T> =
   | T[]
   | { items?: T[]; data?: T[]; results?: T[] }
@@ -1064,7 +1058,7 @@ const normalizePlaylist = (playlist: PlaylistLike): PlaylistResponse => {
   };
 };
 
-type SectionKey = 'library' | 'live' | 'latest' | 'catalog' | 'playlist';
+type SectionKey = 'library' | 'live' | 'latest' | 'catalog';
 
 const allowCrossOriginApi = String(import.meta.env.VITE_ALLOW_CROSS_ORIGIN_API ?? '')
   .toLowerCase()
@@ -1832,7 +1826,17 @@ export default function App() {
   const [isMobileArtistDebugOpen, setMobileArtistDebugOpen] = useState(false);
   const [activeSection, setActiveSection] = useState<SectionKey>('library');
   const [activeClipId, setActiveClipId] = useState<number | null>(null);
-  const [activeLatestVideo, setActiveLatestVideo] = useState<VideoResponse | null>(null);
+  type LatestPreview = {
+    key: string;
+    type: 'video' | 'clip';
+    title: string;
+    artistName: string;
+    youtubeVideoId: string;
+    startSec: number;
+    endSec?: number | null;
+  };
+
+  const [activeLatestPreview, setActiveLatestPreview] = useState<LatestPreview | null>(null);
   const [latestVideoPreviewMessage, setLatestVideoPreviewMessage] = useState<string | null>(null);
 
   const appendArtistDebugLog = useCallback((entry: Omit<ArtistDebugLogEntry, 'id'>) => {
@@ -4077,21 +4081,64 @@ export default function App() {
     setActiveLibraryView('clipForm');
     setVideoSubmissionStatus(null);
   }, [selectedArtistId]);
+  const latestPreviewRegionRef = useRef<HTMLDivElement | null>(null);
+  const focusLatestPreviewRegion = useCallback(() => {
+    window.requestAnimationFrame(() => {
+      latestPreviewRegionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }, []);
+
   const handleLatestVideoPlay = useCallback(
-    (video: VideoResponse) => {
+    (video: VideoResponse, displayTitle: string, artistName: string) => {
       const youtubeVideoId = (video.youtubeVideoId ?? '').trim();
+      const endSec = typeof video.durationSec === 'number' ? video.durationSec : null;
       if (youtubeVideoId) {
-        setActiveLatestVideo(video);
+        setActiveLatestPreview({
+          key: `video-${video.id}`,
+          type: 'video',
+          title: displayTitle,
+          artistName,
+          youtubeVideoId,
+          startSec: 0,
+          endSec
+        });
         setLatestVideoPreviewMessage(null);
+        setIsPlaybackExpanded(true);
+        focusLatestPreviewRegion();
         return;
       }
-      setActiveLatestVideo(null);
+      setActiveLatestPreview(null);
       setLatestVideoPreviewMessage(translate('latest.panel.previewUnavailable'));
     },
-    [translate]
+    [focusLatestPreviewRegion, setIsPlaybackExpanded, translate]
   );
+
+  const handleLatestClipPlay = useCallback(
+    (clip: ClipResponse, parentVideo: VideoResponse | null, clipTitle: string, artistName: string) => {
+      const youtubeVideoId = (clip.youtubeVideoId || parentVideo?.youtubeVideoId || '').trim();
+      if (youtubeVideoId) {
+        setActiveLatestPreview({
+          key: `clip-${clip.id}`,
+          type: 'clip',
+          title: clipTitle,
+          artistName,
+          youtubeVideoId,
+          startSec: Number.isFinite(clip.startSec) ? Number(clip.startSec) : 0,
+          endSec: Number.isFinite(clip.endSec) ? Number(clip.endSec) : null
+        });
+        setLatestVideoPreviewMessage(null);
+        setIsPlaybackExpanded(true);
+        focusLatestPreviewRegion();
+        return;
+      }
+      setActiveLatestPreview(null);
+      setLatestVideoPreviewMessage(translate('latest.panel.previewUnavailable'));
+    },
+    [focusLatestPreviewRegion, setIsPlaybackExpanded, translate]
+  );
+
   const handleLatestVideoClose = useCallback(() => {
-    setActiveLatestVideo(null);
+    setActiveLatestPreview(null);
     setLatestVideoPreviewMessage(null);
   }, []);
   const handleShowVideoList = useCallback(() => {
@@ -4848,6 +4895,8 @@ export default function App() {
     });
   }, [playlistEntries, resolvePlaylistEntryKey]);
 
+  const shouldRenderPlaybackBar = playbackBarItems.length > 0;
+
   const currentPlaybackIndex = useMemo(() => {
     if (!activePlaybackKey) {
       return -1;
@@ -5169,7 +5218,6 @@ export default function App() {
       previous && artistLibraryClips.some((clip) => clip.id === previous) ? previous : null
     );
   }, [artistLibraryClips]);
-  const playlistHeading = isAuthenticated ? '내 영상·클립 모음' : '공개 영상·클립 모음';
   const playlistSubtitle = isAuthenticated
     ? '저장한 영상과 클립을 검색하고 바로 재생해 보세요.'
     : '회원가입 없이 감상할 수 있는 최신 공개 재생목록입니다.';
@@ -5491,12 +5539,6 @@ export default function App() {
         label: translate('nav.live.label'),
         description: translate('nav.live.description'),
         icon: <LiveIcon />
-      },
-      {
-        id: 'playlist',
-        label: translate('nav.playlist.label'),
-        description: translate('nav.playlist.description'),
-        icon: <PlaylistIcon />
       }
     ];
 
@@ -5527,30 +5569,6 @@ export default function App() {
 
     return entries.slice(0, 5);
   }, [liveArtists]);
-
-  const playlistWidgetEntries = useMemo(() => {
-    return availablePlaylists.slice(0, 4).map((playlist) => {
-      const videoCount = playlist.items.filter((item) => item.type === 'video' && item.video).length;
-      const clipCount = playlist.items.filter((item) => item.type === 'clip' && item.clip).length;
-
-      let secondary = '';
-      if (videoCount > 0 && clipCount > 0) {
-        secondary = `${videoCount}개 영상 · ${clipCount}개 클립`;
-      } else if (videoCount > 0) {
-        secondary = `${videoCount}개 영상`;
-      } else if (clipCount > 0) {
-        secondary = `${clipCount}개 클립`;
-      } else {
-        secondary = '비어있는 재생목록';
-      }
-
-      return {
-        key: playlist.id,
-        title: (playlist.title || '').trim() || '재생목록',
-        secondary
-      };
-    });
-  }, [availablePlaylists]);
 
   const mobileAuthOverlayLabel = isAuthenticated
     ? translate('mobile.auth.overlayLabelAuthenticated')
@@ -5876,7 +5894,15 @@ export default function App() {
               onGoogleCredential={handleGoogleCredential}
               shouldAutoPromptGoogle={shouldAutoPromptGoogle}
             />
-            <p className="sidebar__contact">문의 및 오류 제보는 X의 @utahuboffcial 또는 utahubcs@gmail.com으로 부탁드립니다.</p>
+            <p className="sidebar__contact">
+              문의 및 오류 제보는{' '}
+              <a href="https://x.com/utahuboffcial" target="_blank" rel="noopener noreferrer">
+                X의 @utahuboffcial
+              </a>{' '}
+              또는{' '}
+              <a href="mailto:utahubcs@gmail.com">utahubcs@gmail.com</a>
+              으로 부탁드립니다.
+            </p>
           </div>
         </aside>
 
@@ -5897,16 +5923,6 @@ export default function App() {
         )}
         {!isMobileViewport && (
           <header className="content-header">
-            <div className="mobile-appbar" aria-hidden="true">
-              <div className="mobile-appbar__action-slot mobile-appbar__action-slot--leading" />
-              <div className="mobile-appbar__title">
-                <span className="mobile-appbar__brand">{translate('mobile.appbar.brand')}</span>
-                <span className="mobile-appbar__section">{activeSidebarTab.label}</span>
-              </div>
-              <div className="mobile-appbar__action-slot mobile-appbar__action-slot--trailing mobile-appbar__action-slot--has-content">
-                <LanguageToggle variant="compact" />
-              </div>
-            </div>
             <div className="content-header__body">
               <div className="content-header__top-row">
                 <p className="content-header__eyebrow">{translate('header.eyebrow')}</p>
@@ -5979,23 +5995,26 @@ export default function App() {
                   <div className="latest-block__header">
                     <h3>{translate('latest.panel.videosHeading')}</h3>
                   </div>
-                  {(activeLatestVideo || latestVideoPreviewMessage) && (
-                    <div className="latest-video-preview-region" aria-live="polite">
-                      {activeLatestVideo ? (
+                  {(activeLatestPreview || latestVideoPreviewMessage) && (
+                    <div
+                      className="latest-video-preview-region"
+                      aria-live="polite"
+                      ref={latestPreviewRegionRef}
+                    >
+                      {activeLatestPreview ? (
                         <div
                           className="latest-video-preview"
                           role="dialog"
                           aria-modal="false"
                           aria-label={`${translate('latest.panel.previewAriaLabel')} · ${
-                            activeLatestVideo.title || activeLatestVideo.youtubeVideoId
+                            activeLatestPreview.title
                           }`}
                         >
                           <div className="latest-video-preview__header">
-                            <h4 className="latest-video-preview__title">
-                              {activeLatestVideo.title ||
-                                activeLatestVideo.youtubeVideoId ||
-                                translate('latest.panel.videoFallbackTitle')}
-                            </h4>
+                            <div>
+                              <h4 className="latest-video-preview__title">{activeLatestPreview.title}</h4>
+                              <p className="latest-video-preview__subtitle">{activeLatestPreview.artistName}</p>
+                            </div>
                             <button
                               type="button"
                               className="latest-video-preview__close"
@@ -6005,7 +6024,7 @@ export default function App() {
                               {translate('latest.panel.closePreview')}
                             </button>
                           </div>
-                          {activeLatestVideo.youtubeVideoId ? (
+                          {activeLatestPreview.youtubeVideoId ? (
                             <div className="latest-video-preview__player">
                               <Suspense
                                 fallback={
@@ -6019,9 +6038,10 @@ export default function App() {
                                 }
                               >
                                 <ClipPlayer
-                                  key={activeLatestVideo.youtubeVideoId}
-                                  youtubeVideoId={activeLatestVideo.youtubeVideoId}
-                                  startSec={0}
+                                  key={activeLatestPreview.key}
+                                  youtubeVideoId={activeLatestPreview.youtubeVideoId}
+                                  startSec={activeLatestPreview.startSec}
+                                  endSec={activeLatestPreview.endSec ?? undefined}
                                 />
                               </Suspense>
                             </div>
@@ -6073,7 +6093,7 @@ export default function App() {
                             <button
                               type="button"
                               className="latest-video-card__main"
-                              onClick={() => handleLatestVideoPlay(video)}
+                              onClick={() => handleLatestVideoPlay(video, videoTitle, videoArtistName)}
                               aria-label={`${translate('latest.panel.viewInLibrary')} · ${videoTitle}`}
                             >
                               <div className="latest-video-card__thumbnail">
@@ -6169,36 +6189,12 @@ export default function App() {
                             parentVideo?.artistYoutubeChannelTitle ??
                             ''
                           ).trim() || translate('catalog.fallback.artist');
-                        const clipRangeLabel = `${formatSeconds(clip.startSec)} → ${formatSeconds(clip.endSec)}`;
-                        const clipAddedLabel =
-                          typeof clip.createdAt === 'string'
-                            ? formatTimestamp(clip.createdAt)
-                            : null;
-                        const sourceTitle = parentVideo
-                          ? formatSongTitle(parentVideo.title, {
-                              fallback:
-                                parentVideo.youtubeVideoId ||
-                                translate('latest.panel.videoFallbackTitle')
-                            })
-                          : formatSongTitle(clip.videoTitle, {
-                              fallback:
-                                clip.sectionTitle ??
-                                clip.youtubeChapterTitle ??
-                                clip.description ??
-                                clip.youtubeVideoId ??
-                                translate('catalog.fallback.clip')
-                            });
-                        const clipYoutubeUrl = clip.youtubeVideoId
-                          ? `https://www.youtube.com/watch?v=${clip.youtubeVideoId}&t=${Math.floor(
-                              clip.startSec
-                            )}s`
-                          : null;
                         return (
                           <li key={`latest-clip-${clip.id}`} className="latest-clip">
                             <button
                               type="button"
                               className="latest-clip__main"
-                              onClick={() => openClipInLibrary(clip.id)}
+                              onClick={() => handleLatestClipPlay(clip, parentVideo, clipTitle, clipArtistName)}
                               aria-label={`${translate('latest.panel.openInLibrary')} · ${clipTitle}`}
                             >
                               <div className="latest-clip__media">
@@ -6220,43 +6216,9 @@ export default function App() {
                               </div>
                               <div className="latest-clip__body">
                                 <h4 className="latest-clip__title">{clipTitle}</h4>
-                                <div className="latest-clip__meta">
-                                  <span className="latest-clip__artist">{clipArtistName}</span>
-                                  <span className="latest-clip__range">
-                                    {translate('latest.panel.clipRange')} {clipRangeLabel}
-                                  </span>
-                                  {clipAddedLabel && (
-                                    <span className="latest-clip__timestamp">
-                                      {translate('latest.panel.addedAt')} {clipAddedLabel}
-                                    </span>
-                                  )}
-                                  {sourceTitle && (
-                                    <span className="latest-clip__source">
-                                      {translate('latest.panel.sourceVideo')} {sourceTitle}
-                                    </span>
-                                  )}
-                                </div>
-                                <span className="latest-clip__cta">
-                                  {translate('latest.panel.openInLibrary')}
-                                </span>
+                                <p className="latest-clip__artist">{clipArtistName}</p>
                               </div>
                             </button>
-                            <div className="latest-clip__actions">
-                              {clipYoutubeUrl ? (
-                                <a
-                                  className="latest-clip__action latest-clip__action--link"
-                                  href={clipYoutubeUrl}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                >
-                                  {translate('latest.panel.openOnYoutube')}
-                                </a>
-                              ) : (
-                                <span className="latest-clip__action latest-clip__action--placeholder">
-                                  {translate('latest.panel.openOnYoutube')}
-                                </span>
-                              )}
-                            </div>
                           </li>
                         );
                       })}
@@ -7524,75 +7486,6 @@ export default function App() {
             </div>
           </section>
 
-          <section
-            className={`content-panel${activeSection === 'playlist' ? ' active' : ''}`}
-            role="tabpanel"
-            aria-labelledby="sidebar-tab-playlist"
-            hidden={activeSection !== 'playlist'}
-          >
-            <div className="panel playlist-panel">
-              <div className="playlist-panel__header">
-                <div className="playlist-panel__heading">
-                  <h2>{playlistHeading}</h2>
-                  <p className="playlist-subtitle">{playlistSubtitle}</p>
-                </div>
-                <div className="playlist-panel__selector">
-                  <label className="playlist-selector__label" htmlFor="playlistSelector">
-                    {playlistSelectorLabel}
-                  </label>
-                  {availablePlaylists.length > 0 ? (
-                    <select
-                      id="playlistSelector"
-                      className="playlist-selector__dropdown"
-                      value={playlistSelectionValue}
-                      onChange={handlePlaylistSelectionChange}
-                    >
-                      {!activePlaylist && (
-                        <option value="" disabled>
-                          재생목록을 선택하세요
-                        </option>
-                      )}
-                      {availablePlaylists.map((playlist) => {
-                        const trimmedTitle = playlist.title.trim();
-                        const optionLabel = trimmedTitle.length > 0 ? trimmedTitle : `재생목록 ${playlist.id}`;
-                        return (
-                          <option key={playlist.id} value={playlist.id}>
-                            {optionLabel}
-                          </option>
-                        );
-                      })}
-                    </select>
-                  ) : (
-                    <div className="playlist-selector__empty" role="status" aria-live="polite">
-                      재생목록이 없습니다.
-                    </div>
-                  )}
-                </div>
-                <div className="playlist-search">
-                  <input
-                    id="playlistSearchInput"
-                    type="search"
-                    value={playlistSearchQuery}
-                    onChange={(event) => setPlaylistSearchQuery(event.target.value)}
-                    placeholder="영상 또는 클립 검색"
-                    aria-label="영상 또는 클립 검색"
-                  />
-                </div>
-              </div>
-              {!playlistHasResults ? (
-                <p className="empty-state">{playlistEmptyMessage}</p>
-              ) : (
-                <PlaylistEntriesList
-                  entries={filteredPlaylistEntries}
-                  expandedPlaylistEntryId={expandedPlaylistEntryId}
-                  handlePlaylistEntryRemove={handlePlaylistEntryRemove}
-                  setExpandedPlaylistEntryId={setExpandedPlaylistEntryId}
-                  resolvePlaylistEntryKey={resolvePlaylistEntryKey}
-                  isRemovalDisabled={isPlaylistEntryRemovalDisabled}
-                />
-              )}
-            </div>
-          </section>
         </div>
       </main>
 
@@ -7634,20 +7527,75 @@ export default function App() {
           )}
         </div>
 
-        <div className="widget-box">
-          <h3>재생목록</h3>
-          {playlistWidgetEntries.length === 0 ? (
-            <p className="live-mini-item" aria-live="polite">
-              표시할 재생목록이 없습니다.
-            </p>
-          ) : (
-            playlistWidgetEntries.map((entry) => (
-              <div key={entry.key} className="live-mini-item">
-                <strong>{entry.title}</strong>
-                <span className="sidebar__auth-handle">{entry.secondary}</span>
+        <div className="widget-box playlist-widget">
+          <div className="playlist-widget__header">
+            <div>
+              <h3>재생목록</h3>
+              <p className="playlist-widget__subtitle">{playlistSubtitle}</p>
+            </div>
+          </div>
+          <div className="playlist-widget__selector">
+            <label className="playlist-selector__label" htmlFor="playlistWidgetSelector">
+              {playlistSelectorLabel}
+            </label>
+            {availablePlaylists.length > 0 ? (
+              <select
+                id="playlistWidgetSelector"
+                className="playlist-selector__dropdown"
+                value={playlistSelectionValue}
+                onChange={handlePlaylistSelectionChange}
+              >
+                {!activePlaylist && (
+                  <option value="" disabled>
+                    재생목록을 선택하세요
+                  </option>
+                )}
+                {availablePlaylists.map((playlist) => {
+                  const trimmedTitle = playlist.title.trim();
+                  const optionLabel = trimmedTitle.length > 0 ? trimmedTitle : `재생목록 ${playlist.id}`;
+                  return (
+                    <option key={playlist.id} value={playlist.id}>
+                      {optionLabel}
+                    </option>
+                  );
+                })}
+              </select>
+            ) : (
+              <div className="playlist-selector__empty" role="status" aria-live="polite">
+                표시할 재생목록이 없습니다.
               </div>
-            ))
-          )}
+            )}
+          </div>
+          <div className="playlist-widget__search">
+            <label className="playlist-search__label" htmlFor="playlistWidgetSearch">
+              검색
+            </label>
+            <div className="playlist-search__input">
+              <SearchIcon />
+              <input
+                id="playlistWidgetSearch"
+                type="search"
+                value={playlistSearchQuery}
+                onChange={(event) => setPlaylistSearchQuery(event.target.value)}
+                placeholder="영상 또는 클립 검색"
+                aria-label="영상 또는 클립 검색"
+              />
+            </div>
+          </div>
+          <div className="playlist-widget__entries">
+            {!playlistHasResults ? (
+              <p className="empty-state">{playlistEmptyMessage}</p>
+            ) : (
+              <PlaylistEntriesList
+                entries={filteredPlaylistEntries}
+                expandedPlaylistEntryId={expandedPlaylistEntryId}
+                handlePlaylistEntryRemove={handlePlaylistEntryRemove}
+                setExpandedPlaylistEntryId={setExpandedPlaylistEntryId}
+                resolvePlaylistEntryKey={resolvePlaylistEntryKey}
+                isRemovalDisabled={isPlaylistEntryRemovalDisabled}
+              />
+            )}
+          </div>
         </div>
       </aside>
 
@@ -7670,39 +7618,30 @@ export default function App() {
           })}
         </nav>
       )}
-      <footer className="app-footer">
-        <small>
-          문의 및 오류 제보는{' '}
-          <a href="https://x.com/utahuboffcial" target="_blank" rel="noopener noreferrer">
-            X의 @utahuboffcial
-          </a>{' '}
-          또는{' '}
-          <a href="mailto:utahubcs@gmail.com">utahubcs@gmail.com</a>
-          으로 부탁드립니다.
-        </small>
-      </footer>
       </div>
-      <PlaylistBar
-        items={playbackBarItems}
-        currentItemKey={activePlaybackKey}
-        currentIndex={currentPlaybackIndex}
-        playbackActivationNonce={playbackActivationNonce}
-        isPlaying={isPlaybackActive}
-        isExpanded={isPlaybackExpanded}
-        isMobileViewport={isMobileViewport}
-        canCreatePlaylist={isAuthenticated}
-        canModifyPlaylist={canModifyActivePlaylist}
-        onCreatePlaylist={handleCreatePlaylist}
-        onPlayPause={handlePlaybackToggle}
-        onNext={handlePlaybackNext}
-        onPrevious={handlePlaybackPrevious}
-        repeatMode={playbackRepeatMode}
-        onRepeatModeChange={setPlaybackRepeatMode}
-        onToggleExpanded={handlePlaybackToggleExpanded}
-        onSelectItem={handlePlaybackSelect}
-        onRemoveItem={handlePlaylistEntryRemove}
-        onTrackEnded={handlePlaybackEnded}
-      />
+      {shouldRenderPlaybackBar && (
+        <PlaylistBar
+          items={playbackBarItems}
+          currentItemKey={activePlaybackKey}
+          currentIndex={currentPlaybackIndex}
+          playbackActivationNonce={playbackActivationNonce}
+          isPlaying={isPlaybackActive}
+          isExpanded={isPlaybackExpanded}
+          isMobileViewport={isMobileViewport}
+          canCreatePlaylist={isAuthenticated}
+          canModifyPlaylist={canModifyActivePlaylist}
+          onCreatePlaylist={handleCreatePlaylist}
+          onPlayPause={handlePlaybackToggle}
+          onNext={handlePlaybackNext}
+          onPrevious={handlePlaybackPrevious}
+          repeatMode={playbackRepeatMode}
+          onRepeatModeChange={setPlaybackRepeatMode}
+          onToggleExpanded={handlePlaybackToggleExpanded}
+          onSelectItem={handlePlaybackSelect}
+          onRemoveItem={handlePlaylistEntryRemove}
+          onTrackEnded={handlePlaybackEnded}
+        />
+      )}
     </>
   );
 }
