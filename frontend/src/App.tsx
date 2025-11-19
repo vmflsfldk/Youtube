@@ -39,6 +39,37 @@ import { mediaMatchesArtist } from './library/mediaMatchesArtist';
 
 const ClipPlayer = lazy(() => import('./components/ClipPlayer'));
 
+/* --- SVG Icons (X Style) --- */
+const HomeIcon = () => (
+  <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+    <path d="M12 1.696.622 8.807l1.06 1.696L3 9.679V19.5C3 20.881 4.119 22 5.5 22h13c1.381 0 2.5-1.119 2.5-2.5V9.679l1.318.824 1.06-1.696L12 1.696Zm0 14.804a3.5 3.5 0 1 1 3.5-3.5 3.5 3.5 0 0 1-3.5 3.5Z" />
+  </svg>
+);
+
+const SearchIcon = () => (
+  <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+    <path d="M10.25 3.75a6.5 6.5 0 1 0 4.596 11.096l6.798 6.799-1.768 1.768-6.799-6.798A6.47 6.47 0 0 1 10.25 16a6.5 6.5 0 1 0 0-13Z" />
+  </svg>
+);
+
+const LibraryIcon = () => (
+  <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+    <path d="M3 3v18h18V3Zm16 16H5V5h14ZM7 7h2v2H7Zm4 0h6v2h-6Zm-4 4h2v2H7Zm4 0h6v2h-6Zm-4 4h2v2H7Zm4 0h6v2h-6Z" />
+  </svg>
+);
+
+const LiveIcon = () => (
+  <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+    <path d="M12 12.5a2.5 2.5 0 1 1 2.5-2.5 2.5 2.5 0 0 1-2.5 2.5Zm0-7a4.5 4.5 0 1 0 4.5 4.5A4.5 4.5 0 0 0 12 5.5ZM2.06 10C2.06 4.51 6.51.06 12 .06S21.94 4.51 21.94 10a9.9 9.9 0 0 1-2.91 7.03l-1.43-1.43a8 8 0 1 0-9.2 0l-1.43 1.43A9.9 9.9 0 0 1 2.06 10Z" />
+  </svg>
+);
+
+const PlaylistIcon = () => (
+  <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+    <path d="M20 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2Zm0 14H4V6h16ZM6 10h2v2H6Zm0 4h2v2H6Zm4 0h8v2h-8Zm0-4h8v2h-8Z" />
+  </svg>
+);
+
 type MaybeArray<T> =
   | T[]
   | { items?: T[]; data?: T[]; results?: T[] }
@@ -50,8 +81,8 @@ const VIDEO_CATEGORY_ORDER = ['cover', 'live', 'original'] as const;
 type VideoCategoryKey = (typeof VIDEO_CATEGORY_ORDER)[number];
 type VideoCategorySelection = '' | VideoCategoryKey;
 
-const LATEST_VIDEO_LIMIT = 6;
-const LATEST_CLIP_LIMIT = 8;
+const LATEST_VIDEO_LIMIT = 20;
+const LATEST_CLIP_LIMIT = 20;
 
 const resolveDescendingSortValue = (
   createdAt: string | null | undefined,
@@ -5438,76 +5469,34 @@ export default function App() {
       icon: JSX.Element;
     }[] = [
       {
-        id: 'library',
-        label: translate('nav.library.label'),
-        description: translate('nav.library.description'),
-        icon: (
-          <svg viewBox="0 0 24 24" role="presentation" aria-hidden="true">
-            <path
-              d="M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v11a2.5 2.5 0 0 1-2.5 2.5H6.5A2.5 2.5 0 0 1 4 16.5v-11ZM9.5 8.75l6 3.25-6 3.25v-6.5Z"
-              fill="currentColor"
-            />
-          </svg>
-        )
-      },
-      {
         id: 'latest',
         label: translate('nav.latest.label'),
         description: translate('nav.latest.description'),
-        icon: (
-          <svg viewBox="0 0 24 24" role="presentation" aria-hidden="true">
-            <path
-              d="M12 3a8 8 0 1 0 0 16 1 1 0 0 0 0-2 6 6 0 1 1 6-6 1 1 0 1 0 2 0 8 8 0 0 0-8-8Z"
-              fill="currentColor"
-            />
-            <path d="M12.75 6.5h-1.5v4.6l3.36 2-.72 1.2L11 12.3V6.5Z" fill="currentColor" />
-            <path d="M15.5 12h4.2l-1.84 3H20l-4.8 7.2.66-4.7H14Z" fill="currentColor" />
-          </svg>
-        )
-      },
-      {
-        id: 'live',
-        label: translate('nav.live.label'),
-        description: translate('nav.live.description'),
-        icon: (
-          <svg viewBox="0 0 24 24" role="presentation" aria-hidden="true">
-            <path d="M12 8.5a3.5 3.5 0 1 1 0 7 3.5 3.5 0 0 1 0-7Z" fill="currentColor" />
-            <path
-              d="M5.05 6.05a9.9 9.9 0 0 1 13.9 0l-1.41 1.41a8 8 0 0 0-11.08 0Z"
-              fill="currentColor"
-            />
-            <path
-              d="M3.64 4.64a12 12 0 0 1 16.97 0l-1.41 1.41a10 10 0 0 0-14.15 0Z"
-              fill="currentColor"
-            />
-          </svg>
-        )
+        icon: <HomeIcon />
       },
       {
         id: 'catalog',
         label: translate('nav.catalog.label'),
         description: translate('nav.catalog.description'),
-        icon: (
-          <svg viewBox="0 0 24 24" role="presentation" aria-hidden="true">
-            <path
-              d="M6.5 4A2.5 2.5 0 0 0 4 6.5v11A2.5 2.5 0 0 0 6.5 20H18a1 1 0 0 0 0-2H6.5A.5.5 0 0 1 6 17.5V8h11.5a.5.5 0 0 1 .5.5V18a1 1 0 1 0 2 0V8.5A2.5 2.5 0 0 0 17.5 6H6V5.5A1.5 1.5 0 0 1 7.5 4H18a1 1 0 0 0 0-2H7.5A2.5 2.5 0 0 0 5 3.5v.618A2.5 2.5 0 0 1 6.5 4Z"
-              fill="currentColor"
-            />
-          </svg>
-        )
+        icon: <SearchIcon />
+      },
+      {
+        id: 'library',
+        label: translate('nav.library.label'),
+        description: translate('nav.library.description'),
+        icon: <LibraryIcon />
+      },
+      {
+        id: 'live',
+        label: translate('nav.live.label'),
+        description: translate('nav.live.description'),
+        icon: <LiveIcon />
       },
       {
         id: 'playlist',
         label: translate('nav.playlist.label'),
         description: translate('nav.playlist.description'),
-        icon: (
-          <svg viewBox="0 0 24 24" role="presentation" aria-hidden="true">
-            <path
-              d="M4 5a1 1 0 0 1 1-1h10.5a1 1 0 0 1 0 2H5a1 1 0 0 1-1-1Zm0 5a1 1 0 0 1 1-1h10.5a1 1 0 0 1 0 2H5a1 1 0 0 1-1-1Zm14a2.75 2.75 0 1 1 2.75 2.75A2.75 2.75 0 0 1 18 12.75Zm0 4.5a4.5 4.5 0 1 0-3.583-1.75l-.752 1.503a1 1 0 1 0 1.788.894l.719-1.437a4.47 4.47 0 0 0 1.828.39Z"
-              fill="currentColor"
-            />
-          </svg>
-        )
+        icon: <PlaylistIcon />
       }
     ];
 
@@ -5520,6 +5509,26 @@ export default function App() {
   );
 
   const activeSidebarTab = sidebarTabs.find((tab) => tab.id === activeSection) ?? sidebarTabs[0];
+
+  const liveWidgetEntries = useMemo(() => {
+    const entries: { key: string; artistName: string; title: string }[] = [];
+
+    liveArtists.forEach((entry) => {
+      const artistName = (entry.artist.displayName || entry.artist.name || '').trim() || '라이브';
+
+      entry.liveVideos.forEach((video, index) => {
+        const title = (video.title || '라이브 방송').trim() || '라이브 방송';
+        const key = `${entry.artist.id}-${video.youtubeVideoId ?? video.id ?? index}`;
+        if (!entries.some((item) => item.key === key)) {
+          entries.push({ key, artistName, title });
+        }
+      });
+    });
+
+    return entries.slice(0, 5);
+  }, [liveArtists]);
+
+  const recommendedArtists = useMemo(() => artists.slice(0, 3), [artists]);
 
   const mobileAuthOverlayLabel = isAuthenticated
     ? translate('mobile.auth.overlayLabelAuthenticated')
@@ -5808,44 +5817,59 @@ export default function App() {
               <h1>{translate('app.title')}</h1>
             </div>
           </div>
+          <nav className="sidebar__nav">
+            {sidebarTabs.map((tab) => {
+              const isActive = activeSection === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  id={`sidebar-tab-${tab.id}`}
+                  type="button"
+                  className={`sidebar__tab${isActive ? ' active' : ''}`}
+                  onClick={() => setActiveSection(tab.id)}
+                  aria-current={isActive ? 'page' : undefined}
+                >
+                  <span className="sidebar__tab-icon">{tab.icon}</span>
+                  <span className="sidebar__tab-text">
+                    <span className="sidebar__tab-label">{tab.label}</span>
+                    <span className="sidebar__tab-description">{tab.description}</span>
+                  </span>
+                </button>
+              );
+            })}
+          </nav>
           <AuthPanel
-          isAuthenticated={isAuthenticated}
-          greetingMessage={greetingMessage}
-          isLoadingUser={isLoadingUser}
-          nicknameInput={nicknameInput}
-          onNicknameInputChange={(value) => setNicknameInput(value)}
-          onNicknameSubmit={handleNicknameSubmit}
-          nicknameStatus={nicknameStatus}
-          nicknameError={nicknameError}
-          onSignOut={handleSignOut}
-          isGoogleReady={isGoogleReady}
-          onGoogleCredential={handleGoogleCredential}
-          shouldAutoPromptGoogle={shouldAutoPromptGoogle}
-        />
-        <nav className="sidebar__nav">
-          {sidebarTabs.map((tab) => {
-            const isActive = activeSection === tab.id;
-            return (
-              <button
-                key={tab.id}
-                id={`sidebar-tab-${tab.id}`}
-                type="button"
-                className={`sidebar__tab${isActive ? ' active' : ''}`}
-                onClick={() => setActiveSection(tab.id)}
-                aria-current={isActive ? 'page' : undefined}
-              >
-                <span className="sidebar__tab-icon">{tab.icon}</span>
-                <span className="sidebar__tab-text">
-                  <span className="sidebar__tab-label">{tab.label}</span>
-                  <span className="sidebar__tab-description">{tab.description}</span>
-                </span>
-              </button>
-            );
-          })}
-        </nav>
-      </aside>
+            className="auth-panel--sidebar"
+            isAuthenticated={isAuthenticated}
+            greetingMessage={greetingMessage}
+            isLoadingUser={isLoadingUser}
+            nicknameInput={nicknameInput}
+            onNicknameInputChange={(value) => setNicknameInput(value)}
+            onNicknameSubmit={handleNicknameSubmit}
+            nicknameStatus={nicknameStatus}
+            nicknameError={nicknameError}
+            onSignOut={handleSignOut}
+            isGoogleReady={isGoogleReady}
+            onGoogleCredential={handleGoogleCredential}
+            shouldAutoPromptGoogle={shouldAutoPromptGoogle}
+          />
+        </aside>
 
       <main className="content-area">
+        {isMobileViewport && (
+          <div className="mobile-appbar">
+            <button
+              type="button"
+              className="mobile-appbar__avatar"
+              aria-label={mobileAuthTriggerLabel}
+              onClick={() => setMobileAuthOverlayOpen(true)}
+            />
+            <div className="mobile-appbar__logo">
+              <img src={utahubLogo} alt={translate('layout.logoAlt')} />
+            </div>
+            <div className="mobile-appbar__avatar" aria-hidden />
+          </div>
+        )}
         {!isMobileViewport && (
           <header className="content-header">
             <div className="mobile-appbar" aria-hidden="true">
@@ -6499,15 +6523,17 @@ export default function App() {
                       </div>
                     )}
                     <div className="artist-library__controls">
-                      <div className="artist-directory__search-group">
-                        <ArtistSearchControls
-                          query={artistSearch.query}
-                          mode={artistSearch.mode}
-                          onQueryChange={handleArtistSearchQueryChange}
-                          onModeChange={handleArtistSearchModeChange}
-                          onClear={handleArtistSearchClear}
-                        />
-                      </div>
+                      {isMobileViewport && (
+                        <div className="artist-directory__search-group">
+                          <ArtistSearchControls
+                            query={artistSearch.query}
+                            mode={artistSearch.mode}
+                            onQueryChange={handleArtistSearchQueryChange}
+                            onModeChange={handleArtistSearchModeChange}
+                            onClear={handleArtistSearchClear}
+                          />
+                        </div>
+                      )}
                       <div className="artist-directory__filter-group">
                         <div className="artist-directory__filter">
                           <label htmlFor="artistCountryFilter">
@@ -7545,23 +7571,84 @@ export default function App() {
         </div>
       </main>
 
-      <nav className="mobile-bottom-nav" aria-label="하단 탐색">
-        {sidebarTabs.map((tab) => {
-          const isActive = activeSection === tab.id;
-          return (
-            <button
-              key={`mobile-tab-${tab.id}`}
-              type="button"
-              className={`mobile-bottom-nav__tab${isActive ? ' is-active' : ''}`}
-              onClick={() => setActiveSection(tab.id)}
-              aria-current={isActive ? 'page' : undefined}
-              aria-label={tab.label}
-            >
-              <span className="mobile-bottom-nav__icon">{tab.icon}</span>
-            </button>
-          );
-        })}
-      </nav>
+      <aside
+        className="right-sidebar"
+        aria-label="보조 위젯"
+        aria-hidden={isMobileViewport ? true : undefined}
+      >
+        <div className="search-widget">
+          <div className="search-input-group">
+            <SearchIcon />
+            <input
+              type="search"
+              value={artistSearch.query}
+              onChange={(event) => handleArtistSearchQueryChange(event.target.value)}
+              placeholder="아티스트 검색"
+              aria-label="아티스트 검색"
+            />
+          </div>
+        </div>
+
+        <div className="widget-box">
+          <h3>라이브</h3>
+          {isLiveArtistsLoading ? (
+            <p className="live-mini-item" aria-live="polite">
+              방송 정보를 불러오는 중...
+            </p>
+          ) : liveWidgetEntries.length === 0 ? (
+            <p className="live-mini-item" aria-live="polite">
+              현재 진행 중인 라이브가 없습니다.
+            </p>
+          ) : (
+            liveWidgetEntries.map((entry) => (
+              <div key={entry.key} className="live-mini-item">
+                <strong>{entry.artistName}</strong>
+                <span>{entry.title}</span>
+              </div>
+            ))
+          )}
+        </div>
+
+        <div className="widget-box">
+          <h3>팔로우 추천</h3>
+          {recommendedArtists.length === 0 ? (
+            <p className="live-mini-item" aria-live="polite">
+              로딩 중이거나 추천할 아티스트가 없습니다.
+            </p>
+          ) : (
+            recommendedArtists.map((artist) => {
+              const artistHandle =
+                artist.youtubeChannelId || artist.youtubeChannelTitle || artist.name || `artist-${artist.id}`;
+              return (
+                <div key={artist.id} className="live-mini-item">
+                  <strong>{artist.displayName || artist.name}</strong>
+                  <span className="sidebar__auth-handle">@{artistHandle}</span>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </aside>
+
+      {isMobileViewport && (
+        <nav className="mobile-bottom-nav" aria-label="하단 탐색">
+          {sidebarTabs.map((tab) => {
+            const isActive = activeSection === tab.id;
+            return (
+              <button
+                key={`mobile-tab-${tab.id}`}
+                type="button"
+                className={`mobile-bottom-nav__tab${isActive ? ' is-active' : ''}`}
+                onClick={() => setActiveSection(tab.id)}
+                aria-current={isActive ? 'page' : undefined}
+                aria-label={tab.label}
+              >
+                <span className="mobile-bottom-nav__icon">{tab.icon}</span>
+              </button>
+            );
+          })}
+        </nav>
+      )}
       <footer className="app-footer">
         <small>
           문의 및 오류 제보는{' '}
