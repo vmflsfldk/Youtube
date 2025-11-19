@@ -1728,7 +1728,7 @@ export default function App() {
       return;
     }
 
-    const mediaQuery = window.matchMedia('(max-width: 960px)');
+    const mediaQuery = window.matchMedia('(max-width: 1280px)');
     const updateViewportState = (event: MediaQueryListEvent | MediaQueryList) => {
       setIsMobileViewport(event.matches);
     };

@@ -591,7 +591,7 @@ button.primary:hover {
 }
 
 /* Mobile & Tablet Touch Layout */
-@media (max-width: 960px) {
+@media (max-width: 1280px) {
   .app-shell {
     display: block;
   }
@@ -3354,7 +3354,7 @@ input:focus {
   font-weight: 600;
 }
 
-@media (min-width: 960px) {
+@media (min-width: 1281px) {
   .artist-library__clip-preview-body {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr);
     align-items: start;
