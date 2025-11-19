@@ -1384,7 +1384,6 @@ export default function App() {
   const [playbackActivationNonce, setPlaybackActivationNonce] = useState(0);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [isMobileAuthOverlayOpen, setMobileAuthOverlayOpen] = useState(false);
-  const [isMobileFilterOverlayOpen, setMobileFilterOverlayOpen] = useState(false);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const toastTimeoutRef = useRef<Record<string, number>>({});
   const [isPlaylistDialogOpen, setPlaylistDialogOpen] = useState(false);
@@ -1593,8 +1592,6 @@ export default function App() {
   const clipListSectionRef = useRef<HTMLElement | null>(null);
   const mobileAuthOverlayContentRef = useRef<HTMLDivElement | null>(null);
   const previousFocusedElementRef = useRef<HTMLElement | null>(null);
-  const mobileFilterOverlayContentRef = useRef<HTMLDivElement | null>(null);
-  const previousMobileFilterFocusedElementRef = useRef<HTMLElement | null>(null);
   const handleArtistSearchQueryChange = useCallback((value: string) => {
     setArtistSearch((previous) => {
       if (previous.query === value) {
@@ -1622,25 +1619,11 @@ export default function App() {
     });
   }, []);
 
-  const handleMobileFilterOverlayClose = useCallback(() => {
-    setMobileFilterOverlayOpen(false);
-  }, []);
-
-  const handleMobileFilterOverlayToggle = useCallback(() => {
-    setMobileFilterOverlayOpen((previous) => !previous);
-  }, []);
-
   useEffect(() => {
     if (!isMobileViewport && isMobileAuthOverlayOpen) {
       setMobileAuthOverlayOpen(false);
     }
   }, [isMobileViewport, isMobileAuthOverlayOpen]);
-
-  useEffect(() => {
-    if (!isMobileViewport && isMobileFilterOverlayOpen) {
-      setMobileFilterOverlayOpen(false);
-    }
-  }, [isMobileViewport, isMobileFilterOverlayOpen]);
 
   useEffect(() => {
     if (!isMobileAuthOverlayOpen) {
@@ -1739,104 +1722,6 @@ export default function App() {
     };
   }, [isMobileAuthOverlayOpen]);
 
-  useEffect(() => {
-    if (!isMobileFilterOverlayOpen) {
-      const previouslyFocused = previousMobileFilterFocusedElementRef.current;
-      if (previouslyFocused && typeof previouslyFocused.focus === 'function') {
-        previouslyFocused.focus({ preventScroll: true });
-      }
-      previousMobileFilterFocusedElementRef.current = null;
-      return;
-    }
-
-    if (typeof document === 'undefined') {
-      return;
-    }
-
-    const contentNode = mobileFilterOverlayContentRef.current;
-    if (!contentNode) {
-      return;
-    }
-
-    const selectors = [
-      'a[href]',
-      'button:not([disabled])',
-      'textarea:not([disabled])',
-      'input:not([disabled])',
-      'select:not([disabled])',
-      '[tabindex]:not([tabindex="-1"])'
-    ].join(', ');
-
-    const getFocusableElements = () =>
-      Array.from(contentNode.querySelectorAll<HTMLElement>(selectors)).filter(
-        (element) => !element.hasAttribute('aria-hidden')
-      );
-
-    const activeElement = document.activeElement;
-    if (activeElement instanceof HTMLElement) {
-      previousMobileFilterFocusedElementRef.current = activeElement;
-    } else {
-      previousMobileFilterFocusedElementRef.current = null;
-    }
-
-    const focusFirstElement = () => {
-      const focusableElements = getFocusableElements();
-      const firstElement = focusableElements[0] ?? contentNode;
-      firstElement.focus({ preventScroll: true });
-    };
-
-    const keydownHandler = (event: globalThis.KeyboardEvent) => {
-      if (!isMobileFilterOverlayOpen) {
-        return;
-      }
-
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        setMobileFilterOverlayOpen(false);
-        return;
-      }
-
-      if (event.key !== 'Tab') {
-        return;
-      }
-
-      const focusableElements = getFocusableElements();
-      if (focusableElements.length === 0) {
-        event.preventDefault();
-        contentNode.focus({ preventScroll: true });
-        return;
-      }
-
-      const firstElement = focusableElements[0];
-      const lastElement = focusableElements[focusableElements.length - 1];
-      const currentActive = document.activeElement as HTMLElement | null;
-
-      if (!event.shiftKey && currentActive === lastElement) {
-        event.preventDefault();
-        firstElement.focus({ preventScroll: true });
-        return;
-      }
-
-      if (event.shiftKey && currentActive === firstElement) {
-        event.preventDefault();
-        lastElement.focus({ preventScroll: true });
-      }
-    };
-
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-
-    const focusTimeout = window.setTimeout(focusFirstElement, 0);
-    document.addEventListener('keydown', keydownHandler);
-
-    return () => {
-      document.removeEventListener('keydown', keydownHandler);
-      window.clearTimeout(focusTimeout);
-      if (!isMobileAuthOverlayOpen) {
-        document.body.style.overflow = previousOverflow;
-      }
-    };
-  }, [isMobileFilterOverlayOpen, isMobileAuthOverlayOpen]);
   useEffect(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
       return;
@@ -5349,6 +5234,55 @@ export default function App() {
     ? Math.min(selectedVideoDurationSec, previewStartSec + 30)
     : previewStartSec + 30;
   const previewEndSec = parsedPreviewEndSec > previewStartSec ? parsedPreviewEndSec : fallbackEnd;
+  const clipRangeMax = useMemo(() => {
+    if (selectedVideoDurationSec && selectedVideoDurationSec > 0) {
+      return selectedVideoDurationSec;
+    }
+    return Math.max(previewEndSec, previewStartSec + 60);
+  }, [previewEndSec, previewStartSec, selectedVideoDurationSec]);
+  const updateClipStartFromSlider = useCallback(
+    (nextStartSec: number) => {
+      const clampedStart = clamp(Math.floor(nextStartSec), 0, clipRangeMax);
+      setClipForm((prev) => {
+        const endSeconds = parseClipTimeParts(prev.endHours, prev.endMinutes, prev.endSeconds);
+        const adjustedEnd = endSeconds > clampedStart ? endSeconds : Math.min(clampedStart + 15, clipRangeMax);
+        const startParts = createClipTimePartValues(clampedStart);
+        const endParts = createClipTimePartValues(adjustedEnd);
+        return {
+          ...prev,
+          startHours: startParts.hours,
+          startMinutes: startParts.minutes,
+          startSeconds: startParts.seconds,
+          endHours: endParts.hours,
+          endMinutes: endParts.minutes,
+          endSeconds: endParts.seconds
+        };
+      });
+    },
+    [clipRangeMax]
+  );
+  const updateClipEndFromSlider = useCallback(
+    (nextEndSec: number) => {
+      const clampedEnd = clamp(Math.floor(nextEndSec), previewStartSec + 1, clipRangeMax);
+      setClipForm((prev) => {
+        const endParts = createClipTimePartValues(clampedEnd);
+        return {
+          ...prev,
+          endHours: endParts.hours,
+          endMinutes: endParts.minutes,
+          endSeconds: endParts.seconds
+        };
+      });
+    },
+    [clipRangeMax, previewStartSec]
+  );
+  const applyFullVideoRange = useCallback(() => {
+    updateClipStartFromSlider(0);
+    updateClipEndFromSlider(clipRangeMax);
+  }, [clipRangeMax, updateClipEndFromSlider, updateClipStartFromSlider]);
+  const applyThirtySecondRange = useCallback(() => {
+    updateClipEndFromSlider(Math.min(previewStartSec + 30, clipRangeMax));
+  }, [clipRangeMax, previewStartSec, updateClipEndFromSlider]);
 
   const renderVideoListItem = (video: VideoResponse) => {
     const isVideoSelected = selectedVideo === video.id;
@@ -5683,9 +5617,6 @@ export default function App() {
   const mobileAuthTriggerLabel = isAuthenticated
     ? translate('mobile.actions.authOpenAuthenticated')
     : translate('mobile.actions.authOpenGuest');
-  const mobileFilterToggleLabel = isMobileFilterOverlayOpen
-    ? translate('mobile.actions.filterClose')
-    : translate('mobile.actions.filterOpen');
 
   const previousAuthRef = useRef(isAuthenticated);
 
@@ -5945,6 +5876,22 @@ export default function App() {
   const mobileOptionalPanelId = 'artistRegistrationOptional';
   const mobilePreviewPanelId = 'artistPreviewMobilePanel';
   const mobileDebugPanelId = 'artistDebugMobilePanel';
+  const channelInputHint = useMemo(() => {
+    const trimmed = artistForm.channelId.trim();
+    if (!trimmed) {
+      return '채널 URL, 핸들(@handle), 채널 ID(UC...) 모두 입력할 수 있어요.';
+    }
+    if (/^UC[a-zA-Z0-9_-]{21,}$/i.test(trimmed)) {
+      return '유효한 채널 ID 형식입니다. 바로 조회해 볼게요.';
+    }
+    if (trimmed.startsWith('@')) {
+      return '핸들을 감지했어요. 등록 시 채널 ID를 자동으로 찾아요.';
+    }
+    if (trimmed.includes('youtube.com')) {
+      return 'URL에서 채널 ID를 추출해 등록합니다.';
+    }
+    return '형식을 다시 확인해 주세요. @핸들이나 UC로 시작하는 ID를 추천합니다.';
+  }, [artistForm.channelId]);
   const playlistVisibilityDescription = (() => {
     switch (playlistDialogVisibility) {
       case 'PUBLIC':
@@ -6563,6 +6510,7 @@ export default function App() {
                                 required
                                 disabled={creationDisabled}
                               />
+                              <p className="form-hint" role="status">{channelInputHint}</p>
                             </div>
                             {isMobileViewport && (
                               <button
@@ -7043,6 +6991,64 @@ export default function App() {
                                       required={clipFieldsRequired}
                                       disabled={creationDisabled}
                                     />
+                                    <div className="clip-range-control" aria-label="클립 구간 슬라이더">
+                                      <div className="clip-range-control__header">
+                                        <span>슬라이더로 시작/종료를 조정하세요.</span>
+                                        {clipRangeMax ? (
+                                          <span className="clip-range-control__duration">
+                                            전체 {formatSeconds(clipRangeMax)}
+                                          </span>
+                                        ) : null}
+                                      </div>
+                                      <label className="clip-range-control__label" htmlFor="clipRangeStart">
+                                        시작 위치
+                                      </label>
+                                      <input
+                                        id="clipRangeStart"
+                                        type="range"
+                                        min={0}
+                                        max={clipRangeMax}
+                                        step={1}
+                                        value={previewStartSec}
+                                        onChange={(event) => updateClipStartFromSlider(Number(event.target.value))}
+                                        disabled={creationDisabled}
+                                      />
+                                      <label className="clip-range-control__label" htmlFor="clipRangeEnd">
+                                        종료 위치
+                                      </label>
+                                      <input
+                                        id="clipRangeEnd"
+                                        type="range"
+                                        min={previewStartSec + 1}
+                                        max={clipRangeMax}
+                                        step={1}
+                                        value={previewEndSec}
+                                        onChange={(event) => updateClipEndFromSlider(Number(event.target.value))}
+                                        disabled={creationDisabled}
+                                      />
+                                      <div className="clip-range-control__times">
+                                        <span>시작 {formatSeconds(previewStartSec)}</span>
+                                        <span>종료 {formatSeconds(previewEndSec)}</span>
+                                      </div>
+                                      <div className="clip-range-control__actions">
+                                        <button
+                                          type="button"
+                                          className="clip-range-control__action"
+                                          onClick={applyThirtySecondRange}
+                                          disabled={creationDisabled}
+                                        >
+                                          종료를 시작 후 30초로 설정
+                                        </button>
+                                        <button
+                                          type="button"
+                                          className="clip-range-control__action clip-range-control__action--ghost"
+                                          onClick={applyFullVideoRange}
+                                          disabled={creationDisabled}
+                                        >
+                                          영상 전체 구간 사용
+                                        </button>
+                                      </div>
+                                    </div>
                                     <div className="clip-time-row">
                                       <fieldset className="clip-time-fieldset">
                                         <legend>시작 시간</legend>
@@ -7261,12 +7267,27 @@ export default function App() {
                             <div className="artist-library__section-header">
                               <h4>영상 목록</h4>
                               {isArtistVideosLoading ? (
-                                <span className="artist-library__status">불러오는 중...</span>
+                                <div className="artist-library__status artist-library__status--skeleton" role="status">
+                                  <span className="skeleton skeleton--pill" />
+                                  <span className="skeleton skeleton--pill skeleton--wide" />
+                                </div>
                               ) : displayableVideos.length > 0 ? (
                                 <span className="artist-library__status">{displayableVideos.length}개 영상</span>
                               ) : null}
                             </div>
-                            {displayableVideos.length === 0 ? (
+                            {isArtistVideosLoading ? (
+                              <ul className="artist-library__video-list artist-library__video-list--skeleton">
+                                {Array.from({ length: 3 }).map((_, index) => (
+                                  <li key={`video-skeleton-${index}`} className="artist-library__video-item">
+                                    <div className="skeleton skeleton--thumbnail" />
+                                    <div className="artist-library__video-meta">
+                                      <span className="skeleton skeleton--text" />
+                                      <span className="skeleton skeleton--text skeleton--short" />
+                                    </div>
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : displayableVideos.length === 0 ? (
                               <p className="artist-library__empty">영상 목록이 비어 있습니다.</p>
                             ) : (
                               <ul className="artist-library__video-list">
@@ -7447,21 +7468,6 @@ export default function App() {
                           <LanguageToggle className="artist-library__language-toggle" variant="compact" />
                           <button
                             type="button"
-                            className={`artist-library__filter-trigger${
-                              isMobileFilterOverlayOpen ? ' is-active' : ''
-                            }`}
-                            aria-label={mobileFilterToggleLabel}
-                            aria-haspopup="dialog"
-                            aria-expanded={isMobileFilterOverlayOpen}
-                            aria-controls="mobileArtistFilterDialog"
-                            onClick={handleMobileFilterOverlayToggle}
-                          >
-                            <span aria-hidden="true" className="artist-library__filter-trigger-icon">
-                              🎚️
-                            </span>
-                          </button>
-                          <button
-                            type="button"
                             className="mobile-auth-trigger"
                             aria-label={mobileAuthTriggerLabel}
                             aria-haspopup="dialog"
@@ -7475,93 +7481,6 @@ export default function App() {
                           </button>
                         </div>
                       </div>
-                      {isMobileFilterOverlayOpen && (
-                        <div className="mobile-filter-overlay">
-                          <div
-                            className="mobile-filter-overlay__backdrop"
-                            role="presentation"
-                            onClick={handleMobileFilterOverlayClose}
-                          />
-                          <div
-                            className="mobile-filter-overlay__content"
-                            role="dialog"
-                            aria-modal="true"
-                            aria-labelledby="mobileArtistFilterTitle"
-                            id="mobileArtistFilterDialog"
-                            ref={mobileFilterOverlayContentRef}
-                            tabIndex={-1}
-                          >
-                            <button
-                              type="button"
-                              className="mobile-filter-overlay__close"
-                              onClick={handleMobileFilterOverlayClose}
-                              aria-label="필터 닫기"
-                            >
-                              <span aria-hidden="true">×</span>
-                            </button>
-                            <div className="mobile-filter-overlay__header">
-                              <h3 id="mobileArtistFilterTitle">검색 및 필터</h3>
-                              <p className="mobile-filter-overlay__description">
-                                아티스트 검색과 필터를 설정하세요.
-                              </p>
-                            </div>
-                            <div className="mobile-filter-overlay__body">
-                              <div className="artist-directory__search-group">
-                                <ArtistSearchControls
-                                  query={artistSearch.query}
-                                  mode={artistSearch.mode}
-                                  onQueryChange={handleArtistSearchQueryChange}
-                                  onModeChange={handleArtistSearchModeChange}
-                                  onClear={handleArtistSearchClear}
-                                />
-                              </div>
-                              <div className="artist-directory__filter-group">
-                                <div className="artist-directory__filter">
-                                  <label htmlFor="artistCountryFilterMobile">서비스 국가</label>
-                                  <select
-                                    id="artistCountryFilterMobile"
-                                    value={artistCountryFilter}
-                                    onChange={(event) =>
-                                      setArtistCountryFilter(event.target.value as 'all' | ArtistCountryKey)
-                                    }
-                                  >
-                                    <option value="all">전체</option>
-                                    {ARTIST_COUNTRY_METADATA.map((country) => (
-                                      <option key={country.key} value={country.key}>
-                                        {country.label}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </div>
-                                <div className="artist-directory__filter">
-                                  <label htmlFor="artistAgencyFilterMobile">소속사</label>
-                                  <select
-                                    id="artistAgencyFilterMobile"
-                                    value={artistAgencyFilter}
-                                    onChange={(event) => setArtistAgencyFilter(event.target.value)}
-                                  >
-                                    <option value="all">전체</option>
-                                    {artistAgencies.map((agency) => (
-                                      <option key={agency} value={agency}>
-                                        {agency}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </div>
-                              </div>
-                            </div>
-                            <div className="mobile-filter-overlay__footer">
-                              <button
-                                type="button"
-                                className="mobile-filter-overlay__action"
-                                onClick={handleMobileFilterOverlayClose}
-                              >
-                                필터 적용
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      )}
                       <div
                         className="artist-library__mobile-tabs"
                         role="group"

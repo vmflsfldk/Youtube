@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { AriaAttributes } from 'react';
 
 import { DEFAULT_LOCALE } from '../contexts/LanguageContext';
@@ -240,6 +240,34 @@ const SongCatalogTable = ({ clips, videos, songs = [] }: SongCatalogTableProps) 
   const [selectedField, setSelectedField] = useState<CatalogFilterField>('song');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortState, setSortState] = useState<CatalogSort>({ key: 'song', direction: 'asc' });
+  const [isCompactView, setIsCompactView] = useState(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+      return false;
+    }
+    return window.matchMedia('(max-width: 768px)').matches;
+  });
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+      return undefined;
+    }
+
+    const query = window.matchMedia('(max-width: 768px)');
+    const handleChange = (event: MediaQueryListEvent | MediaQueryList) => {
+      setIsCompactView(event.matches);
+    };
+
+    handleChange(query);
+
+    const listener = (event: MediaQueryListEvent) => handleChange(event);
+    if (typeof query.addEventListener === 'function') {
+      query.addEventListener('change', listener);
+      return () => query.removeEventListener('change', listener);
+    }
+
+    query.addListener(listener);
+    return () => query.removeListener(listener);
+  }, []);
 
   const filteredRecords = useMemo(
     () => filterCatalogRecords(records, { field: selectedField, query: searchQuery }),
@@ -320,6 +348,27 @@ const SongCatalogTable = ({ clips, videos, songs = [] }: SongCatalogTableProps) 
       >
         {filteredRecords.length === 0 ? (
           <div className="catalog-panel__status">{translateText('catalog.noMatches')}</div>
+        ) : isCompactView ? (
+          <div className="song-catalog__cards">
+            {sortedRecords.map((record) => (
+              <article key={record.id} className="song-catalog__card">
+                <div className="song-catalog__card-header">
+                  <h4 className="song-catalog__card-title">{record.songTitle}</h4>
+                  <p className="song-catalog__card-clip">{record.clipTitle}</p>
+                </div>
+                <dl className="song-catalog__card-meta">
+                  <div className="song-catalog__card-row">
+                    <dt>{translateText('catalog.columns.artist')}</dt>
+                    <dd>{record.artist}</dd>
+                  </div>
+                  <div className="song-catalog__card-row">
+                    <dt>{translateText('catalog.columns.composer')}</dt>
+                    <dd>{record.composer}</dd>
+                  </div>
+                </dl>
+              </article>
+            ))}
+          </div>
         ) : (
           <table className="song-catalog__table">
             <caption className="visually-hidden">{translateText('catalog.tableCaption')}</caption>
