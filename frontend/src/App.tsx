@@ -5518,7 +5518,7 @@ export default function App() {
 
       entry.liveVideos.forEach((video, index) => {
         const title = (video.title || '라이브 방송').trim() || '라이브 방송';
-        const key = `${entry.artist.id}-${video.youtubeVideoId ?? video.id ?? index}`;
+        const key = `${entry.artist.id}-${video.videoId ?? index}`;
         if (!entries.some((item) => item.key === key)) {
           entries.push({ key, artistName, title });
         }
