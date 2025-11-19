@@ -851,6 +851,10 @@ export default function PlaylistBar({
               animate={queueVariants.animate}
               exit={queueVariants.exit}
               transition={queueTransition}
+              onTouchStart={isMobileViewport ? handleMobileDragStart : undefined}
+              onTouchMove={isMobileViewport ? handleMobileDragMove : undefined}
+              onTouchEnd={isMobileViewport ? handleMobileDragEnd : undefined}
+              onTouchCancel={isMobileViewport ? handleMobileDragCancel : undefined}
             >
               {items.length === 0 ? (
                 <p className="playback-bar__queue-empty">재생 목록이 비어 있습니다.</p>

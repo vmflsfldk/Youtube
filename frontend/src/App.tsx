@@ -1,7 +1,7 @@
 import {
   ChangeEvent,
   FormEvent,
-  KeyboardEvent,
+  KeyboardEvent as ReactKeyboardEvent,
   RefObject,
   Suspense,
   lazy,
@@ -188,6 +188,14 @@ type VideoMetadataMutationStatus =
   | { state: 'error'; message: string }
   | { state: 'info'; message: string };
 
+type ToastTone = 'info' | 'success' | 'error';
+
+type ToastMessage = {
+  id: string;
+  message: string;
+  tone: ToastTone;
+};
+
 export type ArtistSearchMode = 'all' | 'name' | 'tag';
 
 const ensureArray = <T,>(value: MaybeArray<T>): T[] => {
@@ -292,7 +300,7 @@ const isActivationKey = (key: string): boolean =>
   key === 'Enter' || key === ' ' || key === 'Space' || key === 'Spacebar';
 
 const handleInteractiveListItemKeyDown = (
-  event: KeyboardEvent<HTMLElement>,
+  event: ReactKeyboardEvent<HTMLElement>,
   action: () => void
 ) => {
   if (isActivationKey(event.key)) {
@@ -582,14 +590,6 @@ const parseTags = (value: string): string[] =>
     .split(',')
     .map((tag) => tag.trim())
     .filter(Boolean);
-
-const showAlert = (message: string) => {
-  if (typeof window !== 'undefined' && typeof window.alert === 'function') {
-    window.alert(message);
-  } else {
-    console.warn('[yt-clip] alert:', message);
-  }
-};
 
 const normalizeChannelId = (value: string | null | undefined): string =>
   (value ?? '').trim().toLowerCase();
@@ -1385,12 +1385,109 @@ export default function App() {
   const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [isMobileAuthOverlayOpen, setMobileAuthOverlayOpen] = useState(false);
   const [isMobileFilterOverlayOpen, setMobileFilterOverlayOpen] = useState(false);
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const toastTimeoutRef = useRef<Record<string, number>>({});
+  const [isPlaylistDialogOpen, setPlaylistDialogOpen] = useState(false);
+  const [playlistTitleInput, setPlaylistTitleInput] = useState('');
+  const [playlistDialogVisibility, setPlaylistDialogVisibility] =
+    useState<PlaylistVisibility>('PRIVATE');
+  const playlistTitleResolverRef = useRef<((value: string | null) => void) | null>(null);
+  const playlistDialogInputRef = useRef<HTMLInputElement | null>(null);
   const [selectedVideo, setSelectedVideo] = useState<number | null>(null);
   const [clipCandidates, setClipCandidates] = useState<ClipCandidateResponse[]>([]);
   const libraryVideos = isAuthenticated ? videos : publicVideos;
   const librarySongVideos = isAuthenticated ? songVideos : publicSongVideos;
   const hasLoadedLibrarySongs = isAuthenticated ? hasLoadedSongs : hasLoadedPublicSongs;
   const libraryClips = isAuthenticated ? clips : publicClips;
+  const dismissToast = useCallback((id: string) => {
+    const timeoutId = toastTimeoutRef.current[id];
+    if (timeoutId) {
+      window.clearTimeout(timeoutId);
+      delete toastTimeoutRef.current[id];
+    }
+    setToasts((previous) => previous.filter((toast) => toast.id !== id));
+  }, []);
+
+  const enqueueToast = useCallback(
+    (message: string, tone: ToastTone = 'info') => {
+      const id =
+        typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      setToasts((previous) => [...previous, { id, message, tone }]);
+      const timeoutId = window.setTimeout(() => dismissToast(id), 4200);
+      toastTimeoutRef.current[id] = timeoutId;
+    },
+    [dismissToast]
+  );
+
+  const notifyError = useCallback(
+    (message: string) => enqueueToast(message, 'error'),
+    [enqueueToast]
+  );
+
+  useEffect(() => {
+    return () => {
+      Object.values(toastTimeoutRef.current).forEach((timeoutId) =>
+        window.clearTimeout(timeoutId)
+      );
+    };
+  }, []);
+
+  const resolvePlaylistTitle = useCallback((value: string | null) => {
+    playlistTitleResolverRef.current?.(value);
+    playlistTitleResolverRef.current = null;
+    setPlaylistDialogOpen(false);
+    setPlaylistTitleInput('');
+  }, []);
+
+  const requestPlaylistTitle = useCallback(
+    (visibility: PlaylistVisibility): Promise<string | null> =>
+      new Promise((resolve) => {
+        playlistTitleResolverRef.current = resolve;
+        setPlaylistTitleInput('');
+        setPlaylistDialogVisibility(visibility);
+        setPlaylistDialogOpen(true);
+      }),
+    []
+  );
+
+  const handlePlaylistDialogSubmit = useCallback(
+    (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      const trimmedTitle = playlistTitleInput.trim();
+      if (!trimmedTitle) {
+        enqueueToast('재생목록 제목을 입력해 주세요.', 'error');
+        return;
+      }
+      resolvePlaylistTitle(trimmedTitle);
+    },
+    [enqueueToast, playlistTitleInput, resolvePlaylistTitle]
+  );
+
+  const handlePlaylistDialogCancel = useCallback(() => {
+    resolvePlaylistTitle(null);
+  }, [resolvePlaylistTitle]);
+
+  useEffect(() => {
+    if (!isPlaylistDialogOpen) {
+      return;
+    }
+    const handler = (event: globalThis.KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        handlePlaylistDialogCancel();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [handlePlaylistDialogCancel, isPlaylistDialogOpen]);
+
+  useEffect(() => {
+    if (isPlaylistDialogOpen) {
+      playlistDialogInputRef.current?.focus();
+    }
+  }, [isPlaylistDialogOpen]);
   const libraryVideoMap = useMemo(() => {
     const map = new Map<number, VideoResponse>();
     libraryVideos.forEach((video) => {
@@ -2467,7 +2564,7 @@ export default function App() {
       const duplicateMessage = duplicateArtist.displayName
         ? `이미 등록된 유튜브 채널입니다: ${duplicateArtist.displayName}`
         : '이미 등록된 유튜브 채널입니다.';
-      showAlert(duplicateMessage);
+      notifyError(duplicateMessage);
       setArtistPreview(null);
       setArtistPreviewReady(false);
       setArtistPreviewError(duplicateMessage);
@@ -2562,7 +2659,7 @@ export default function App() {
       }
       const message = extractAxiosErrorMessage(error, '아티스트 등록에 실패했습니다.');
       if (axios.isAxiosError(error) && error.response?.status === 409) {
-        showAlert(message);
+        notifyError(message);
       }
       setArtistPreviewError(message);
       appendArtistDebugLog({
@@ -3061,7 +3158,7 @@ export default function App() {
         } catch (error) {
           if (axios.isAxiosError(error) && error.response?.status === 409) {
             const message = extractAxiosErrorMessage(error, '이미 동일한 구간의 클립이 존재합니다.');
-            showAlert(message);
+            notifyError(message);
           }
           console.error('Failed to auto-create clip from comment section', error);
         } finally {
@@ -3511,7 +3608,7 @@ export default function App() {
     }
 
     if (!trimmedTitle) {
-      showAlert('클립 제목을 입력해 주세요.');
+      notifyError('클립 제목을 입력해 주세요.');
       return;
     }
 
@@ -3523,7 +3620,7 @@ export default function App() {
     const endSec = parseClipTimeParts(clipForm.endHours, clipForm.endMinutes, clipForm.endSeconds);
 
     if (endSec <= startSec) {
-      showAlert('클립 종료 시간은 시작 시간보다 커야 합니다.');
+      notifyError('클립 종료 시간은 시작 시간보다 커야 합니다.');
       return;
     }
 
@@ -3592,7 +3689,7 @@ export default function App() {
     } catch (error) {
       if (axios.isAxiosError(error) && error.response?.status === 409) {
         const message = extractAxiosErrorMessage(error, '이미 동일한 구간의 클립이 존재합니다.');
-        showAlert(message);
+        notifyError(message);
       }
       console.error('Failed to create clip', error);
     }
@@ -3813,12 +3910,12 @@ export default function App() {
 
   const handleCreatePlaylist = useCallback(async (): Promise<PlaylistResponse | null> => {
     if (!isAuthenticated) {
-      showAlert('재생목록을 사용하려면 로그인해 주세요.');
+      notifyError('재생목록을 사용하려면 로그인해 주세요.');
       return null;
     }
 
     const visibility = activePlaylist?.visibility ?? 'PRIVATE';
-    const titleInput = window.prompt('새 재생목록 제목을 입력해 주세요.');
+    const titleInput = await requestPlaylistTitle(visibility);
 
     if (titleInput === null) {
       return null;
@@ -3827,7 +3924,7 @@ export default function App() {
     const trimmedTitle = titleInput.trim();
 
     if (trimmedTitle.length === 0) {
-      showAlert('재생목록 제목을 입력해 주세요.');
+      notifyError('재생목록 제목을 입력해 주세요.');
       return null;
     }
 
@@ -3839,14 +3936,24 @@ export default function App() {
       );
       const normalized = normalizePlaylist(response.data);
       applyUserPlaylistUpdate(normalized);
+      enqueueToast('새 재생목록을 만들었어요.', 'success');
       return normalized;
     } catch (error) {
       const message = extractAxiosErrorMessage(error, '재생목록을 생성하지 못했습니다.');
-      showAlert(message);
+      notifyError(message);
       console.error('Failed to create playlist', error);
       return null;
     }
-  }, [activePlaylist, applyUserPlaylistUpdate, authHeaders, http, isAuthenticated]);
+  }, [
+    activePlaylist,
+    applyUserPlaylistUpdate,
+    authHeaders,
+    enqueueToast,
+    http,
+    isAuthenticated,
+    notifyError,
+    requestPlaylistTitle
+  ]);
 
   const handlePlaylistEntryRemove = useCallback(
     async (itemId: number) => {
@@ -3865,7 +3972,7 @@ export default function App() {
           error,
           '재생목록에서 항목을 제거하지 못했습니다.'
         );
-        showAlert(message);
+        notifyError(message);
         console.error('Failed to remove playlist item', error);
       }
     },
@@ -3875,7 +3982,7 @@ export default function App() {
   const handleVideoPlaylistToggle = useCallback(
     async (videoId: number) => {
       if (!isAuthenticated) {
-        showAlert('재생목록을 사용하려면 로그인해 주세요.');
+        notifyError('재생목록을 사용하려면 로그인해 주세요.');
         return;
       }
 
@@ -3910,7 +4017,7 @@ export default function App() {
         }
       } catch (error) {
         const message = extractAxiosErrorMessage(error, '재생목록을 업데이트하지 못했습니다.');
-        showAlert(message);
+        notifyError(message);
         console.error('Failed to update playlist', error);
       }
     },
@@ -3928,7 +4035,7 @@ export default function App() {
   const handleClipPlaylistToggle = useCallback(
     async (clipId: number) => {
       if (!isAuthenticated) {
-        showAlert('재생목록을 사용하려면 로그인해 주세요.');
+        notifyError('재생목록을 사용하려면 로그인해 주세요.');
         return;
       }
 
@@ -3963,7 +4070,7 @@ export default function App() {
         }
       } catch (error) {
         const message = extractAxiosErrorMessage(error, '재생목록을 업데이트하지 못했습니다.');
-        showAlert(message);
+        notifyError(message);
         console.error('Failed to update playlist', error);
       }
     },
@@ -3978,7 +4085,7 @@ export default function App() {
     ]
   );
 
-  const handleVideoCardKeyDown = (event: KeyboardEvent<HTMLDivElement>, videoId: number) => {
+  const handleVideoCardKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>, videoId: number) => {
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
       handleLibraryVideoSelect(videoId);
@@ -5838,9 +5945,78 @@ export default function App() {
   const mobileOptionalPanelId = 'artistRegistrationOptional';
   const mobilePreviewPanelId = 'artistPreviewMobilePanel';
   const mobileDebugPanelId = 'artistDebugMobilePanel';
+  const playlistVisibilityDescription = (() => {
+    switch (playlistDialogVisibility) {
+      case 'PUBLIC':
+        return '공개 재생목록으로 생성됩니다.';
+      case 'UNLISTED':
+        return '링크가 있는 사람만 볼 수 있도록 생성됩니다.';
+      default:
+        return '비공개 재생목록으로 생성됩니다.';
+    }
+  })();
 
   return (
     <>
+      <div className="toast-stack" aria-live="polite" aria-atomic="true">
+        {toasts.map((toast) => (
+          <div key={toast.id} className={`toast toast--${toast.tone}`} role="status">
+            <span className="toast__message">{toast.message}</span>
+            <button
+              type="button"
+              className="toast__dismiss"
+              onClick={() => dismissToast(toast.id)}
+              aria-label="알림 닫기"
+            >
+              ×
+            </button>
+          </div>
+        ))}
+      </div>
+
+      {isPlaylistDialogOpen && (
+        <div className="playlist-dialog" role="dialog" aria-modal="true" aria-label="새 재생목록 만들기">
+          <div
+            className="playlist-dialog__backdrop"
+            role="presentation"
+            onClick={handlePlaylistDialogCancel}
+          />
+          <div className="playlist-dialog__content" role="document">
+            <h3 className="playlist-dialog__title">새 재생목록 만들기</h3>
+            <form className="playlist-dialog__form" onSubmit={handlePlaylistDialogSubmit}>
+              <label className="playlist-dialog__field">
+                <span className="playlist-dialog__label">재생목록 제목</span>
+                <input
+                  ref={playlistDialogInputRef}
+                  type="text"
+                  value={playlistTitleInput}
+                  onChange={(event) => setPlaylistTitleInput(event.target.value)}
+                  placeholder="예: 취침용 리스트"
+                  required
+                  autoComplete="off"
+                />
+              </label>
+              <p className="playlist-dialog__hint">{playlistVisibilityDescription}</p>
+              <div className="playlist-dialog__actions">
+                <button
+                  type="button"
+                  className="playlist-dialog__button playlist-dialog__button--ghost"
+                  onClick={handlePlaylistDialogCancel}
+                >
+                  취소
+                </button>
+                <button
+                  type="submit"
+                  className="playlist-dialog__button playlist-dialog__button--primary"
+                >
+                  만들기
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       <div className="app-shell">
         <aside
           id="app-sidebar"

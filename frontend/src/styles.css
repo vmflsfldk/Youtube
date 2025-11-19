@@ -522,6 +522,8 @@ button.primary:hover {
 
 .playback-bar__queue {
   padding-bottom: 12px;
+  touch-action: pan-y;
+  overscroll-behavior-y: contain;
 }
 
 .playback-bar__queue-list {
@@ -588,8 +590,8 @@ button.primary:hover {
   display: none;
 }
 
-/* Mobile Styles */
-@media (max-width: 500px) {
+/* Mobile & Tablet Touch Layout */
+@media (max-width: 960px) {
   .app-shell {
     display: block;
   }
@@ -600,8 +602,11 @@ button.primary:hover {
 
   .content-area {
     width: 100%;
+    min-width: 0;
     border: none;
-    padding-bottom: calc(var(--mobile-bottom-nav-height) + var(--mobile-playback-height));
+    padding-bottom: calc(
+      var(--mobile-bottom-nav-height) + var(--mobile-playback-height) + env(safe-area-inset-bottom)
+    );
   }
 
   .content-header {
@@ -650,6 +655,7 @@ button.primary:hover {
     justify-content: space-around;
     align-items: flex-start;
     padding-top: 4px;
+    padding-bottom: env(safe-area-inset-bottom);
   }
 
   .mobile-bottom-nav__tab {
@@ -676,7 +682,8 @@ button.primary:hover {
     border-left: none;
     border-right: none;
     padding: 8px 12px;
-    height: var(--mobile-playback-height);
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
+    height: auto;
   }
 
   .playback-bar--mobile-collapsed,
@@ -691,6 +698,163 @@ button.primary:hover {
   .playback-bar__drag-zone {
     cursor: grab;
   }
+
+  .toast-stack {
+    left: 12px;
+    right: 12px;
+    top: 12px;
+    max-width: none;
+  }
+
+  .playlist-dialog__content {
+    width: calc(100% - 32px);
+    margin: 0 16px;
+  }
+}
+
+/* Feedback & Dialogs */
+.toast-stack {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 360px;
+  z-index: 2000;
+  pointer-events: none;
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  background: rgba(22, 24, 28, 0.9);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-soft);
+  color: var(--color-text-primary);
+  pointer-events: auto;
+}
+
+.toast--success {
+  border-color: var(--accent-success);
+}
+
+.toast--error {
+  border-color: var(--accent-danger);
+}
+
+.toast__message {
+  flex: 1;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.toast__dismiss {
+  border: none;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--color-text-primary);
+  border-radius: var(--radius-full);
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.toast__dismiss:hover,
+.toast__dismiss:focus-visible {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.playlist-dialog {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1900;
+}
+
+.playlist-dialog__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+}
+
+.playlist-dialog__content {
+  position: relative;
+  width: min(90vw, 420px);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-card);
+  padding: 20px;
+  box-shadow: var(--shadow-soft);
+}
+
+.playlist-dialog__title {
+  margin: 0 0 12px;
+  font-size: 20px;
+}
+
+.playlist-dialog__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.playlist-dialog__label {
+  font-size: 14px;
+  color: var(--color-text-secondary);
+}
+
+.playlist-dialog__field input {
+  width: 100%;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-muted);
+  color: var(--color-text-primary);
+}
+
+.playlist-dialog__hint {
+  margin: 10px 0 0;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+}
+
+.playlist-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.playlist-dialog__button {
+  border-radius: var(--radius-full);
+  padding: 10px 16px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-muted);
+  color: var(--color-text-primary);
+  cursor: pointer;
+}
+
+.playlist-dialog__button--ghost:hover,
+.playlist-dialog__button--ghost:focus-visible {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.playlist-dialog__button--primary {
+  background: var(--gradient-primary);
+  border: none;
+  color: #fff;
 }
 
 /* --- Panel & Content Layouts --- */
