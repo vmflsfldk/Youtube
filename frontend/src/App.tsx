@@ -64,12 +64,6 @@ const LiveIcon = () => (
   </svg>
 );
 
-const PlaylistIcon = () => (
-  <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-    <path d="M20 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2Zm0 14H4V6h16ZM6 10h2v2H6Zm0 4h2v2H6Zm4 0h8v2h-8Zm0-4h8v2h-8Z" />
-  </svg>
-);
-
 type MaybeArray<T> =
   | T[]
   | { items?: T[]; data?: T[]; results?: T[] }
@@ -1064,7 +1058,7 @@ const normalizePlaylist = (playlist: PlaylistLike): PlaylistResponse => {
   };
 };
 
-type SectionKey = 'library' | 'live' | 'latest' | 'catalog' | 'playlist';
+type SectionKey = 'library' | 'live' | 'latest' | 'catalog';
 
 const allowCrossOriginApi = String(import.meta.env.VITE_ALLOW_CROSS_ORIGIN_API ?? '')
   .toLowerCase()
@@ -5222,7 +5216,6 @@ export default function App() {
       previous && artistLibraryClips.some((clip) => clip.id === previous) ? previous : null
     );
   }, [artistLibraryClips]);
-  const playlistHeading = isAuthenticated ? '내 영상·클립 모음' : '공개 영상·클립 모음';
   const playlistSubtitle = isAuthenticated
     ? '저장한 영상과 클립을 검색하고 바로 재생해 보세요.'
     : '회원가입 없이 감상할 수 있는 최신 공개 재생목록입니다.';
@@ -5544,12 +5537,6 @@ export default function App() {
         label: translate('nav.live.label'),
         description: translate('nav.live.description'),
         icon: <LiveIcon />
-      },
-      {
-        id: 'playlist',
-        label: translate('nav.playlist.label'),
-        description: translate('nav.playlist.description'),
-        icon: <PlaylistIcon />
       }
     ];
 
@@ -5581,29 +5568,21 @@ export default function App() {
     return entries.slice(0, 5);
   }, [liveArtists]);
 
-  const playlistWidgetEntries = useMemo(() => {
-    return availablePlaylists.slice(0, 4).map((playlist) => {
-      const videoCount = playlist.items.filter((item) => item.type === 'video' && item.video).length;
-      const clipCount = playlist.items.filter((item) => item.type === 'clip' && item.clip).length;
-
-      let secondary = '';
-      if (videoCount > 0 && clipCount > 0) {
-        secondary = `${videoCount}개 영상 · ${clipCount}개 클립`;
-      } else if (videoCount > 0) {
-        secondary = `${videoCount}개 영상`;
-      } else if (clipCount > 0) {
-        secondary = `${clipCount}개 클립`;
-      } else {
-        secondary = '비어있는 재생목록';
+  const handlePlaylistSelectionChange = useCallback(
+    (value: string) => {
+      if (value.length === 0) {
+        return;
       }
-
-      return {
-        key: playlist.id,
-        title: (playlist.title || '').trim() || '재생목록',
-        secondary
-      };
-    });
-  }, [availablePlaylists]);
+      const playlistId = Number.parseInt(value, 10);
+      const matchedPlaylist = Number.isFinite(playlistId)
+        ? availablePlaylists.find((playlist) => playlist.id === playlistId) ?? null
+        : null;
+      if (matchedPlaylist) {
+        setActivePlaylist(matchedPlaylist);
+      }
+    },
+    [availablePlaylists]
+  );
 
   const mobileAuthOverlayLabel = isAuthenticated
     ? translate('mobile.auth.overlayLabelAuthenticated')
@@ -7521,75 +7500,6 @@ export default function App() {
             </div>
           </section>
 
-          <section
-            className={`content-panel${activeSection === 'playlist' ? ' active' : ''}`}
-            role="tabpanel"
-            aria-labelledby="sidebar-tab-playlist"
-            hidden={activeSection !== 'playlist'}
-          >
-            <div className="panel playlist-panel">
-              <div className="playlist-panel__header">
-                <div className="playlist-panel__heading">
-                  <h2>{playlistHeading}</h2>
-                  <p className="playlist-subtitle">{playlistSubtitle}</p>
-                </div>
-                <div className="playlist-panel__selector">
-                  <label className="playlist-selector__label" htmlFor="playlistSelector">
-                    {playlistSelectorLabel}
-                  </label>
-                  {availablePlaylists.length > 0 ? (
-                    <select
-                      id="playlistSelector"
-                      className="playlist-selector__dropdown"
-                      value={playlistSelectionValue}
-                      onChange={handlePlaylistSelectionChange}
-                    >
-                      {!activePlaylist && (
-                        <option value="" disabled>
-                          재생목록을 선택하세요
-                        </option>
-                      )}
-                      {availablePlaylists.map((playlist) => {
-                        const trimmedTitle = playlist.title.trim();
-                        const optionLabel = trimmedTitle.length > 0 ? trimmedTitle : `재생목록 ${playlist.id}`;
-                        return (
-                          <option key={playlist.id} value={playlist.id}>
-                            {optionLabel}
-                          </option>
-                        );
-                      })}
-                    </select>
-                  ) : (
-                    <div className="playlist-selector__empty" role="status" aria-live="polite">
-                      재생목록이 없습니다.
-                    </div>
-                  )}
-                </div>
-                <div className="playlist-search">
-                  <input
-                    id="playlistSearchInput"
-                    type="search"
-                    value={playlistSearchQuery}
-                    onChange={(event) => setPlaylistSearchQuery(event.target.value)}
-                    placeholder="영상 또는 클립 검색"
-                    aria-label="영상 또는 클립 검색"
-                  />
-                </div>
-              </div>
-              {!playlistHasResults ? (
-                <p className="empty-state">{playlistEmptyMessage}</p>
-              ) : (
-                <PlaylistEntriesList
-                  entries={filteredPlaylistEntries}
-                  expandedPlaylistEntryId={expandedPlaylistEntryId}
-                  handlePlaylistEntryRemove={handlePlaylistEntryRemove}
-                  setExpandedPlaylistEntryId={setExpandedPlaylistEntryId}
-                  resolvePlaylistEntryKey={resolvePlaylistEntryKey}
-                  isRemovalDisabled={isPlaylistEntryRemovalDisabled}
-                />
-              )}
-            </div>
-          </section>
         </div>
       </main>
 
@@ -7631,20 +7541,75 @@ export default function App() {
           )}
         </div>
 
-        <div className="widget-box">
-          <h3>재생목록</h3>
-          {playlistWidgetEntries.length === 0 ? (
-            <p className="live-mini-item" aria-live="polite">
-              표시할 재생목록이 없습니다.
-            </p>
-          ) : (
-            playlistWidgetEntries.map((entry) => (
-              <div key={entry.key} className="live-mini-item">
-                <strong>{entry.title}</strong>
-                <span className="sidebar__auth-handle">{entry.secondary}</span>
+        <div className="widget-box playlist-widget">
+          <div className="playlist-widget__header">
+            <div>
+              <h3>재생목록</h3>
+              <p className="playlist-widget__subtitle">{playlistSubtitle}</p>
+            </div>
+          </div>
+          <div className="playlist-widget__selector">
+            <label className="playlist-selector__label" htmlFor="playlistWidgetSelector">
+              {playlistSelectorLabel}
+            </label>
+            {availablePlaylists.length > 0 ? (
+              <select
+                id="playlistWidgetSelector"
+                className="playlist-selector__dropdown"
+                value={playlistSelectionValue}
+                onChange={(event) => handlePlaylistSelectionChange(event.target.value)}
+              >
+                {!activePlaylist && (
+                  <option value="" disabled>
+                    재생목록을 선택하세요
+                  </option>
+                )}
+                {availablePlaylists.map((playlist) => {
+                  const trimmedTitle = playlist.title.trim();
+                  const optionLabel = trimmedTitle.length > 0 ? trimmedTitle : `재생목록 ${playlist.id}`;
+                  return (
+                    <option key={playlist.id} value={playlist.id}>
+                      {optionLabel}
+                    </option>
+                  );
+                })}
+              </select>
+            ) : (
+              <div className="playlist-selector__empty" role="status" aria-live="polite">
+                표시할 재생목록이 없습니다.
               </div>
-            ))
-          )}
+            )}
+          </div>
+          <div className="playlist-widget__search">
+            <label className="playlist-search__label" htmlFor="playlistWidgetSearch">
+              검색
+            </label>
+            <div className="playlist-search__input">
+              <SearchIcon />
+              <input
+                id="playlistWidgetSearch"
+                type="search"
+                value={playlistSearchQuery}
+                onChange={(event) => setPlaylistSearchQuery(event.target.value)}
+                placeholder="영상 또는 클립 검색"
+                aria-label="영상 또는 클립 검색"
+              />
+            </div>
+          </div>
+          <div className="playlist-widget__entries">
+            {!playlistHasResults ? (
+              <p className="empty-state">{playlistEmptyMessage}</p>
+            ) : (
+              <PlaylistEntriesList
+                entries={filteredPlaylistEntries}
+                expandedPlaylistEntryId={expandedPlaylistEntryId}
+                handlePlaylistEntryRemove={handlePlaylistEntryRemove}
+                setExpandedPlaylistEntryId={setExpandedPlaylistEntryId}
+                resolvePlaylistEntryKey={resolvePlaylistEntryKey}
+                isRemovalDisabled={isPlaylistEntryRemovalDisabled}
+              />
+            )}
+          </div>
         </div>
       </aside>
 
