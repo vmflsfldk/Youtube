@@ -58,7 +58,7 @@ body {
 .app-shell {
   display: flex;
   width: 100%;
-  max-width: var(--layout-max-width);
+  max-width: none;
   min-height: 100vh;
   padding: 0;
   margin: 0;
@@ -229,8 +229,10 @@ body {
 
 /* 2. Main Content Area (Feed) */
 .content-area {
-  width: var(--main-width);
-  flex-shrink: 0;
+  width: auto;
+  flex: 1 1 0;
+  min-width: var(--main-width);
+  max-width: calc(100% - var(--sidebar-width) - var(--right-sidebar-width));
   border-right: 1px solid var(--color-border);
   display: flex;
   flex-direction: column;
@@ -445,9 +447,8 @@ button.primary:hover {
 .playback-bar {
   position: fixed;
   bottom: 0;
-  width: var(--main-width);
-  /* Centered relative to layout */
-  left: calc((100% - var(--layout-max-width)) / 2 + var(--sidebar-width)); 
+  width: calc(100% - var(--sidebar-width) - var(--right-sidebar-width));
+  left: var(--sidebar-width);
   background-color: var(--color-background);
   border-top: 1px solid var(--color-border);
   border-left: 1px solid var(--color-border);
@@ -467,7 +468,8 @@ button.primary:hover {
     display: none;
   }
   .playback-bar {
-    left: calc(50% - var(--main-width) / 2 + var(--sidebar-width) / 2);
+    width: calc(100% - var(--sidebar-width));
+    left: var(--sidebar-width);
   }
 }
 
@@ -490,9 +492,10 @@ button.primary:hover {
     display: none;
   }
   .content-area {
-    width: 600px;
-    flex-grow: 1;
-    max-width: 600px;
+    width: auto;
+    flex: 1 1 0;
+    min-width: 600px;
+    max-width: calc(100% - var(--sidebar-width));
     border-right: 1px solid var(--color-border);
   }
   .playback-bar {
