@@ -5568,22 +5568,6 @@ export default function App() {
     return entries.slice(0, 5);
   }, [liveArtists]);
 
-  const handlePlaylistSelectionChange = useCallback(
-    (value: string) => {
-      if (value.length === 0) {
-        return;
-      }
-      const playlistId = Number.parseInt(value, 10);
-      const matchedPlaylist = Number.isFinite(playlistId)
-        ? availablePlaylists.find((playlist) => playlist.id === playlistId) ?? null
-        : null;
-      if (matchedPlaylist) {
-        setActivePlaylist(matchedPlaylist);
-      }
-    },
-    [availablePlaylists]
-  );
-
   const mobileAuthOverlayLabel = isAuthenticated
     ? translate('mobile.auth.overlayLabelAuthenticated')
     : translate('mobile.auth.overlayLabelGuest');
@@ -7557,7 +7541,7 @@ export default function App() {
                 id="playlistWidgetSelector"
                 className="playlist-selector__dropdown"
                 value={playlistSelectionValue}
-                onChange={(event) => handlePlaylistSelectionChange(event.target.value)}
+                onChange={handlePlaylistSelectionChange}
               >
                 {!activePlaylist && (
                   <option value="" disabled>
