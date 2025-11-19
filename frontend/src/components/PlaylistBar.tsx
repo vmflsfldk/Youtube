@@ -174,6 +174,7 @@ export default function PlaylistBar({
     isDragging: boolean;
     hasToggled: boolean;
     expandedAtStart: boolean;
+    startedInQueueAtTop?: boolean;
   } | null>(null);
   const dragHeight = useMotionValue(0);
   const animateDragHeightTo = useCallback(
@@ -380,11 +381,16 @@ export default function PlaylistBar({
       if (!isMobileViewport) {
         return;
       }
+      let startedInQueueAtTop = false;
       if (isExpanded) {
         const target = event.target as HTMLElement | null;
-        if (target?.closest('.playback-bar__queue')) {
-          dragStateRef.current = null;
-          return;
+        const queueElement = target?.closest('.playback-bar__queue');
+        if (queueElement instanceof HTMLElement) {
+          if (queueElement.scrollTop > 0) {
+            dragStateRef.current = null;
+            return;
+          }
+          startedInQueueAtTop = true;
         }
       }
       if (event.touches.length !== 1) {
@@ -399,7 +405,8 @@ export default function PlaylistBar({
         startY: touch.clientY,
         isDragging: false,
         hasToggled: false,
-        expandedAtStart: isExpanded
+        expandedAtStart: isExpanded,
+        startedInQueueAtTop
       };
       dragHeight.stop();
       dragTranslateY.stop();
@@ -423,6 +430,9 @@ export default function PlaylistBar({
         return;
       }
       const deltaY = touch.clientY - state.startY;
+      if (state.startedInQueueAtTop && deltaY < 0) {
+        return;
+      }
       if (!state.isDragging) {
         if (Math.abs(deltaY) < DRAG_ACTIVATION_DELTA_PX) {
           return;
@@ -713,45 +723,59 @@ export default function PlaylistBar({
           animate={playbackBarVariants.animate}
           exit={playbackBarVariants.exit}
           transition={playbackBarTransition}
-          onTouchStart={handleMobileDragStart}
-          onTouchMove={handleMobileDragMove}
-          onTouchEnd={handleMobileDragEnd}
-          onTouchCancel={handleMobileDragCancel}
         >
-          <div className="playback-bar__drag-handle">
-            <div className="playback-bar__drag-grip" />
-          </div>
           <div className="playback-bar__collapsed-body">
-            <button
-              type="button"
-              className="playback-bar__collapsed-toggle"
+            <div
+              className="playback-bar__drag-zone"
+              onTouchStart={handleMobileDragStart}
+              onTouchMove={handleMobileDragMove}
+              onTouchEnd={handleMobileDragEnd}
+              onTouchCancel={handleMobileDragCancel}
               onClick={onToggleExpanded}
-              aria-expanded={false}
-              aria-label="재생 목록 펼치기"
             >
-              {currentItem?.thumbnailUrl ? (
-                <img
-                  className="playback-bar__collapsed-thumbnail"
-                  src={currentItem.thumbnailUrl}
-                  alt={currentItem.title}
-                />
-              ) : (
-                <div className="playback-bar__collapsed-placeholder" aria-live="polite">
-                  {placeholderMessage}
+              <div className="playback-bar__drag-handle">
+                <div className="playback-bar__drag-grip" />
+                <div className="playback-bar__drag-chevron" aria-hidden="true">
+                  <ChevronIcon direction="up" />
                 </div>
-              )}
-              <div className="playback-bar__collapsed-meta" aria-live="polite">
-                <div className="playback-bar__collapsed-label-row">
-                  <span className="playback-bar__collapsed-label">Now Playing</span>
-                  <span className="playback-bar__collapsed-index">{collapsedIndexLabel}</span>
-                </div>
-                <span className="playback-bar__collapsed-title">{collapsedTitle}</span>
-                {currentItem?.subtitle && (
-                  <span className="playback-bar__collapsed-subtitle">{currentItem.subtitle}</span>
-                )}
               </div>
-            </button>
-            <div className="playback-bar__collapsed-controls">
+              <button
+                type="button"
+                className="playback-bar__collapsed-toggle"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onToggleExpanded();
+                }}
+                aria-expanded={false}
+                aria-label="재생 목록 펼치기"
+              >
+                {currentItem?.thumbnailUrl ? (
+                  <img
+                    className="playback-bar__collapsed-thumbnail"
+                    src={currentItem.thumbnailUrl}
+                    alt={currentItem.title}
+                  />
+                ) : (
+                  <div className="playback-bar__collapsed-placeholder" aria-live="polite">
+                    {placeholderMessage}
+                  </div>
+                )}
+                <div className="playback-bar__collapsed-meta" aria-live="polite">
+                  <div className="playback-bar__collapsed-label-row">
+                    <span className="playback-bar__collapsed-label">Now Playing</span>
+                    <span className="playback-bar__collapsed-index">{collapsedIndexLabel}</span>
+                  </div>
+                  <span className="playback-bar__collapsed-title">{collapsedTitle}</span>
+                  {currentItem?.subtitle && (
+                    <span className="playback-bar__collapsed-subtitle">{currentItem.subtitle}</span>
+                  )}
+                </div>
+              </button>
+            </div>
+            <div
+              className="playback-bar__collapsed-controls"
+              onTouchStart={(event) => event.stopPropagation()}
+            >
               {renderTransport('playback-bar__transport playback-bar__transport--compact')}
             </div>
           </div>
