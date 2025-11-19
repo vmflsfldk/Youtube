@@ -5876,7 +5876,15 @@ export default function App() {
               onGoogleCredential={handleGoogleCredential}
               shouldAutoPromptGoogle={shouldAutoPromptGoogle}
             />
-            <p className="sidebar__contact">문의 및 오류 제보는 X의 @utahuboffcial 또는 utahubcs@gmail.com으로 부탁드립니다.</p>
+            <p className="sidebar__contact">
+              문의 및 오류 제보는{' '}
+              <a href="https://x.com/utahuboffcial" target="_blank" rel="noopener noreferrer">
+                X의 @utahuboffcial
+              </a>{' '}
+              또는{' '}
+              <a href="mailto:utahubcs@gmail.com">utahubcs@gmail.com</a>
+              으로 부탁드립니다.
+            </p>
           </div>
         </aside>
 
@@ -7670,17 +7678,6 @@ export default function App() {
           })}
         </nav>
       )}
-      <footer className="app-footer">
-        <small>
-          문의 및 오류 제보는{' '}
-          <a href="https://x.com/utahuboffcial" target="_blank" rel="noopener noreferrer">
-            X의 @utahuboffcial
-          </a>{' '}
-          또는{' '}
-          <a href="mailto:utahubcs@gmail.com">utahubcs@gmail.com</a>
-          으로 부탁드립니다.
-        </small>
-      </footer>
       </div>
       <PlaylistBar
         items={playbackBarItems}

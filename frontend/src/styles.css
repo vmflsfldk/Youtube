@@ -245,6 +245,18 @@ body {
   word-break: keep-all;
 }
 
+.sidebar__contact a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.sidebar__contact a:hover,
+.sidebar__contact a:focus-visible {
+  color: var(--color-text-primary);
+  text-decoration-color: currentColor;
+}
+
 /* 2. Main Content Area (Feed) */
 .content-area {
   width: auto;
