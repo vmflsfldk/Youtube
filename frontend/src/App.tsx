@@ -4895,6 +4895,8 @@ export default function App() {
     });
   }, [playlistEntries, resolvePlaylistEntryKey]);
 
+  const shouldRenderPlaybackBar = playbackBarItems.length > 0;
+
   const currentPlaybackIndex = useMemo(() => {
     if (!activePlaybackKey) {
       return -1;
@@ -7617,27 +7619,29 @@ export default function App() {
         </nav>
       )}
       </div>
-      <PlaylistBar
-        items={playbackBarItems}
-        currentItemKey={activePlaybackKey}
-        currentIndex={currentPlaybackIndex}
-        playbackActivationNonce={playbackActivationNonce}
-        isPlaying={isPlaybackActive}
-        isExpanded={isPlaybackExpanded}
-        isMobileViewport={isMobileViewport}
-        canCreatePlaylist={isAuthenticated}
-        canModifyPlaylist={canModifyActivePlaylist}
-        onCreatePlaylist={handleCreatePlaylist}
-        onPlayPause={handlePlaybackToggle}
-        onNext={handlePlaybackNext}
-        onPrevious={handlePlaybackPrevious}
-        repeatMode={playbackRepeatMode}
-        onRepeatModeChange={setPlaybackRepeatMode}
-        onToggleExpanded={handlePlaybackToggleExpanded}
-        onSelectItem={handlePlaybackSelect}
-        onRemoveItem={handlePlaylistEntryRemove}
-        onTrackEnded={handlePlaybackEnded}
-      />
+      {shouldRenderPlaybackBar && (
+        <PlaylistBar
+          items={playbackBarItems}
+          currentItemKey={activePlaybackKey}
+          currentIndex={currentPlaybackIndex}
+          playbackActivationNonce={playbackActivationNonce}
+          isPlaying={isPlaybackActive}
+          isExpanded={isPlaybackExpanded}
+          isMobileViewport={isMobileViewport}
+          canCreatePlaylist={isAuthenticated}
+          canModifyPlaylist={canModifyActivePlaylist}
+          onCreatePlaylist={handleCreatePlaylist}
+          onPlayPause={handlePlaybackToggle}
+          onNext={handlePlaybackNext}
+          onPrevious={handlePlaybackPrevious}
+          repeatMode={playbackRepeatMode}
+          onRepeatModeChange={setPlaybackRepeatMode}
+          onToggleExpanded={handlePlaybackToggleExpanded}
+          onSelectItem={handlePlaybackSelect}
+          onRemoveItem={handlePlaylistEntryRemove}
+          onTrackEnded={handlePlaybackEnded}
+        />
+      )}
     </>
   );
 }
