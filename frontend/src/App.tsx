@@ -18,6 +18,7 @@ import PlaylistBar, {
   type PlaybackRepeatMode,
   type PlaylistBarItem
 } from './components/PlaylistBar';
+import PlaylistWidgetControls from './components/PlaylistWidgetControls';
 import AuthPanel from './components/AuthPanel';
 import LanguageToggle from './components/LanguageToggle';
 import utahubLogo from './assets/utahub-logo.svg';
@@ -4887,7 +4888,7 @@ export default function App() {
     });
   }, [playlistEntries, resolvePlaylistEntryKey]);
 
-  const shouldRenderPlaybackBar = playbackBarItems.length > 0;
+  const hasPlaybackItems = playbackBarItems.length > 0;
 
   const currentPlaybackIndex = useMemo(() => {
     if (!activePlaybackKey) {
@@ -7629,6 +7630,23 @@ export default function App() {
               <p className="playlist-widget__subtitle">{playlistSubtitle}</p>
             </div>
           </div>
+          {hasPlaybackItems && !isMobileViewport && (
+            <PlaylistWidgetControls
+              items={playbackBarItems}
+              currentItemKey={activePlaybackKey}
+              currentIndex={currentPlaybackIndex}
+              playbackActivationNonce={playbackActivationNonce}
+              isPlaying={isPlaybackActive}
+              canCreatePlaylist={isAuthenticated}
+              onCreatePlaylist={handleCreatePlaylist}
+              onPlayPause={handlePlaybackToggle}
+              onNext={handlePlaybackNext}
+              onPrevious={handlePlaybackPrevious}
+              repeatMode={playbackRepeatMode}
+              onRepeatModeChange={setPlaybackRepeatMode}
+              onTrackEnded={handlePlaybackEnded}
+            />
+          )}
           <div className="playlist-widget__selector">
             <label className="playlist-selector__label" htmlFor="playlistWidgetSelector">
               {playlistSelectorLabel}
@@ -7714,7 +7732,7 @@ export default function App() {
         </nav>
       )}
       </div>
-      {shouldRenderPlaybackBar && (
+      {hasPlaybackItems && isMobileViewport && (
         <PlaylistBar
           items={playbackBarItems}
           currentItemKey={activePlaybackKey}
