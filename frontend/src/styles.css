@@ -576,16 +576,6 @@ button.primary:hover {
   }
 }
 
-@media (min-width: 1281px) {
-  .playback-bar__toggle {
-    display: none;
-  }
-
-  .playback-bar__queue {
-    display: none !important;
-  }
-}
-
 .mobile-appbar {
   display: none;
 }

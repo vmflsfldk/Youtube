@@ -7741,6 +7741,7 @@ export default function App() {
           isPlaying={isPlaybackActive}
           isExpanded={isPlaybackExpanded}
           isMobileViewport={isMobileViewport}
+          showQueueToggle={isMobileViewport}
           canCreatePlaylist={isAuthenticated}
           canModifyPlaylist={canModifyActivePlaylist}
           onCreatePlaylist={handleCreatePlaylist}
