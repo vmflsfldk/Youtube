@@ -166,9 +166,16 @@ body {
 }
 
 /* Auth Panel in Sidebar */
-.auth-panel--sidebar {
+.sidebar__footer {
   margin-top: auto;
-  margin-bottom: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 0 4px 16px;
+}
+
+.auth-panel--sidebar {
+  margin: 0;
   padding: 12px;
   border-radius: var(--radius-full);
   transition: background-color 0.2s;
@@ -225,6 +232,15 @@ body {
 
 .sidebar__auth-actions {
   display: none; /* Hide sign out button here, usually in a popover */
+}
+
+.sidebar__contact {
+  margin: 0;
+  padding: 0 8px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+  word-break: keep-all;
 }
 
 /* 2. Main Content Area (Feed) */

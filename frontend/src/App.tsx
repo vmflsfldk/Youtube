@@ -5860,21 +5860,24 @@ export default function App() {
               );
             })}
           </nav>
-          <AuthPanel
-            className="auth-panel--sidebar"
-            isAuthenticated={isAuthenticated}
-            greetingMessage={greetingMessage}
-            isLoadingUser={isLoadingUser}
-            nicknameInput={nicknameInput}
-            onNicknameInputChange={(value) => setNicknameInput(value)}
-            onNicknameSubmit={handleNicknameSubmit}
-            nicknameStatus={nicknameStatus}
-            nicknameError={nicknameError}
-            onSignOut={handleSignOut}
-            isGoogleReady={isGoogleReady}
-            onGoogleCredential={handleGoogleCredential}
-            shouldAutoPromptGoogle={shouldAutoPromptGoogle}
-          />
+          <div className="sidebar__footer">
+            <AuthPanel
+              className="auth-panel--sidebar"
+              isAuthenticated={isAuthenticated}
+              greetingMessage={greetingMessage}
+              isLoadingUser={isLoadingUser}
+              nicknameInput={nicknameInput}
+              onNicknameInputChange={(value) => setNicknameInput(value)}
+              onNicknameSubmit={handleNicknameSubmit}
+              nicknameStatus={nicknameStatus}
+              nicknameError={nicknameError}
+              onSignOut={handleSignOut}
+              isGoogleReady={isGoogleReady}
+              onGoogleCredential={handleGoogleCredential}
+              shouldAutoPromptGoogle={shouldAutoPromptGoogle}
+            />
+            <p className="sidebar__contact">문의 및 오류 제보는 X의 @utahuboffcial 또는 utahubcs@gmail.com으로 부탁드립니다.</p>
+          </div>
         </aside>
 
       <main className="content-area">
