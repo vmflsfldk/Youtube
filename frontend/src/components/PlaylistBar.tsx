@@ -39,6 +39,7 @@ interface PlaylistBarProps {
   isPlaying: boolean;
   isExpanded: boolean;
   isMobileViewport: boolean;
+  showQueueToggle: boolean;
   canCreatePlaylist: boolean;
   canModifyPlaylist: boolean;
   onCreatePlaylist: () => void | Promise<unknown>;
@@ -149,6 +150,7 @@ export default function PlaylistBar({
   isPlaying,
   isExpanded,
   isMobileViewport,
+  showQueueToggle,
   canCreatePlaylist,
   canModifyPlaylist,
   onCreatePlaylist,
@@ -845,16 +847,18 @@ export default function PlaylistBar({
                   {currentIndex >= 0 ? `${currentIndex + 1}/${items.length}` : `0/${items.length}`}
                 </span>
               </div>
-              <button
-                type="button"
-                className="playback-bar__toggle"
-                onClick={onToggleExpanded}
-                aria-expanded={isExpanded}
-                aria-controls="playbackBarQueue"
-              >
-                <span>{isExpanded ? '목록 접기' : '목록 펼치기'}</span>
-                <ChevronIcon direction={isExpanded ? 'down' : 'up'} />
-              </button>
+              {showQueueToggle && (
+                <button
+                  type="button"
+                  className="playback-bar__toggle"
+                  onClick={onToggleExpanded}
+                  aria-expanded={isExpanded}
+                  aria-controls="playbackBarQueue"
+                >
+                  <span>{isExpanded ? '목록 접기' : '목록 펼치기'}</span>
+                  <ChevronIcon direction={isExpanded ? 'down' : 'up'} />
+                </button>
+              )}
             </div>
             <div className="playback-bar__track-meta" aria-live="polite">
               <h2 className="playback-bar__title">{currentItem?.title ?? '대기 중'}</h2>
@@ -865,31 +869,33 @@ export default function PlaylistBar({
             {renderControls()}
           </div>
         </div>
-        <AnimatePresence initial={false}>
-          {isExpanded && (
-            <motion.div
-              key="playbackBarQueue"
-              id="playbackBarQueue"
-              className="playback-bar__queue playback-bar__queue--visible"
-              initial={queueVariants.initial}
-              animate={queueVariants.animate}
-              exit={queueVariants.exit}
-              transition={queueTransition}
-              onTouchStart={isMobileViewport ? handleMobileDragStart : undefined}
-              onTouchMove={isMobileViewport ? handleMobileDragMove : undefined}
-              onTouchEnd={isMobileViewport ? handleMobileDragEnd : undefined}
-              onTouchCancel={isMobileViewport ? handleMobileDragCancel : undefined}
-            >
-              {items.length === 0 ? (
-                <p className="playback-bar__queue-empty">재생 목록이 비어 있습니다.</p>
-              ) : (
-                <ul className="playback-bar__queue-list">
-                  {items.map((item, index) => renderQueueItem(item, index))}
-                </ul>
-              )}
-            </motion.div>
-          )}
-        </AnimatePresence>
+        {showQueueToggle && (
+          <AnimatePresence initial={false}>
+            {isExpanded && (
+              <motion.div
+                key="playbackBarQueue"
+                id="playbackBarQueue"
+                className="playback-bar__queue playback-bar__queue--visible"
+                initial={queueVariants.initial}
+                animate={queueVariants.animate}
+                exit={queueVariants.exit}
+                transition={queueTransition}
+                onTouchStart={isMobileViewport ? handleMobileDragStart : undefined}
+                onTouchMove={isMobileViewport ? handleMobileDragMove : undefined}
+                onTouchEnd={isMobileViewport ? handleMobileDragEnd : undefined}
+                onTouchCancel={isMobileViewport ? handleMobileDragCancel : undefined}
+              >
+                {items.length === 0 ? (
+                  <p className="playback-bar__queue-empty">재생 목록이 비어 있습니다.</p>
+                ) : (
+                  <ul className="playback-bar__queue-list">
+                    {items.map((item, index) => renderQueueItem(item, index))}
+                  </ul>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        )}
       </motion.div>
     </>
   );
