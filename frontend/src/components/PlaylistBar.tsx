@@ -163,6 +163,7 @@ export default function PlaylistBar({
   onTrackEnded
 }: PlaylistBarProps) {
   const [isCreatingPlaylist, setIsCreatingPlaylist] = useState(false);
+  const [hasActivatedPlayback, setHasActivatedPlayback] = useState(false);
   const dragTranslateY = useMotionValue(0);
   const animatedTranslateY = useSpring(dragTranslateY, {
     stiffness: 520,
@@ -257,6 +258,18 @@ export default function PlaylistBar({
   const placeholderMessage = hasPlayableItems
     ? '재생할 항목을 선택하세요.'
     : '재생 가능한 항목이 없습니다.';
+
+  useEffect(() => {
+    if (isPlaying && !hasActivatedPlayback) {
+      setHasActivatedPlayback(true);
+    }
+  }, [hasActivatedPlayback, isPlaying]);
+
+  useEffect(() => {
+    if (items.length === 0) {
+      setHasActivatedPlayback(false);
+    }
+  }, [items.length]);
 
   const handleRepeatButtonClick = useCallback(
     (mode: PlaybackRepeatMode) => {
@@ -627,6 +640,10 @@ export default function PlaylistBar({
       return null;
     }
 
+    if (!isPlaying && !hasActivatedPlayback) {
+      return null;
+    }
+
     return (
       <Suspense
         fallback={
@@ -648,7 +665,14 @@ export default function PlaylistBar({
         />
       </Suspense>
     );
-  }, [currentItem, isPlaying, onTrackEnded, playbackActivationNonce, repeatMode]);
+  }, [
+    currentItem,
+    hasActivatedPlayback,
+    isPlaying,
+    onTrackEnded,
+    playbackActivationNonce,
+    repeatMode
+  ]);
 
   const hiddenPlayerContent = useMemo(() => {
     if (!isMobileViewport || !clipPlayerContent) {
