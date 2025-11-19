@@ -5905,16 +5905,6 @@ export default function App() {
         )}
         {!isMobileViewport && (
           <header className="content-header">
-            <div className="mobile-appbar" aria-hidden="true">
-              <div className="mobile-appbar__action-slot mobile-appbar__action-slot--leading" />
-              <div className="mobile-appbar__title">
-                <span className="mobile-appbar__brand">{translate('mobile.appbar.brand')}</span>
-                <span className="mobile-appbar__section">{activeSidebarTab.label}</span>
-              </div>
-              <div className="mobile-appbar__action-slot mobile-appbar__action-slot--trailing mobile-appbar__action-slot--has-content">
-                <LanguageToggle variant="compact" />
-              </div>
-            </div>
             <div className="content-header__body">
               <div className="content-header__top-row">
                 <p className="content-header__eyebrow">{translate('header.eyebrow')}</p>
