@@ -1832,7 +1832,17 @@ export default function App() {
   const [isMobileArtistDebugOpen, setMobileArtistDebugOpen] = useState(false);
   const [activeSection, setActiveSection] = useState<SectionKey>('library');
   const [activeClipId, setActiveClipId] = useState<number | null>(null);
-  const [activeLatestVideo, setActiveLatestVideo] = useState<VideoResponse | null>(null);
+  type LatestPreview = {
+    key: string;
+    type: 'video' | 'clip';
+    title: string;
+    artistName: string;
+    youtubeVideoId: string;
+    startSec: number;
+    endSec?: number | null;
+  };
+
+  const [activeLatestPreview, setActiveLatestPreview] = useState<LatestPreview | null>(null);
   const [latestVideoPreviewMessage, setLatestVideoPreviewMessage] = useState<string | null>(null);
 
   const appendArtistDebugLog = useCallback((entry: Omit<ArtistDebugLogEntry, 'id'>) => {
@@ -4077,21 +4087,64 @@ export default function App() {
     setActiveLibraryView('clipForm');
     setVideoSubmissionStatus(null);
   }, [selectedArtistId]);
+  const latestPreviewRegionRef = useRef<HTMLDivElement | null>(null);
+  const focusLatestPreviewRegion = useCallback(() => {
+    window.requestAnimationFrame(() => {
+      latestPreviewRegionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }, []);
+
   const handleLatestVideoPlay = useCallback(
-    (video: VideoResponse) => {
+    (video: VideoResponse, displayTitle: string, artistName: string) => {
       const youtubeVideoId = (video.youtubeVideoId ?? '').trim();
+      const endSec = typeof video.durationSec === 'number' ? video.durationSec : null;
       if (youtubeVideoId) {
-        setActiveLatestVideo(video);
+        setActiveLatestPreview({
+          key: `video-${video.id}`,
+          type: 'video',
+          title: displayTitle,
+          artistName,
+          youtubeVideoId,
+          startSec: 0,
+          endSec
+        });
         setLatestVideoPreviewMessage(null);
+        setIsPlaybackExpanded(true);
+        focusLatestPreviewRegion();
         return;
       }
-      setActiveLatestVideo(null);
+      setActiveLatestPreview(null);
       setLatestVideoPreviewMessage(translate('latest.panel.previewUnavailable'));
     },
-    [translate]
+    [focusLatestPreviewRegion, setIsPlaybackExpanded, translate]
   );
+
+  const handleLatestClipPlay = useCallback(
+    (clip: ClipResponse, parentVideo: VideoResponse | null, clipTitle: string, artistName: string) => {
+      const youtubeVideoId = (clip.youtubeVideoId || parentVideo?.youtubeVideoId || '').trim();
+      if (youtubeVideoId) {
+        setActiveLatestPreview({
+          key: `clip-${clip.id}`,
+          type: 'clip',
+          title: clipTitle,
+          artistName,
+          youtubeVideoId,
+          startSec: Number.isFinite(clip.startSec) ? Number(clip.startSec) : 0,
+          endSec: Number.isFinite(clip.endSec) ? Number(clip.endSec) : null
+        });
+        setLatestVideoPreviewMessage(null);
+        setIsPlaybackExpanded(true);
+        focusLatestPreviewRegion();
+        return;
+      }
+      setActiveLatestPreview(null);
+      setLatestVideoPreviewMessage(translate('latest.panel.previewUnavailable'));
+    },
+    [focusLatestPreviewRegion, setIsPlaybackExpanded, translate]
+  );
+
   const handleLatestVideoClose = useCallback(() => {
-    setActiveLatestVideo(null);
+    setActiveLatestPreview(null);
     setLatestVideoPreviewMessage(null);
   }, []);
   const handleShowVideoList = useCallback(() => {
@@ -5977,23 +6030,26 @@ export default function App() {
                   <div className="latest-block__header">
                     <h3>{translate('latest.panel.videosHeading')}</h3>
                   </div>
-                  {(activeLatestVideo || latestVideoPreviewMessage) && (
-                    <div className="latest-video-preview-region" aria-live="polite">
-                      {activeLatestVideo ? (
+                  {(activeLatestPreview || latestVideoPreviewMessage) && (
+                    <div
+                      className="latest-video-preview-region"
+                      aria-live="polite"
+                      ref={latestPreviewRegionRef}
+                    >
+                      {activeLatestPreview ? (
                         <div
                           className="latest-video-preview"
                           role="dialog"
                           aria-modal="false"
                           aria-label={`${translate('latest.panel.previewAriaLabel')} · ${
-                            activeLatestVideo.title || activeLatestVideo.youtubeVideoId
+                            activeLatestPreview.title
                           }`}
                         >
                           <div className="latest-video-preview__header">
-                            <h4 className="latest-video-preview__title">
-                              {activeLatestVideo.title ||
-                                activeLatestVideo.youtubeVideoId ||
-                                translate('latest.panel.videoFallbackTitle')}
-                            </h4>
+                            <div>
+                              <h4 className="latest-video-preview__title">{activeLatestPreview.title}</h4>
+                              <p className="latest-video-preview__subtitle">{activeLatestPreview.artistName}</p>
+                            </div>
                             <button
                               type="button"
                               className="latest-video-preview__close"
@@ -6003,7 +6059,7 @@ export default function App() {
                               {translate('latest.panel.closePreview')}
                             </button>
                           </div>
-                          {activeLatestVideo.youtubeVideoId ? (
+                          {activeLatestPreview.youtubeVideoId ? (
                             <div className="latest-video-preview__player">
                               <Suspense
                                 fallback={
@@ -6017,9 +6073,10 @@ export default function App() {
                                 }
                               >
                                 <ClipPlayer
-                                  key={activeLatestVideo.youtubeVideoId}
-                                  youtubeVideoId={activeLatestVideo.youtubeVideoId}
-                                  startSec={0}
+                                  key={activeLatestPreview.key}
+                                  youtubeVideoId={activeLatestPreview.youtubeVideoId}
+                                  startSec={activeLatestPreview.startSec}
+                                  endSec={activeLatestPreview.endSec ?? undefined}
                                 />
                               </Suspense>
                             </div>
@@ -6071,7 +6128,7 @@ export default function App() {
                             <button
                               type="button"
                               className="latest-video-card__main"
-                              onClick={() => handleLatestVideoPlay(video)}
+                              onClick={() => handleLatestVideoPlay(video, videoTitle, videoArtistName)}
                               aria-label={`${translate('latest.panel.viewInLibrary')} · ${videoTitle}`}
                             >
                               <div className="latest-video-card__thumbnail">
@@ -6172,7 +6229,7 @@ export default function App() {
                             <button
                               type="button"
                               className="latest-clip__main"
-                              onClick={() => openClipInLibrary(clip.id)}
+                              onClick={() => handleLatestClipPlay(clip, parentVideo, clipTitle, clipArtistName)}
                               aria-label={`${translate('latest.panel.openInLibrary')} · ${clipTitle}`}
                             >
                               <div className="latest-clip__media">

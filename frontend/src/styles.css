@@ -738,6 +738,12 @@ button.primary:hover {
   font-weight: 700;
 }
 
+.latest-video-preview__subtitle {
+  margin: 4px 0 0;
+  font-size: 14px;
+  color: var(--color-text-secondary);
+}
+
 .latest-video-preview__close {
   height: 32px;
   border-radius: var(--radius-full);
