@@ -4895,7 +4895,8 @@ export default function App() {
     });
   }, [playlistEntries, resolvePlaylistEntryKey]);
 
-  const shouldRenderPlaybackBar = playbackBarItems.length > 0;
+  // 재생목록이 존재하더라도 하단 재생목록 바는 표시하지 않는다.
+  const shouldRenderPlaybackBar = false;
 
   const currentPlaybackIndex = useMemo(() => {
     if (!activePlaybackKey) {
