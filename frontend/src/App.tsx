@@ -6167,30 +6167,6 @@ export default function App() {
                             parentVideo?.artistYoutubeChannelTitle ??
                             ''
                           ).trim() || translate('catalog.fallback.artist');
-                        const clipRangeLabel = `${formatSeconds(clip.startSec)} → ${formatSeconds(clip.endSec)}`;
-                        const clipAddedLabel =
-                          typeof clip.createdAt === 'string'
-                            ? formatTimestamp(clip.createdAt)
-                            : null;
-                        const sourceTitle = parentVideo
-                          ? formatSongTitle(parentVideo.title, {
-                              fallback:
-                                parentVideo.youtubeVideoId ||
-                                translate('latest.panel.videoFallbackTitle')
-                            })
-                          : formatSongTitle(clip.videoTitle, {
-                              fallback:
-                                clip.sectionTitle ??
-                                clip.youtubeChapterTitle ??
-                                clip.description ??
-                                clip.youtubeVideoId ??
-                                translate('catalog.fallback.clip')
-                            });
-                        const clipYoutubeUrl = clip.youtubeVideoId
-                          ? `https://www.youtube.com/watch?v=${clip.youtubeVideoId}&t=${Math.floor(
-                              clip.startSec
-                            )}s`
-                          : null;
                         return (
                           <li key={`latest-clip-${clip.id}`} className="latest-clip">
                             <button
@@ -6218,43 +6194,9 @@ export default function App() {
                               </div>
                               <div className="latest-clip__body">
                                 <h4 className="latest-clip__title">{clipTitle}</h4>
-                                <div className="latest-clip__meta">
-                                  <span className="latest-clip__artist">{clipArtistName}</span>
-                                  <span className="latest-clip__range">
-                                    {translate('latest.panel.clipRange')} {clipRangeLabel}
-                                  </span>
-                                  {clipAddedLabel && (
-                                    <span className="latest-clip__timestamp">
-                                      {translate('latest.panel.addedAt')} {clipAddedLabel}
-                                    </span>
-                                  )}
-                                  {sourceTitle && (
-                                    <span className="latest-clip__source">
-                                      {translate('latest.panel.sourceVideo')} {sourceTitle}
-                                    </span>
-                                  )}
-                                </div>
-                                <span className="latest-clip__cta">
-                                  {translate('latest.panel.openInLibrary')}
-                                </span>
+                                <p className="latest-clip__artist">{clipArtistName}</p>
                               </div>
                             </button>
-                            <div className="latest-clip__actions">
-                              {clipYoutubeUrl ? (
-                                <a
-                                  className="latest-clip__action latest-clip__action--link"
-                                  href={clipYoutubeUrl}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                >
-                                  {translate('latest.panel.openOnYoutube')}
-                                </a>
-                              ) : (
-                                <span className="latest-clip__action latest-clip__action--placeholder">
-                                  {translate('latest.panel.openOnYoutube')}
-                                </span>
-                              )}
-                            </div>
                           </li>
                         );
                       })}
