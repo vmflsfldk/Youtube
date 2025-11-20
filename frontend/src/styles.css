@@ -5046,3 +5046,112 @@ input:focus {
   cursor: pointer;
 }
 
+
+/* =================================================
+   📱 모바일 영상 & 클립 리스트 긴급 수정 (Mobile Fixes)
+   ================================================= */
+
+@media (max-width: 768px) {
+
+  /* --- 1. 최근 영상 (Latest Videos) : 정렬 문제 해결 --- */
+  
+  /* 그리드를 1열(한 줄에 하나)로 강제 변경 */
+  .video-grid, 
+  .latest-video-grid {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 24px !important; /* 카드 간 간격 넓힘 */
+    padding: 16px !important;
+  }
+
+  /* 개별 비디오 카드 스타일: 100% 너비 카드형 */
+  .latest-video-card, 
+  .video-card {
+    width: 100% !important;
+    display: flex !important;
+    flex-direction: column !important; /* 썸네일 위, 텍스트 아래 */
+    background-color: transparent !important; /* 배경 제거 (깔끔하게) */
+    border: none !important;
+    box-shadow: none !important;
+  }
+
+  /* 썸네일 크기 최적화 */
+  .video-thumbnail-wrapper {
+    width: 100% !important;
+    aspect-ratio: 16 / 9 !important; /* 16:9 비율 고정 */
+    border-radius: 12px !important;
+    overflow: hidden;
+    margin-bottom: 10px;
+  }
+
+  .video-thumbnail {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: cover !important;
+  }
+
+  /* 텍스트 영역 정렬 */
+  .video-info {
+    padding: 0 4px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: flex-start !important; /* 왼쪽 정렬 강제 */
+  }
+  
+  /* 제목 폰트 키우기 */
+  .video-title {
+    font-size: 16px !important;
+    line-height: 1.4 !important;
+    margin-bottom: 4px !important;
+    max-height: none !important; /* 높이 제한 해제 */
+  }
+
+
+  /* --- 2. 클립 (Clips) : 터치 영역 확보 --- */
+
+  /* 클립 그리드를 2열(한 줄에 두 개)로 고정 */
+  .clip-grid, 
+  .clips-list {
+    display: grid !important;
+    grid-template-columns: repeat(2, 1fr) !important; /* ✨ 2열 고정 */
+    gap: 12px !important; /* 좌우 간격 */
+    row-gap: 20px !important; /* 상하 간격 */
+    padding: 16px !important;
+  }
+
+  /* 클립 카드 터치 영역 확대 */
+  .clip-card, 
+  .clip-item {
+    width: 100% !important;
+    min-width: 0 !important; /* 그리드 삐져나감 방지 */
+    display: flex !important;
+    flex-direction: column !important;
+    background: #111 !important; /* 어두운 배경으로 영역 구분 */
+    border-radius: 8px !important;
+    overflow: hidden;
+    padding-bottom: 8px; /* 하단 여백 */
+  }
+
+  /* 클립 썸네일: 정사각형에 가깝게 */
+  .clip-thumbnail {
+    width: 100% !important;
+    aspect-ratio: 1 / 1 !important; /* 1:1 비율로 큼직하게 */
+    object-fit: cover !important;
+  }
+
+  /* 클립 제목 잘 보이고 누르기 쉽게 */
+  .clip-info {
+    padding: 10px 8px 0 8px !important;
+  }
+
+  .clip-title {
+    font-size: 14px !important;
+    font-weight: 500 !important;
+    margin-bottom: 4px !important;
+    /* 두 줄까지만 표시 */
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+}
