@@ -137,6 +137,35 @@ body {
   top: 0;
 }
 
+.icon-only-btn {
+  background: none;
+  border: none;
+  padding: 6px;
+  border-radius: 9999px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  transition: background-color 0.2s ease, transform 0.1s ease;
+}
+
+.icon-only-btn:hover,
+.icon-only-btn:focus-visible {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.avatar-circle {
+  width: 32px;
+  height: 32px;
+  border-radius: 9999px;
+  background: linear-gradient(135deg, #1f2937, #111827);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+}
+
 .mobile-logo-area {
   display: flex;
   align-items: center;
@@ -217,6 +246,15 @@ body {
 
 .mobile-bottom-nav .nav-item span:first-child {
   font-size: 18px;
+}
+
+/* 텍스트 라벨 숨기고 아이콘만 크게 (모바일 하단 탭바) */
+.mobile-bottom-nav .nav-item .nav-icon {
+  font-size: 24px;
+}
+
+.mobile-bottom-nav .nav-item .nav-label {
+  display: none;
 }
 
 .mobile-layout .toast-stack {
@@ -4897,6 +4935,84 @@ input:focus {
   gap: 8px;
   margin-left: 8px;
   flex-shrink: 0; /* 버튼 안 밀리게 */
+}
+
+/* === 📱 모바일 하단 플레이어 최적화 (Mini Player) === */
+@media (max-width: 768px) {
+  .playlist-bar {
+    height: 64px; /* 터치하기 좋은 높이 */
+    padding: 0 12px;
+  }
+
+  .playlist-bar-content {
+    gap: 12px; /* 간격 조정 */
+  }
+
+  /* 1. 텍스트 영역 공간 확보 (말줄임표 필수) */
+  .pb-left {
+    width: auto !important;
+    flex: 1; /* 남은 공간 모두 차지 */
+    min-width: 0; /* Flexbox 내 말줄임표 작동 핵심 */
+    margin-right: 8px;
+  }
+
+  .pb-info {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    overflow: hidden; /* 넘치는 텍스트 숨김 */
+  }
+
+  /* 제목 가독성: 굵게, 한 줄 제한 */
+  .pb-title {
+    font-size: 14px !important;
+    font-weight: 600;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+    color: #fff;
+    margin-bottom: 2px;
+  }
+
+  /* 가수 이름: 작게, 연하게 */
+  .pb-artist {
+    font-size: 12px !important;
+    color: #aaa;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+  }
+
+  /* 2. 불필요한 컨트롤 숨기기 (공간 확보) */
+  .pb-actions, /* 좋아요/싫어요 */
+  .volume-control, /* 볼륨 조절 */
+  .queue-toggle-btn, /* 재생목록 버튼 (이미 오버레이로 대체됨) */
+  .shuffle-btn, /* 셔플 */
+  .loop-btn, /* 반복 */
+  .pb-center .icon-btn:nth-child(2) /* 이전 곡 버튼 (선택 사항) */
+  {
+    display: none !important;
+  }
+
+  /* 3. 핵심 버튼(재생, 다음)만 우측 정렬 */
+  .pb-center {
+    display: flex !important; /* 숨겨져 있었다면 다시 표시 */
+    flex: 0 0 auto; /* 크기 고정 */
+    width: auto;
+    gap: 16px;
+    justify-content: flex-end;
+  }
+
+  .circle-play-btn {
+    width: 36px;
+    height: 36px;
+    font-size: 18px;
+  }
+
+  /* 모바일용 재생목록 열기 버튼 (앨범 아트 클릭 등으로 대체 가능하므로 숨김 고려) */
+  .pb-right {
+    display: none !important;
+  }
 }
 
 .ci-duration {

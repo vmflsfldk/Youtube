@@ -6720,11 +6720,13 @@ export default function App() {
               </button>
               <button
                 type="button"
-                className="icon-btn"
+                className="icon-only-btn"
                 aria-label={mobileAuthTriggerLabel}
                 onClick={() => setMobileAuthOverlayOpen(true)}
               >
-                👤
+                <div className="avatar-circle" aria-hidden="true">
+                  👤
+                </div>
               </button>
             </div>
           </header>
@@ -8594,8 +8596,10 @@ export default function App() {
                         aria-current={isActive ? 'page' : undefined}
                         aria-label={tab.label}
                       >
-                        <span aria-hidden="true">{tabIcon}</span>
-                        <span>{tab.label}</span>
+                        <span className="nav-icon" aria-hidden="true">
+                          {tabIcon}
+                        </span>
+                        <span className="nav-label">{tab.label}</span>
                       </Link>
                     );
                   })}
