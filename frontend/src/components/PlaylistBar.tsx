@@ -1,16 +1,5 @@
-import {
-  Suspense,
-  lazy,
-  type MouseEvent,
-  type TouchEvent,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState
-} from 'react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
 import type { YouTubePlayer } from 'react-youtube';
-import { AnimatePresence, animate, motion, useMotionValue, useSpring } from 'framer-motion';
 
 const ClipPlayer = lazy(() => import('./ClipPlayer'));
 
@@ -59,92 +48,10 @@ interface PlaylistBarProps {
   onPlayerInstanceChange?: (player: YouTubePlayer | null) => void;
 }
 
-const PlayIcon = () => (
-  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-    <path fill="currentColor" d="m8 5 13 7-13 7V5z" />
-  </svg>
-);
-
-const PauseIcon = () => (
-  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-    <path fill="currentColor" d="M7 5h4v14H7zm6 0h4v14h-4z" />
-  </svg>
-);
-
-const NextIcon = () => (
-  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-    <path fill="currentColor" d="M5 5.5v13l9-6.5-9-6.5zm10 0h2v13h-2z" />
-  </svg>
-);
-
-const PreviousIcon = () => (
-  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-    <path fill="currentColor" d="M19 5.5v13l-9-6.5 9-6.5zm-10 0h-2v13h2z" />
-  </svg>
-);
-
-const ChevronIcon = ({ direction }: { direction: 'up' | 'down' }) => (
-  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-    {direction === 'up' ? (
-      <path fill="currentColor" d="m6 15 6-6 6 6H6z" />
-    ) : (
-      <path fill="currentColor" d="m6 9 6 6 6-6H6z" />
-    )}
-  </svg>
-);
-
-const RemoveIcon = () => (
-  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-    <path
-      d="M6 6l12 12M18 6 6 18"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      fill="none"
-    />
-  </svg>
-);
-
-const RepeatAllIcon = () => (
-  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-    <path
-      fill="currentColor"
-      d="M17 5H7a4 4 0 0 0-4 4v3h2V9a2 2 0 0 1 2-2h10v3l4-4-4-4v3zm0 14H7v-3l-4 4 4 4v-3h10a4 4 0 0 0 4-4v-3h-2v3a2 2 0 0 1-2 2z"
-    />
-  </svg>
-);
-
-const RepeatOneIcon = () => (
-  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-    <path
-      fill="currentColor"
-      d="M17 5H7a4 4 0 0 0-4 4v3h2V9a2 2 0 0 1 2-2h10v3l4-4-4-4v3zm-4 12h2V11h-3v1h1v5zm4 2H7v-3l-4 4 4 4v-3h10a4 4 0 0 0 4-4v-3h-2v3a2 2 0 0 1-2 2z"
-    />
-  </svg>
-);
-
-const playbackBarVariants = {
-  initial: { opacity: 0, y: 24 },
-  animate: { opacity: 1, y: 0 },
-  exit: { opacity: 0, y: 24 }
-};
-
-const playbackBarTransition = { duration: 0.24, ease: 'easeOut' as const };
-
-const queueVariants = {
-  initial: { opacity: 0, height: 0 },
-  animate: { opacity: 1, height: 'auto' as const },
-  exit: { opacity: 0, height: 0 }
-};
-
-const queueTransition = { duration: 0.2, ease: 'easeOut' as const };
-
-const dragHeightSpring = {
-  type: 'spring' as const,
-  stiffness: 260,
-  damping: 24,
-  bounce: 0.25
+const getLoopIcon = (mode: PlaybackRepeatMode) => {
+  if (mode === 'one') return '🔂';
+  if (mode === 'all') return '🔁';
+  return '🔁';
 };
 
 export default function PlaylistBar({
@@ -157,123 +64,26 @@ export default function PlaylistBar({
   isExpanded,
   isMobileViewport,
   showQueueToggle,
-  canCreatePlaylist,
-  canModifyPlaylist,
-  playlistSearchQuery,
-  onPlaylistSearchChange,
-  onCreatePlaylist,
-  onPlayPause,
-  onNext,
-  onPrevious,
   repeatMode,
   onRepeatModeChange,
   onToggleExpanded,
+  onPlayPause,
+  onNext,
+  onPrevious,
   onSelectItem,
   onRemoveItem,
   onTrackEnded,
   onPlayerInstanceChange
 }: PlaylistBarProps) {
-  const [isCreatingPlaylist, setIsCreatingPlaylist] = useState(false);
   const [hasActivatedPlayback, setHasActivatedPlayback] = useState(false);
-  const dragTranslateY = useMotionValue(0);
-  const animatedTranslateY = useSpring(dragTranslateY, {
-    stiffness: 520,
-    damping: 42,
-    mass: 0.8
-  });
-  const dragStateRef = useRef<{
-    startY: number;
-    isDragging: boolean;
-    hasToggled: boolean;
-    expandedAtStart: boolean;
-    startedInQueueAtTop?: boolean;
-  } | null>(null);
-  const dragHeight = useMotionValue(0);
-  const animateDragHeightTo = useCallback(
-    (targetHeight: number) => {
-      dragHeight.stop();
-      animate(dragHeight, targetHeight, dragHeightSpring);
-    },
-    [dragHeight]
-  );
-  const collapsedHeightRef = useRef(0);
-  const expandedHeightRef = useRef(0);
-  const [collapsedWrapper, setCollapsedWrapper] = useState<HTMLDivElement | null>(null);
-  const [expandedLayout, setExpandedLayout] = useState<HTMLDivElement | null>(null);
-  const visibleQueueItems = queueItems ?? items;
-  const normalizedQueueQuery = playlistSearchQuery.trim();
-  const queueEmptyMessage = normalizedQueueQuery.length > 0
-    ? '검색 조건에 맞는 영상이나 클립이 없습니다.'
-    : '재생 목록이 비어 있습니다.';
-  const measureCollapsedContentHeight = useCallback((node: HTMLDivElement) => {
-    const previousHeight = node.style.height;
-    const hadPreviousHeight = previousHeight.length > 0;
-    node.style.height = '';
-    const nextHeight = node.scrollHeight;
-    if (hadPreviousHeight) {
-      node.style.height = previousHeight;
-    } else {
-      node.style.removeProperty('height');
-    }
-    return nextHeight;
-  }, []);
 
-  const handleCollapsedWrapperRef = useCallback(
-    (node: HTMLDivElement | null) => {
-      setCollapsedWrapper(node);
-      if (!node || !isMobileViewport) {
-        return;
-      }
-      const nextHeight = measureCollapsedContentHeight(node);
-      collapsedHeightRef.current = nextHeight;
-      if (!isExpanded && nextHeight > 0) {
-        animateDragHeightTo(nextHeight);
-      }
-    },
-    [animateDragHeightTo, isExpanded, isMobileViewport, measureCollapsedContentHeight]
-  );
-  const handleExpandedLayoutRef = useCallback(
-    (node: HTMLDivElement | null) => {
-      setExpandedLayout(node);
-      if (!node || !isMobileViewport) {
-        return;
-      }
-      const nextHeight = node.getBoundingClientRect().height;
-      expandedHeightRef.current = nextHeight;
-      if (isExpanded && nextHeight > 0) {
-        animateDragHeightTo(nextHeight);
-      }
-    },
-    [animateDragHeightTo, isExpanded, isMobileViewport]
-  );
-  const DRAG_THRESHOLD_PX = 48;
-  const DRAG_ACTIVATION_DELTA_PX = 6;
   const currentItem = useMemo(
     () => items.find((item) => item.key === currentItemKey) ?? null,
     [items, currentItemKey]
   );
 
-  const isMobileCollapsed = isMobileViewport && !isExpanded;
-
-  const resetDragState = useCallback(() => {
-    dragStateRef.current = null;
-    dragTranslateY.stop();
-    dragTranslateY.set(0);
-    if (!isMobileViewport) {
-      return;
-    }
-    const targetHeight = isExpanded
-      ? expandedHeightRef.current || collapsedHeightRef.current
-      : collapsedHeightRef.current;
-    if (targetHeight > 0) {
-      animateDragHeightTo(targetHeight);
-    }
-  }, [animateDragHeightTo, dragTranslateY, isExpanded, isMobileViewport]);
-
-  const hasPlayableItems = items.some((item) => item.isPlayable);
-  const placeholderMessage = hasPlayableItems
-    ? '재생할 항목을 선택하세요.'
-    : '재생 가능한 항목이 없습니다.';
+  const visibleQueueItems = useMemo(() => queueItems ?? items, [items, queueItems]);
+  const hasPlayableItems = visibleQueueItems.some((item) => item.isPlayable);
 
   useEffect(() => {
     if (isPlaying && !hasActivatedPlayback) {
@@ -287,369 +97,11 @@ export default function PlaylistBar({
     }
   }, [items.length]);
 
-  const handleRepeatButtonClick = useCallback(
-    (mode: PlaybackRepeatMode) => {
-      if (!hasPlayableItems) {
-        return;
-      }
-      if (repeatMode === mode) {
-        onRepeatModeChange('off');
-        return;
-      }
-      onRepeatModeChange(mode);
-    },
-    [hasPlayableItems, onRepeatModeChange, repeatMode]
-  );
-
-  const handleCreatePlaylistClick = useCallback(async () => {
-    if (!canCreatePlaylist || isCreatingPlaylist) {
-      return;
-    }
-    try {
-      setIsCreatingPlaylist(true);
-      await Promise.resolve(onCreatePlaylist());
-    } catch (error) {
-      console.error('Failed to create playlist from playback bar', error);
-    } finally {
-      setIsCreatingPlaylist(false);
-    }
-  }, [canCreatePlaylist, isCreatingPlaylist, onCreatePlaylist]);
-
-  const renderTransport = (className?: string) => {
-    const disableTransport = !hasPlayableItems || !currentItem?.isPlayable;
-    const repeatAllActive = repeatMode === 'all';
-    const repeatOneActive = repeatMode === 'one';
-    const repeatAllLabel = repeatAllActive ? '전체 반복 끄기' : '전체 반복 켜기';
-    const repeatOneLabel = repeatOneActive ? '한 곡 반복 끄기' : '한 곡 반복 켜기';
-    const repeatAllClasses = ['playback-bar__button', 'playback-bar__button--toggle'];
-    const repeatOneClasses = ['playback-bar__button', 'playback-bar__button--toggle'];
-    if (repeatAllActive) {
-      repeatAllClasses.push('playback-bar__button--active');
-    }
-    if (repeatOneActive) {
-      repeatOneClasses.push('playback-bar__button--active');
-    }
-
-    return (
-      <div className={className ?? 'playback-bar__transport'} role="group" aria-label="재생 제어">
-        <div className="playback-bar__transport-main" role="group" aria-label="기본 재생 제어">
-          <button
-            type="button"
-            className="playback-bar__button"
-            onClick={onPrevious}
-            disabled={!hasPlayableItems}
-            aria-label="이전 항목"
-          >
-            <PreviousIcon />
-          </button>
-          <button
-            type="button"
-            className="playback-bar__button playback-bar__button--primary"
-            onClick={onPlayPause}
-            disabled={!hasPlayableItems}
-            aria-label={isPlaying ? '일시 정지' : '재생'}
-          >
-            {isPlaying && currentItem?.isPlayable && !disableTransport ? <PauseIcon /> : <PlayIcon />}
-          </button>
-          <button
-            type="button"
-            className="playback-bar__button"
-            onClick={onNext}
-            disabled={!hasPlayableItems}
-            aria-label="다음 항목"
-          >
-            <NextIcon />
-          </button>
-        </div>
-        <div className="playback-bar__repeat-group" role="group" aria-label="반복 모드">
-          <button
-            type="button"
-            className={repeatAllClasses.join(' ')}
-            onClick={() => handleRepeatButtonClick('all')}
-            disabled={!hasPlayableItems}
-            aria-pressed={repeatAllActive}
-            aria-label={repeatAllLabel}
-            title={repeatAllLabel}
-          >
-            <RepeatAllIcon />
-          </button>
-          <button
-            type="button"
-            className={repeatOneClasses.join(' ')}
-            onClick={() => handleRepeatButtonClick('one')}
-            disabled={!hasPlayableItems}
-            aria-pressed={repeatOneActive}
-            aria-label={repeatOneLabel}
-            title={repeatOneLabel}
-          >
-            <RepeatOneIcon />
-          </button>
-        </div>
-      </div>
-    );
-  };
-
-  const renderControls = () => {
-    return (
-      <div className="playback-bar__controls">
-        {renderTransport()}
-        <button
-          type="button"
-          className="playback-bar__create-playlist-button"
-          onClick={handleCreatePlaylistClick}
-          disabled={!canCreatePlaylist || isCreatingPlaylist}
-        >
-          {isCreatingPlaylist ? '만드는 중…' : '새 재생목록 만들기'}
-        </button>
-      </div>
-    );
-  };
-
-  const handleMobileDragStart = useCallback(
-    (event: TouchEvent<HTMLDivElement>) => {
-      if (!isMobileViewport) {
-        return;
-      }
-      let startedInQueueAtTop = false;
-      if (isExpanded) {
-        const target = event.target as HTMLElement | null;
-        const queueElement = target?.closest('.playback-bar__queue');
-        if (queueElement instanceof HTMLElement) {
-          if (queueElement.scrollTop > 0) {
-            dragStateRef.current = null;
-            return;
-          }
-          startedInQueueAtTop = true;
-        }
-      }
-      if (event.touches.length !== 1) {
-        resetDragState();
-        return;
-      }
-      const touch = event.touches[0];
-      if (!touch) {
-        return;
-      }
-      dragStateRef.current = {
-        startY: touch.clientY,
-        isDragging: false,
-        hasToggled: false,
-        expandedAtStart: isExpanded,
-        startedInQueueAtTop
-      };
-      dragHeight.stop();
-      dragTranslateY.stop();
-      dragTranslateY.set(0);
-    },
-    [dragHeight, dragTranslateY, isExpanded, isMobileViewport, resetDragState]
-  );
-
-  const handleMobileDragMove = useCallback(
-    (event: TouchEvent<HTMLDivElement>) => {
-      const state = dragStateRef.current;
-      if (!state) {
-        return;
-      }
-      if (event.touches.length !== 1) {
-        resetDragState();
-        return;
-      }
-      const touch = event.touches[0];
-      if (!touch) {
-        return;
-      }
-      const deltaY = touch.clientY - state.startY;
-      if (state.startedInQueueAtTop && deltaY < 0) {
-        return;
-      }
-      if (!state.isDragging) {
-        if (Math.abs(deltaY) < DRAG_ACTIVATION_DELTA_PX) {
-          return;
-        }
-        state.isDragging = true;
-      }
-      if (event.cancelable) {
-        event.preventDefault();
-      }
-      const nextOffset = state.expandedAtStart
-        ? Math.max(0, deltaY)
-        : Math.min(0, deltaY);
-      dragTranslateY.set(nextOffset);
-
-      if (!state.expandedAtStart) {
-        const collapsedHeight = collapsedHeightRef.current || 0;
-        const expandedHeight = expandedHeightRef.current || collapsedHeight;
-        const maxGrowth = Math.max(0, expandedHeight - collapsedHeight);
-        const growth = Math.min(maxGrowth, Math.abs(nextOffset));
-        const nextHeight = collapsedHeight + growth;
-        if (nextHeight > 0) {
-          dragHeight.set(nextHeight);
-        }
-      }
-
-      if (state.hasToggled) {
-        return;
-      }
-
-      if (!state.expandedAtStart && deltaY <= -DRAG_THRESHOLD_PX) {
-        state.hasToggled = true;
-        const expandedHeight = expandedHeightRef.current || collapsedHeightRef.current;
-        if (expandedHeight > 0) {
-          dragHeight.set(Math.max(collapsedHeightRef.current, expandedHeight));
-        }
-        onToggleExpanded();
-      } else if (state.expandedAtStart && deltaY >= DRAG_THRESHOLD_PX) {
-        state.hasToggled = true;
-        onToggleExpanded();
-      }
-    },
-    [dragTranslateY, onToggleExpanded, resetDragState]
-  );
-
-  const handleMobileDragEnd = useCallback(
-    (event: TouchEvent<HTMLDivElement>) => {
-      if (dragStateRef.current?.isDragging) {
-        event.preventDefault();
-      }
-      resetDragState();
-    },
-    [resetDragState]
-  );
-
-  const handleMobileDragCancel = useCallback(() => {
-    resetDragState();
-  }, [resetDragState]);
-
-  useEffect(() => {
-    resetDragState();
-  }, [isExpanded, resetDragState]);
-
-  useEffect(() => {
-    if (!isMobileViewport) {
-      resetDragState();
-    }
-  }, [isMobileViewport, resetDragState]);
-
-  useEffect(() => {
-    const node = collapsedWrapper;
-    if (!node || !isMobileViewport) {
-      return;
-    }
-    const updateHeight = () => {
-      const nextHeight = measureCollapsedContentHeight(node);
-      collapsedHeightRef.current = nextHeight;
-      if (!isExpanded && nextHeight > 0) {
-        animateDragHeightTo(nextHeight);
-      }
-    };
-    updateHeight();
-    if (typeof ResizeObserver === 'undefined') {
-      return;
-    }
-    const observer = new ResizeObserver(updateHeight);
-    observer.observe(node);
-    return () => {
-      observer.disconnect();
-    };
-  }, [
-    animateDragHeightTo,
-    collapsedWrapper,
-    isExpanded,
-    isMobileViewport,
-    measureCollapsedContentHeight
-  ]);
-
-  useEffect(() => {
-    const node = expandedLayout;
-    if (!node || !isMobileViewport) {
-      return;
-    }
-    const updateHeight = () => {
-      const nextHeight = node.getBoundingClientRect().height;
-      expandedHeightRef.current = nextHeight;
-      if (isExpanded && nextHeight > 0) {
-        animateDragHeightTo(nextHeight);
-      }
-    };
-    updateHeight();
-    if (typeof ResizeObserver === 'undefined') {
-      return;
-    }
-    const observer = new ResizeObserver(updateHeight);
-    observer.observe(node);
-    return () => {
-      observer.disconnect();
-    };
-  }, [animateDragHeightTo, expandedLayout, isExpanded, isMobileViewport]);
-
-  useEffect(() => {
-    if (!isMobileViewport) {
-      dragHeight.set(0);
-    }
-  }, [dragHeight, isMobileViewport]);
-
-  const renderQueueItem = (item: PlaylistBarItem, index: number) => {
-    const isActive = item.key === currentItem?.key;
-    const itemClasses = ['playback-bar__queue-item'];
-    if (isActive) {
-      itemClasses.push('playback-bar__queue-item--active');
-    }
-    if (!item.isPlayable) {
-      itemClasses.push('playback-bar__queue-item--disabled');
-    }
-    const handleRemoveClick = (event: MouseEvent<HTMLButtonElement>) => {
-      event.stopPropagation();
-      event.preventDefault();
-      if (!canModifyPlaylist) {
-        return;
-      }
-      void onRemoveItem(item.itemId);
-    };
-
-    return (
-      <li key={item.key} className={itemClasses.join(' ')}>
-        <div className="playback-bar__queue-row">
-          <button
-            type="button"
-            className="playback-bar__queue-button"
-            onClick={() => onSelectItem(item.key)}
-            disabled={!item.isPlayable}
-          >
-            <div className="playback-bar__queue-index" aria-hidden="true">
-              {index + 1}
-            </div>
-            <div className="playback-bar__queue-thumbnail" aria-hidden="true">
-              {item.thumbnailUrl ? (
-                <img src={item.thumbnailUrl} alt="" />
-              ) : (
-                <span className="playback-bar__queue-thumbnail--placeholder">No image</span>
-              )}
-            </div>
-            <div className="playback-bar__queue-meta">
-              <div className="playback-bar__queue-title-row">
-                {item.badgeLabel && <span className="playback-bar__queue-badge">{item.badgeLabel}</span>}
-                <span className="playback-bar__queue-title">{item.title}</span>
-              </div>
-              {item.subtitle && <span className="playback-bar__queue-subtitle">{item.subtitle}</span>}
-              {item.rangeLabel && <span className="playback-bar__queue-range">{item.rangeLabel}</span>}
-            </div>
-            {item.durationLabel && (
-              <span className="playback-bar__queue-duration">{item.durationLabel}</span>
-            )}
-          </button>
-          <button
-            type="button"
-            className="playback-bar__queue-remove"
-            onClick={handleRemoveClick}
-            disabled={!canModifyPlaylist}
-            aria-label="재생목록에서 제거"
-          >
-            <RemoveIcon />
-          </button>
-        </div>
-      </li>
-    );
-  };
+  const handleRepeatToggle = useCallback(() => {
+    if (!hasPlayableItems) return;
+    const nextMode: PlaybackRepeatMode = repeatMode === 'off' ? 'all' : repeatMode === 'all' ? 'one' : 'off';
+    onRepeatModeChange(nextMode);
+  }, [hasPlayableItems, onRepeatModeChange, repeatMode]);
 
   const clipPlayerContent = useMemo(() => {
     if (!currentItem || !currentItem.isPlayable || !currentItem.youtubeVideoId) {
@@ -663,7 +115,7 @@ export default function PlaylistBar({
     return (
       <Suspense
         fallback={
-          <div className="playback-bar__player-loading" role="status" aria-live="polite">
+          <div className="playlist-bar__player-loading" role="status" aria-live="polite">
             플레이어 준비 중…
           </div>
         }
@@ -692,243 +144,160 @@ export default function PlaylistBar({
     onPlayerInstanceChange
   ]);
 
-  const hiddenPlayerContent = useMemo(() => {
-    if (!isMobileViewport || !clipPlayerContent) {
-      return null;
-    }
-
-    return (
-      <div className="playback-bar__player-hidden" aria-hidden="true">
-        {clipPlayerContent}
-      </div>
-    );
-  }, [clipPlayerContent, isMobileViewport]);
-
-  const renderPlayerContent = () => {
-    if (!currentItem || !currentItem.isPlayable) {
-      const placeholderClassName = isMobileViewport
-        ? 'playback-bar__player-compact-placeholder'
-        : 'playback-bar__player-placeholder';
-      return (
-        <div className={placeholderClassName} aria-live="polite">
-          {placeholderMessage}
-        </div>
-      );
-    }
-
-    if (isMobileViewport) {
-      if (currentItem.thumbnailUrl) {
-        return (
-          <img
-            className="playback-bar__player-compact-thumbnail"
-            src={currentItem.thumbnailUrl}
-            alt={currentItem.title}
-          />
-        );
-      }
-
-      return (
-        <div className="playback-bar__player-compact-placeholder" aria-live="polite">
-          {placeholderMessage}
-        </div>
-      );
-    }
-
-    if (!clipPlayerContent) {
-      return (
-        <div className="playback-bar__player-placeholder" aria-live="polite">
-          {placeholderMessage}
-        </div>
-      );
-    }
-
-    return clipPlayerContent;
-  };
-
-  if (isMobileCollapsed) {
-    const collapsedTitle = currentItem?.title ?? placeholderMessage;
-    const collapsedIndexLabel = currentIndex >= 0 ? `${currentIndex + 1}/${items.length}` : `0/${items.length}`;
-    const collapsedClassName = `playback-bar playback-bar--mobile-collapsed${
-      isMobileViewport ? ' playback-bar--mobile-collapsed--with-offset' : ''
-    }`;
-
-    return (
-      <>
-        {hiddenPlayerContent}
-        <motion.div
-          key="playbackBarMobile"
-          className={collapsedClassName}
-          aria-label="재생 상태"
-          ref={handleCollapsedWrapperRef}
-          style={{ y: animatedTranslateY, height: dragHeight }}
-          initial={playbackBarVariants.initial}
-          animate={playbackBarVariants.animate}
-          exit={playbackBarVariants.exit}
-          transition={playbackBarTransition}
-        >
-          <div className="playback-bar__collapsed-body">
-            <div
-              className="playback-bar__drag-zone"
-              onTouchStart={handleMobileDragStart}
-              onTouchMove={handleMobileDragMove}
-              onTouchEnd={handleMobileDragEnd}
-              onTouchCancel={handleMobileDragCancel}
-              onClick={onToggleExpanded}
-            >
-              <div className="playback-bar__drag-handle">
-                <div className="playback-bar__drag-grip" />
-                <div className="playback-bar__drag-chevron" aria-hidden="true">
-                  <ChevronIcon direction="up" />
-                </div>
-              </div>
-              <button
-                type="button"
-                className="playback-bar__collapsed-toggle"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onToggleExpanded();
-                }}
-                aria-expanded={false}
-                aria-label="재생 목록 펼치기"
-              >
-                {currentItem?.thumbnailUrl ? (
-                  <img
-                    className="playback-bar__collapsed-thumbnail"
-                    src={currentItem.thumbnailUrl}
-                    alt={currentItem.title}
-                  />
-                ) : (
-                  <div className="playback-bar__collapsed-placeholder" aria-live="polite">
-                    {placeholderMessage}
-                  </div>
-                )}
-                <div className="playback-bar__collapsed-meta" aria-live="polite">
-                  <div className="playback-bar__collapsed-label-row">
-                    <span className="playback-bar__collapsed-label">Now Playing</span>
-                    <span className="playback-bar__collapsed-index">{collapsedIndexLabel}</span>
-                  </div>
-                  <span className="playback-bar__collapsed-title">{collapsedTitle}</span>
-                  {currentItem?.subtitle && (
-                    <span className="playback-bar__collapsed-subtitle">{currentItem.subtitle}</span>
-                  )}
-                </div>
-              </button>
-            </div>
-            <div
-              className="playback-bar__collapsed-controls"
-              onTouchStart={(event) => event.stopPropagation()}
-            >
-              {renderTransport('playback-bar__transport playback-bar__transport--compact')}
-            </div>
-          </div>
-        </motion.div>
-      </>
-    );
+  if (!currentItem) {
+    return null;
   }
+
+  const repeatActive = repeatMode !== 'off';
 
   return (
     <>
-      {hiddenPlayerContent}
-      <motion.div
-        key="playbackBarDesktop"
-        className="playback-bar"
-        aria-label="재생 상태"
-        ref={handleExpandedLayoutRef}
-        style={{ y: animatedTranslateY }}
-        initial={playbackBarVariants.initial}
-        animate={playbackBarVariants.animate}
-        exit={playbackBarVariants.exit}
-        transition={playbackBarTransition}
-        onTouchStart={isMobileViewport ? handleMobileDragStart : undefined}
-        onTouchMove={isMobileViewport ? handleMobileDragMove : undefined}
-        onTouchEnd={isMobileViewport ? handleMobileDragEnd : undefined}
-        onTouchCancel={isMobileViewport ? handleMobileDragCancel : undefined}
-      >
-        {isMobileViewport && (
-          <div className="playback-bar__drag-handle">
-            <div className="playback-bar__drag-grip" />
-          </div>
-        )}
-        <div className="playback-bar__body">
-          <div
-            className={`playback-bar__player${isMobileViewport ? ' playback-bar__player--compact' : ''}`}
-          >
-            {renderPlayerContent()}
-          </div>
-          <div className="playback-bar__info">
-            <div className="playback-bar__info-row">
-              <div className="playback-bar__now-playing">
-                <span className="playback-bar__now-playing-label">Now Playing</span>
-                <span className="playback-bar__now-playing-index">
-                  {currentIndex >= 0 ? `${currentIndex + 1}/${items.length}` : `0/${items.length}`}
-                </span>
-              </div>
-              {showQueueToggle && (
-                <button
-                  type="button"
-                  className="playback-bar__toggle"
-                  onClick={onToggleExpanded}
-                  aria-expanded={isExpanded}
-                  aria-controls="playbackBarQueue"
-                >
-                  <span>{isExpanded ? '목록 접기' : '목록 펼치기'}</span>
-                  <ChevronIcon direction={isExpanded ? 'down' : 'up'} />
-                </button>
-              )}
+      <div className="playlist-hidden-player" aria-hidden="true">
+        {clipPlayerContent}
+      </div>
+
+      <div className="playlist-bar" role="contentinfo" aria-label="재생 컨트롤">
+        <div className="progress-container-wrapper" aria-hidden>
+          <div className="progress-bar" style={{ width: '0%' }} />
+        </div>
+
+        <div className="playlist-bar-content">
+          <div className="pb-left">
+            <img
+              src={
+                currentItem.thumbnailUrl ||
+                (currentItem.youtubeVideoId
+                  ? `https://img.youtube.com/vi/${currentItem.youtubeVideoId}/default.jpg`
+                  : undefined)
+              }
+              className="pb-thumbnail"
+              alt="Album Art"
+            />
+            <div className="pb-info">
+              <div className="pb-title">{currentItem.title}</div>
+              <div className="pb-artist">{currentItem.subtitle ?? '동영상'}</div>
             </div>
-            <div className="playback-bar__track-meta" aria-live="polite">
-              <h2 className="playback-bar__title">{currentItem?.title ?? '대기 중'}</h2>
-              {currentItem?.subtitle && (
-                <p className="playback-bar__subtitle">{currentItem.subtitle}</p>
-              )}
+            <div className="pb-actions" aria-hidden>
+              <button className="icon-btn thumbs-btn" type="button">
+                👍
+              </button>
+              <button className="icon-btn thumbs-btn" type="button">
+                👎
+              </button>
             </div>
-            {renderControls()}
+          </div>
+
+          <div className="pb-center" aria-label="재생 컨트롤 그룹">
+            <button className="icon-btn" type="button" onClick={onPrevious} aria-label="이전 곡">
+              ⏮
+            </button>
+            <button className="circle-play-btn" type="button" onClick={onPlayPause} aria-label="재생/일시정지">
+              {isPlaying ? '⏸' : '▶'}
+            </button>
+            <button className="icon-btn" type="button" onClick={onNext} aria-label="다음 곡">
+              ⏭
+            </button>
+            <button
+              className={`icon-btn loop-btn${repeatActive ? ' active' : ''}`}
+              type="button"
+              onClick={handleRepeatToggle}
+              aria-label="반복 재생"
+            >
+              {getLoopIcon(repeatMode)}
+            </button>
+          </div>
+
+          <div className="pb-right">
+            {showQueueToggle && (
+              <button
+                className="queue-toggle-btn"
+                type="button"
+                onClick={onToggleExpanded}
+                aria-label={isExpanded ? '재생목록 닫기' : '재생목록 열기'}
+              >
+                다음 트랙 {isExpanded ? '🔽' : '🔼'}
+              </button>
+            )}
           </div>
         </div>
-        {showQueueToggle && (
-          <AnimatePresence initial={false}>
-            {isExpanded && (
-              <motion.div
-                key="playbackBarQueue"
-                id="playbackBarQueue"
-                className="playback-bar__queue playback-bar__queue--visible"
-                initial={queueVariants.initial}
-                animate={queueVariants.animate}
-                exit={queueVariants.exit}
-                transition={queueTransition}
-                onTouchStart={isMobileViewport ? handleMobileDragStart : undefined}
-                onTouchMove={isMobileViewport ? handleMobileDragMove : undefined}
-                onTouchEnd={isMobileViewport ? handleMobileDragEnd : undefined}
-                onTouchCancel={isMobileViewport ? handleMobileDragCancel : undefined}
-              >
-                {isMobileViewport && (
-                  <div className="playback-bar__queue-search">
-                    <label className="playback-bar__queue-search-label" htmlFor="playbackBarQueueSearch">
-                      검색
-                    </label>
-                    <input
-                      id="playbackBarQueueSearch"
-                      className="playback-bar__queue-search-input"
-                      type="search"
-                      value={playlistSearchQuery}
-                      onChange={(event) => onPlaylistSearchChange(event.target.value)}
-                      placeholder="영상 또는 클립 검색"
-                      aria-label="영상 또는 클립 검색"
-                    />
+      </div>
+
+      {isExpanded && (
+        <div className="playlist-drawer" role="complementary" aria-label="재생 목록">
+          <div className="drawer-header">
+            <div>
+              <h3>다음 트랙</h3>
+              <div className="drawer-tabs">
+                <button className="active" type="button">
+                  다음 트랙
+                </button>
+                <button type="button" disabled>
+                  가사
+                </button>
+                <button type="button" disabled>
+                  관련 항목
+                </button>
+              </div>
+            </div>
+            <button className="close-drawer-btn" type="button" onClick={onToggleExpanded} aria-label="재생목록 닫기">
+              ✕
+            </button>
+          </div>
+
+          <div className="drawer-content">
+            {visibleQueueItems.length === 0 ? (
+              <div className="empty-msg">재생목록이 비어있습니다.</div>
+            ) : (
+              visibleQueueItems.map((item, index) => {
+                const isActive = currentItemKey === item.key;
+                return (
+                  <div
+                    key={`${item.key}-${index}`}
+                    className={`compact-item${isActive ? ' active' : ''}`}
+                    onClick={() => onSelectItem(item.key)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        onSelectItem(item.key);
+                      }
+                    }}
+                  >
+                    <div className="ci-left">
+                      {item.thumbnailUrl ? (
+                        <img src={item.thumbnailUrl} className="ci-thumb" alt="" />
+                      ) : (
+                        <div className="ci-thumb ci-thumb--placeholder">No image</div>
+                      )}
+                      {isActive && <div className="playing-overlay">📊</div>}
+                    </div>
+                    <div className="ci-info">
+                      <div className="ci-title">{item.title}</div>
+                      <div className="ci-artist">{item.subtitle ?? '동영상'}</div>
+                    </div>
+                    <div className="ci-right">
+                      <span className="ci-duration">{item.durationLabel ?? '—'}</span>
+                      <button
+                        className="ci-remove"
+                        type="button"
+                        aria-label={`${item.title} 제거`}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onRemoveItem(item.itemId);
+                        }}
+                        disabled={!repeatActive && !hasPlayableItems}
+                      >
+                        ✕
+                      </button>
+                    </div>
                   </div>
-                )}
-                {visibleQueueItems.length === 0 ? (
-                  <p className="playback-bar__queue-empty">{queueEmptyMessage}</p>
-                ) : (
-                  <ul className="playback-bar__queue-list">
-                    {visibleQueueItems.map((item, index) => renderQueueItem(item, index))}
-                  </ul>
-                )}
-              </motion.div>
+                );
+              })
             )}
-          </AnimatePresence>
-        )}
-      </motion.div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
