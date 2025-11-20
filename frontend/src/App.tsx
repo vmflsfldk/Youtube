@@ -14,6 +14,7 @@ import {
 } from 'react';
 import type { YouTubePlayer } from 'react-youtube';
 import axios from 'axios';
+import { Link, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import ClipList, { type ClipListRenderContext, type ClipListRenderResult } from './components/ClipList';
 import PlaylistBar, {
   type PlaybackRepeatMode,
@@ -1085,6 +1086,22 @@ const normalizePlaylist = (playlist: PlaylistLike): PlaylistResponse => {
 
 type SectionKey = 'library' | 'live' | 'latest' | 'catalog';
 
+const SECTION_PATHS: Record<SectionKey, `/${string}`> = {
+  latest: '/latest',
+  live: '/live',
+  library: '/library',
+  catalog: '/catalog'
+};
+
+const resolveSectionFromPath = (pathname: string): SectionKey => {
+  const normalized = pathname.replace(/\/+$/, '') || '/';
+  const [, firstSegment] = normalized.split('/');
+  if (firstSegment === 'latest' || firstSegment === 'live' || firstSegment === 'library' || firstSegment === 'catalog') {
+    return firstSegment;
+  }
+  return 'library';
+};
+
 const allowCrossOriginApi = String(import.meta.env.VITE_ALLOW_CROSS_ORIGIN_API ?? '')
   .toLowerCase()
   .trim() === 'true';
@@ -1868,7 +1885,21 @@ export default function App() {
   const [isArtistOptionalFieldsOpen, setArtistOptionalFieldsOpen] = useState(false);
   const [isMobileArtistPreviewOpen, setMobileArtistPreviewOpen] = useState(false);
   const [isMobileArtistDebugOpen, setMobileArtistDebugOpen] = useState(false);
-  const [activeSection, setActiveSection] = useState<SectionKey>('library');
+  const location = useLocation();
+  const navigate = useNavigate();
+  const activeSection = useMemo(
+    () => resolveSectionFromPath(location.pathname),
+    [location.pathname]
+  );
+  const navigateToSection = useCallback(
+    (section: SectionKey) => {
+      const targetPath = SECTION_PATHS[section];
+      if (location.pathname !== targetPath) {
+        navigate(targetPath);
+      }
+    },
+    [location.pathname, navigate]
+  );
   const [activeClipId, setActiveClipId] = useState<number | null>(null);
   type LatestPreview = {
     key: string;
@@ -2624,12 +2655,12 @@ export default function App() {
       setVideoForm((prev) => ({ ...prev, url: video.url }));
       setClipForm((prev) => ({ ...prev, videoUrl: video.url }));
       setSelectedVideo(null);
-      setActiveSection('library');
+      navigateToSection('library');
       setArtistRegistrationOpen(false);
       setActiveLibraryView('videoForm');
     },
     [
-      setActiveSection,
+      navigateToSection,
       setArtistRegistrationOpen,
       setClipForm,
       setActiveLibraryView,
@@ -4101,9 +4132,9 @@ export default function App() {
   };
 
   const openArtistRegistration = useCallback(() => {
-    setActiveSection('library');
+    navigateToSection('library');
     setArtistRegistrationOpen((prev) => !prev);
-  }, [setActiveSection, setArtistRegistrationOpen]);
+  }, [navigateToSection, setArtistRegistrationOpen]);
 
   const selectedArtist = artists.find((artist) => artist.id === Number(videoForm.artistId));
   const noArtistsRegistered = artists.length === 0;
@@ -4265,7 +4296,7 @@ export default function App() {
   }, [setActiveLibraryView, scrollToSectionWithFrame]);
   const openVideoInLibrary = useCallback(
     (videoId: number) => {
-      setActiveSection('library');
+      navigateToSection('library');
       setActiveLibraryView('videoList');
       handleLibraryVideoSelect(videoId);
       const video = libraryVideoMap.get(videoId);
@@ -4283,19 +4314,19 @@ export default function App() {
       libraryVideoMap,
       scrollToSectionWithFrame,
       setActiveLibraryView,
-      setActiveSection,
+      navigateToSection,
       setExpandedVideoCategories,
       videoListSectionRef
     ]
   );
   const openClipInLibrary = useCallback(
     (clipId: number) => {
-      setActiveSection('library');
+      navigateToSection('library');
       setActiveLibraryView('clipList');
       setActiveClipId(clipId);
       resetClipEditForm();
     },
-    [resetClipEditForm, setActiveClipId, setActiveLibraryView, setActiveSection]
+    [navigateToSection, resetClipEditForm, setActiveClipId, setActiveLibraryView]
   );
   const handleArtistProfileTagRemove = useCallback(
     (tag: string) => {
@@ -5910,10 +5941,10 @@ export default function App() {
 
   useEffect(() => {
     if (!previousAuthRef.current && isAuthenticated) {
-      setActiveSection('library');
+      navigateToSection('library');
     }
     previousAuthRef.current = isAuthenticated;
-  }, [isAuthenticated]);
+  }, [isAuthenticated, navigateToSection]);
 
 
   const fallbackDisplayName =
@@ -6272,12 +6303,11 @@ export default function App() {
             {sidebarTabs.map((tab) => {
               const isActive = activeSection === tab.id;
               return (
-                <button
+                <Link
                   key={tab.id}
                   id={`sidebar-tab-${tab.id}`}
-                  type="button"
                   className={`sidebar__tab${isActive ? ' active' : ''}`}
-                  onClick={() => setActiveSection(tab.id)}
+                  to={SECTION_PATHS[tab.id]}
                   aria-current={isActive ? 'page' : undefined}
                 >
                   <span className="sidebar__tab-icon">{tab.icon}</span>
@@ -6285,7 +6315,7 @@ export default function App() {
                     <span className="sidebar__tab-label">{tab.label}</span>
                     <span className="sidebar__tab-description">{tab.description}</span>
                   </span>
-                </button>
+                </Link>
               );
             })}
           </nav>
@@ -6389,14 +6419,18 @@ export default function App() {
         )}
 
         <div className="content-panels">
+          <Routes>
 
-          <section
-            className={`content-panel${activeSection === 'latest' ? ' active' : ''}`}
-            role="tabpanel"
-            aria-labelledby="sidebar-tab-latest"
-            hidden={activeSection !== 'latest'}
-          >
-            <div className="panel latest-panel">
+            <Route
+              path={SECTION_PATHS.latest}
+              element={
+                <section
+                  className={`content-panel${activeSection === 'latest' ? ' active' : ''}`}
+                  role="tabpanel"
+                  aria-labelledby="sidebar-tab-latest"
+                  hidden={activeSection !== 'latest'}
+                >
+          <div className="panel latest-panel">
               <div className="latest-panel__header">
                 <h2>{translate('latest.panel.heading')}</h2>
                 <p>{translate('latest.panel.description')}</p>
@@ -6638,12 +6672,17 @@ export default function App() {
                     <p className="latest-empty" role="status">
                       {translate('latest.panel.clipsEmpty')}
                     </p>
-                  )}
-                </article>
-              </div>
+                )}
+              </article>
             </div>
+          </div>
           </section>
+              }
+            />
 
+            <Route
+              path={SECTION_PATHS.live}
+              element={
           <section
             className={`content-panel${activeSection === 'live' ? ' active' : ''}`}
             role="tabpanel"
@@ -6735,7 +6774,12 @@ export default function App() {
               </div>
             </div>
           </section>
+              }
+            />
 
+            <Route
+              path={SECTION_PATHS.library}
+              element={
           <section
             className={`content-panel${activeSection === 'library' ? ' active' : ''}`}
             role="tabpanel"
@@ -7867,15 +7911,15 @@ export default function App() {
                               ? translate('artistDirectory.mobileTab.library')
                               : translate('artistDirectory.mobileTab.catalog');
                           return (
-                            <button
+                            <Link
                               key={`mobile-switch-${tab.id}`}
-                              type="button"
+                              role="button"
                               aria-pressed={isActiveTab}
                               className={`artist-library__mobile-tab${isActiveTab ? ' is-active' : ''}`}
-                              onClick={() => setActiveSection(tab.id)}
+                              to={SECTION_PATHS[tab.id]}
                             >
                               {tabLabel}
-                            </button>
+                            </Link>
                           );
                         })}
                       </div>
@@ -7928,7 +7972,12 @@ export default function App() {
 
             </div>
           </section>
+              }
+            />
 
+            <Route
+              path={SECTION_PATHS.catalog}
+              element={
           <section
             className={`content-panel${activeSection === 'catalog' ? ' active' : ''}`}
             role="tabpanel"
@@ -7954,6 +8003,13 @@ export default function App() {
               )}
             </div>
           </section>
+              }
+            />
+
+            <Route path="/" element={<Navigate to={SECTION_PATHS.library} replace />} />
+            <Route path="*" element={<Navigate to={SECTION_PATHS.library} replace />} />
+
+          </Routes>
 
         </div>
       </main>
@@ -8091,16 +8147,15 @@ export default function App() {
           {sidebarTabs.map((tab) => {
             const isActive = activeSection === tab.id;
             return (
-              <button
+              <Link
                 key={`mobile-tab-${tab.id}`}
-                type="button"
                 className={`mobile-bottom-nav__tab${isActive ? ' is-active' : ''}`}
-                onClick={() => setActiveSection(tab.id)}
+                to={SECTION_PATHS[tab.id]}
                 aria-current={isActive ? 'page' : undefined}
                 aria-label={tab.label}
               >
                 <span className="mobile-bottom-nav__icon">{tab.icon}</span>
-              </button>
+              </Link>
             );
           })}
         </nav>
