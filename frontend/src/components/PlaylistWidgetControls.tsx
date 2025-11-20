@@ -24,7 +24,11 @@ const PlaylistWidgetControls: React.FC<PlaylistWidgetControlsProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className={`playlist-drawer${isMobileView ? ' mobile-view-mode' : ''}`}>
+    <div
+      className={`playlist-drawer playlist-widget-container${
+        isMobileView ? ' mobile-view-mode mobile-mode' : ''
+      }`}
+    >
       {!isMobileView && (
         <div className="drawer-header">
           <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
@@ -92,7 +96,7 @@ const PlaylistWidgetControls: React.FC<PlaylistWidgetControlsProps> = ({
                       onRemoveFromQueue(index);
                     }}
                   >
-                    ✕
+                    {isMobileView ? '🗑️' : '✕'}
                   </button>
                 </div>
               </div>
