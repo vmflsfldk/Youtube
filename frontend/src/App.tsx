@@ -6652,10 +6652,10 @@ export default function App() {
         </div>
       )}
 
-      <div className="app-shell">
+      <div className="app-shell app-container">
         <aside
           id="app-sidebar"
-          className="sidebar"
+          className={`sidebar${isMobileViewport ? ' hidden' : ''}`}
           aria-label={translate('layout.sidebarNavLabel')}
           aria-hidden={isMobileViewport ? true : undefined}
         >
@@ -6716,77 +6716,85 @@ export default function App() {
           </div>
         </aside>
 
-      <main className="content-area">
         {isMobileViewport && (
-          <div className="mobile-appbar">
-            <button
-              type="button"
-              className="mobile-appbar__avatar"
-              aria-label={mobileAuthTriggerLabel}
-              onClick={() => setMobileAuthOverlayOpen(true)}
-            />
-            <div className="mobile-appbar__logo">
-              <img src={utahubLogo} alt={translate('layout.logoAlt')} />
+          <header className="mobile-top-header">
+            <div className="mobile-logo-area">
+              <img src={utahubLogo} alt={translate('layout.logoAlt')} className="mobile-logo" />
             </div>
-          </div>
-        )}
-        {!isMobileViewport && (
-          <header className="content-header">
-            <div className="content-header__body">
-              <div className="content-header__top-row">
-                <p className="content-header__eyebrow">{translate('header.eyebrow')}</p>
-                <LanguageToggle className="content-header__language-toggle" />
-              </div>
-              <h2>{activeSidebarTab.label}</h2>
-              <p className="content-header__description">{activeSidebarTab.description}</p>
+            <div className="mobile-header-actions">
+              <button type="button" className="icon-btn" aria-label="검색">
+                🔍
+              </button>
+              <button
+                type="button"
+                className="icon-btn"
+                aria-label={mobileAuthTriggerLabel}
+                onClick={() => setMobileAuthOverlayOpen(true)}
+              >
+                👤
+              </button>
             </div>
           </header>
         )}
 
-        {isMobileViewport && isMobileAuthOverlayOpen && (
-          <div className="mobile-auth-overlay">
-            <div
-              className="mobile-auth-overlay__backdrop"
-              role="presentation"
-              onClick={() => setMobileAuthOverlayOpen(false)}
-            />
-            <div
-              className="mobile-auth-overlay__content"
-              role="dialog"
-              aria-modal="true"
-              aria-label={mobileAuthOverlayLabel}
-              id="mobileAuthDialog"
-              ref={mobileAuthOverlayContentRef}
-              tabIndex={-1}
-            >
-              <button
-                type="button"
-                className="mobile-auth-overlay__close"
-                onClick={() => setMobileAuthOverlayOpen(false)}
-                aria-label={translate('mobile.auth.closeAriaLabel')}
-              >
-                <span aria-hidden="true">×</span>
-              </button>
-              <AuthPanel
-                className="auth-panel--mobile"
-                isAuthenticated={isAuthenticated}
-                greetingMessage={greetingMessage}
-                isLoadingUser={isLoadingUser}
-                nicknameInput={nicknameInput}
-                onNicknameInputChange={(value) => setNicknameInput(value)}
-                onNicknameSubmit={handleNicknameSubmit}
-                nicknameStatus={nicknameStatus}
-                nicknameError={nicknameError}
-                onSignOut={handleSignOut}
-                isGoogleReady={isGoogleReady}
-                onGoogleCredential={handleGoogleCredential}
-                shouldAutoPromptGoogle={shouldAutoPromptGoogle}
-              />
-            </div>
-          </div>
-        )}
+        <main className="content-area">
+          {!isMobileViewport && (
+            <header className="content-header">
+              <div className="content-header__body">
+                <div className="content-header__top-row">
+                  <p className="content-header__eyebrow">{translate('header.eyebrow')}</p>
+                  <LanguageToggle className="content-header__language-toggle" />
+                </div>
+                <h2>{activeSidebarTab.label}</h2>
+                <p className="content-header__description">{activeSidebarTab.description}</p>
+              </div>
+            </header>
+          )}
 
-        <div className="content-panels">
+          {isMobileViewport && isMobileAuthOverlayOpen && (
+            <div className="mobile-auth-overlay">
+              <div
+                className="mobile-auth-overlay__backdrop"
+                role="presentation"
+                onClick={() => setMobileAuthOverlayOpen(false)}
+              />
+              <div
+                className="mobile-auth-overlay__content"
+                role="dialog"
+                aria-modal="true"
+                aria-label={mobileAuthOverlayLabel}
+                id="mobileAuthDialog"
+                ref={mobileAuthOverlayContentRef}
+                tabIndex={-1}
+              >
+                <button
+                  type="button"
+                  className="mobile-auth-overlay__close"
+                  onClick={() => setMobileAuthOverlayOpen(false)}
+                  aria-label={translate('mobile.auth.closeAriaLabel')}
+                >
+                  <span aria-hidden="true">×</span>
+                </button>
+                <AuthPanel
+                  className="auth-panel--mobile"
+                  isAuthenticated={isAuthenticated}
+                  greetingMessage={greetingMessage}
+                  isLoadingUser={isLoadingUser}
+                  nicknameInput={nicknameInput}
+                  onNicknameInputChange={(value) => setNicknameInput(value)}
+                  onNicknameSubmit={handleNicknameSubmit}
+                  nicknameStatus={nicknameStatus}
+                  nicknameError={nicknameError}
+                  onSignOut={handleSignOut}
+                  isGoogleReady={isGoogleReady}
+                  onGoogleCredential={handleGoogleCredential}
+                  shouldAutoPromptGoogle={shouldAutoPromptGoogle}
+                />
+              </div>
+            </div>
+          )}
+
+          <div className="content-panels">
           <Routes>
 
             <Route
@@ -8520,77 +8528,86 @@ export default function App() {
         </div>
       </main>
 
-      {!isMobileViewport && rightSidebarContent}
+        {!isMobileViewport && rightSidebarContent}
 
-      {isMobileViewport && isMobileQueueOpen && (
-        <div className="mobile-queue-layout" role="dialog" aria-modal="true" aria-label="다음 트랙">
-          <div className="mobile-queue-header">
-            <h3>다음 트랙</h3>
-            <button type="button" onClick={handleMobileQueueClose} aria-label="재생 목록 닫기">
-              닫기 ✕
-            </button>
+        {isMobileViewport && isMobileQueueOpen && (
+          <div className="mobile-queue-layout" role="dialog" aria-modal="true" aria-label="다음 트랙">
+            <div className="mobile-queue-header">
+              <h3>다음 트랙</h3>
+              <button type="button" onClick={handleMobileQueueClose} aria-label="재생 목록 닫기">
+                닫기 ✕
+              </button>
+            </div>
+            <div className="mobile-queue-body">
+              <PlaylistWidgetControls
+                queue={filteredPlaybackBarItems}
+                currentClip={currentPlaybackItem}
+                onPlayClip={handleMobileQueueSelect}
+                onRemoveFromQueue={handleMobileQueueRemove}
+                isOpen
+                onClose={handleMobileQueueClose}
+                isMobileView
+              />
+            </div>
           </div>
-          <div className="mobile-queue-body">
-            <PlaylistWidgetControls
-              queue={filteredPlaybackBarItems}
-              currentClip={currentPlaybackItem}
-              onPlayClip={handleMobileQueueSelect}
-              onRemoveFromQueue={handleMobileQueueRemove}
-              isOpen
-              onClose={handleMobileQueueClose}
-              isMobileView
-            />
-          </div>
-        </div>
-      )}
+        )}
 
-      {isMobileViewport && !isMobileQueueOpen && (
-        <nav className="mobile-bottom-nav" aria-label="하단 탐색">
-          {sidebarTabs.map((tab) => {
-            const isActive = activeSection === tab.id;
-            return (
-              <Link
-                key={`mobile-tab-${tab.id}`}
-                className={`mobile-bottom-nav__tab${isActive ? ' is-active' : ''}`}
-                to={SECTION_PATHS[tab.id]}
-                aria-current={isActive ? 'page' : undefined}
-                aria-label={tab.label}
-              >
-                <span className="mobile-bottom-nav__icon">{tab.icon}</span>
-              </Link>
-            );
-          })}
-        </nav>
-      )}
+        {(hasPlaybackItems || (isMobileViewport && !isMobileQueueOpen)) && (
+          <div className="bottom-stack">
+            {hasPlaybackItems && (
+              <PlaylistBar
+                items={playbackBarItems}
+                queueItems={filteredPlaybackBarItems}
+                currentItemKey={activePlaybackKey}
+                currentIndex={currentPlaybackIndex}
+                className="stack-player"
+                playbackActivationNonce={playbackActivationNonce}
+                isPlaying={isPlaybackActive}
+                isExpanded={!isMobileViewport && isPlaybackExpanded}
+                isMobileViewport={isMobileViewport}
+                showQueueToggle
+                canCreatePlaylist={isAuthenticated}
+                canModifyPlaylist={canModifyActivePlaylist}
+                playlistSearchQuery={playlistSearchQuery}
+                onPlaylistSearchChange={setPlaylistSearchQuery}
+                onCreatePlaylist={handleCreatePlaylist}
+                onPlayPause={handlePlaybackToggle}
+                onNext={handlePlaybackNext}
+                onPrevious={handlePlaybackPrevious}
+                repeatMode={playbackRepeatMode}
+                onRepeatModeChange={setPlaybackRepeatMode}
+                onToggleExpanded={handlePlaybackToggleExpanded}
+                onSelectItem={handlePlaybackSelect}
+                onRemoveItem={handlePlaybackQueueRemove}
+                onTrackEnded={handlePlaybackEnded}
+                onPlayerInstanceChange={handlePlaybackPlayerChange}
+              />
+            )}
+
+            {isMobileViewport && !isMobileQueueOpen && (
+              <nav className="mobile-bottom-nav" aria-label="하단 탐색">
+                {sidebarTabs.map((tab) => {
+                  const isActive = activeSection === tab.id;
+                  const tabIcon = { latest: '🏠', catalog: '🔍', library: '📚', live: '🎤' }[tab.id];
+
+                  return (
+                    <Link
+                      key={`mobile-tab-${tab.id}`}
+                      className={`nav-item${isActive ? ' active' : ''}`}
+                      to={SECTION_PATHS[tab.id]}
+                      aria-current={isActive ? 'page' : undefined}
+                      aria-label={tab.label}
+                    >
+                      <span aria-hidden="true">{tabIcon}</span>
+                      <span>{tab.label}</span>
+                    </Link>
+                  );
+                })}
+              </nav>
+            )}
+          </div>
+        )}
       </div>
-      {hasPlaybackItems && (
-        <PlaylistBar
-          items={playbackBarItems}
-          queueItems={filteredPlaybackBarItems}
-          currentItemKey={activePlaybackKey}
-          currentIndex={currentPlaybackIndex}
-          playbackActivationNonce={playbackActivationNonce}
-          isPlaying={isPlaybackActive}
-          isExpanded={!isMobileViewport && isPlaybackExpanded}
-          isMobileViewport={isMobileViewport}
-          showQueueToggle
-          canCreatePlaylist={isAuthenticated}
-          canModifyPlaylist={canModifyActivePlaylist}
-          playlistSearchQuery={playlistSearchQuery}
-          onPlaylistSearchChange={setPlaylistSearchQuery}
-          onCreatePlaylist={handleCreatePlaylist}
-          onPlayPause={handlePlaybackToggle}
-          onNext={handlePlaybackNext}
-          onPrevious={handlePlaybackPrevious}
-          repeatMode={playbackRepeatMode}
-          onRepeatModeChange={setPlaybackRepeatMode}
-          onToggleExpanded={handlePlaybackToggleExpanded}
-          onSelectItem={handlePlaybackSelect}
-          onRemoveItem={handlePlaybackQueueRemove}
-          onTrackEnded={handlePlaybackEnded}
-          onPlayerInstanceChange={handlePlaybackPlayerChange}
-        />
-      )}
     </>
   );
 }

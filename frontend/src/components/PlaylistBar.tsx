@@ -26,6 +26,7 @@ interface PlaylistBarProps {
   queueItems?: PlaylistBarItem[];
   currentItemKey: string | null;
   currentIndex: number;
+  className?: string;
   playbackActivationNonce: number;
   isPlaying: boolean;
   isExpanded: boolean;
@@ -59,6 +60,7 @@ export default function PlaylistBar({
   queueItems,
   currentItemKey,
   currentIndex,
+  className,
   playbackActivationNonce,
   isPlaying,
   isExpanded,
@@ -149,6 +151,7 @@ export default function PlaylistBar({
   }
 
   const repeatActive = repeatMode !== 'off';
+  const playlistBarClassName = `playlist-bar${className ? ` ${className}` : ''}`;
 
   return (
     <>
@@ -156,7 +159,7 @@ export default function PlaylistBar({
         {clipPlayerContent}
       </div>
 
-      <div className="playlist-bar" role="contentinfo" aria-label="재생 컨트롤">
+      <div className={playlistBarClassName} role="contentinfo" aria-label="재생 컨트롤">
         <div className="progress-container-wrapper" aria-hidden>
           <div className="progress-bar" style={{ width: '0%' }} />
         </div>
