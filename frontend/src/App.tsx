@@ -59,6 +59,12 @@ const SearchIcon = () => (
   </svg>
 );
 
+const WidgetIcon = () => (
+  <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+    <path d="M10 2H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2Zm0 8H4V4h6v6Zm10-8h-6a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2Zm0 8h-6V4h6v6ZM10 14H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2Zm0 8H4v-6h6v6Zm10-8h-6a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2Zm0 8h-6v-6h6v6Z" />
+  </svg>
+);
+
 const LibraryIcon = () => (
   <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden>
     <path d="M3 3v18h18V3Zm16 16H5V5h14ZM7 7h2v2H7Zm4 0h6v2h-6Zm-4 4h2v2H7Zm4 0h6v2h-6Zm-4 4h2v2H7Zm4 0h6v2h-6Z" />
@@ -1426,6 +1432,7 @@ export default function App() {
   const [playbackActivationNonce, setPlaybackActivationNonce] = useState(0);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [isMobileAuthOverlayOpen, setMobileAuthOverlayOpen] = useState(false);
+  const [isSidebarDrawerOpen, setSidebarDrawerOpen] = useState(false);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const toastTimeoutRef = useRef<Record<string, number>>({});
   const [isPlaylistDialogOpen, setPlaylistDialogOpen] = useState(false);
@@ -1803,6 +1810,12 @@ export default function App() {
     mediaQuery.addListener(listener);
     return () => mediaQuery.removeListener(listener);
   }, []);
+
+  useEffect(() => {
+    if (!isMobileViewport) {
+      setSidebarDrawerOpen(false);
+    }
+  }, [isMobileViewport]);
 
   const scrollToSection = useCallback((sectionRef: RefObject<HTMLElement | null>) => {
     sectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -6359,7 +6372,16 @@ export default function App() {
             <div className="mobile-appbar__logo">
               <img src={utahubLogo} alt={translate('layout.logoAlt')} />
             </div>
-            <div className="mobile-appbar__avatar" aria-hidden />
+            <button
+              type="button"
+              className="mobile-appbar__widget-toggle"
+              aria-label="위젯 토글"
+              aria-expanded={isSidebarDrawerOpen}
+              aria-controls="rightSidebarDrawer"
+              onClick={() => setSidebarDrawerOpen((previous) => !previous)}
+            >
+              <WidgetIcon />
+            </button>
           </div>
         )}
         {!isMobileViewport && (
@@ -8015,9 +8037,12 @@ export default function App() {
       </main>
 
       <aside
-        className="right-sidebar"
+        id="rightSidebarDrawer"
+        className={`right-sidebar${isMobileViewport ? ' right-sidebar--drawer' : ''}${
+          isSidebarDrawerOpen ? ' is-open' : ''
+        }`}
         aria-label="보조 위젯"
-        aria-hidden={isMobileViewport ? true : undefined}
+        aria-hidden={isMobileViewport && !isSidebarDrawerOpen ? true : undefined}
       >
         <div className="search-widget">
           <div className="search-input-group">
@@ -8141,6 +8166,15 @@ export default function App() {
           </div>
         </div>
       </aside>
+
+      {isMobileViewport && isSidebarDrawerOpen && (
+        <button
+          type="button"
+          className="right-sidebar__backdrop"
+          aria-label="위젯 닫기"
+          onClick={() => setSidebarDrawerOpen(false)}
+        />
+      )}
 
       {isMobileViewport && (
         <nav className="mobile-bottom-nav" aria-label="하단 탐색">
