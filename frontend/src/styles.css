@@ -488,7 +488,7 @@ button.primary:hover {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  z-index: 20;
+  z-index: 1400;
 }
 
 .playback-bar__drag-handle {
@@ -757,12 +757,13 @@ button.primary:hover {
   .playback-bar {
     width: 100%;
     left: 0;
-    bottom: 0;
+    bottom: calc(var(--mobile-bottom-nav-height) + env(safe-area-inset-bottom));
     border-left: none;
     border-right: none;
     padding: 8px 12px;
     padding-bottom: calc(12px + env(safe-area-inset-bottom));
     height: auto;
+    z-index: 1400;
   }
 
   .playback-bar--mobile-collapsed,
