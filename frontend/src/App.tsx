@@ -28,6 +28,7 @@ import ArtistLibraryCard, { type ArtistLibraryCardData } from './components/Arti
 import ArtistSearchControls from './components/ArtistSearchControls';
 import ClipPreviewPanel from './components/ClipPreviewPanel';
 import SongCatalogTable from './components/SongCatalogTable';
+import PlaylistWidgetControls from './components/PlaylistWidgetControls';
 import type {
   VideoChannelResolutionResponse,
   VideoResponse,
@@ -55,12 +56,6 @@ const HomeIcon = () => (
 const SearchIcon = () => (
   <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden>
     <path d="M10.25 3.75a6.5 6.5 0 1 0 4.596 11.096l6.798 6.799-1.768 1.768-6.799-6.798A6.47 6.47 0 0 1 10.25 16a6.5 6.5 0 1 0 0-13Z" />
-  </svg>
-);
-
-const WidgetIcon = () => (
-  <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-    <path d="M10 2H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2Zm0 8H4V4h6v6Zm10-8h-6a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2Zm0 8h-6V4h6v6ZM10 14H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2Zm0 8H4v-6h6v6Zm10-8h-6a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2Zm0 8h-6v-6h6v6Z" />
   </svg>
 );
 
@@ -1465,7 +1460,7 @@ export default function App() {
   const [playbackActivationNonce, setPlaybackActivationNonce] = useState(0);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [isMobileAuthOverlayOpen, setMobileAuthOverlayOpen] = useState(false);
-  const [isSidebarDrawerOpen, setSidebarDrawerOpen] = useState(false);
+  const [isMobileQueueOpen, setIsMobileQueueOpen] = useState(false);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const toastTimeoutRef = useRef<Record<string, number>>({});
   const [isPlaylistDialogOpen, setPlaylistDialogOpen] = useState(false);
@@ -1919,7 +1914,7 @@ export default function App() {
 
   useEffect(() => {
     if (!isMobileViewport) {
-      setSidebarDrawerOpen(false);
+      setIsMobileQueueOpen(false);
     }
   }, [isMobileViewport]);
 
@@ -2040,25 +2035,6 @@ export default function App() {
     },
     [location.pathname, navigate]
   );
-  const previousMobileSectionRef = useRef<SectionKey | null>(null);
-  const handleSidebarDrawerOpen = useCallback(() => {
-    previousMobileSectionRef.current = activeSection;
-    setSidebarDrawerOpen(true);
-  }, [activeSection]);
-  const handleSidebarDrawerClose = useCallback(() => {
-    setSidebarDrawerOpen(false);
-    const previousSection = previousMobileSectionRef.current;
-    if (previousSection) {
-      navigateToSection(previousSection);
-    }
-  }, [navigateToSection]);
-  const handleSidebarDrawerToggle = useCallback(() => {
-    if (isSidebarDrawerOpen) {
-      handleSidebarDrawerClose();
-      return;
-    }
-    handleSidebarDrawerOpen();
-  }, [handleSidebarDrawerClose, handleSidebarDrawerOpen, isSidebarDrawerOpen]);
   const [activeClipId, setActiveClipId] = useState<number | null>(null);
   const [latestPlaybackNotice, setLatestPlaybackNotice] = useState<string | null>(null);
   const [latestVideoPreviewMessage, setLatestVideoPreviewMessage] = useState<string | null>(null);
@@ -5354,6 +5330,7 @@ export default function App() {
       setActivePlaybackKey(null);
       setIsPlaybackActive(false);
       setIsPlaybackExpanded(false);
+      setIsMobileQueueOpen(false);
       setLatestPlaybackNotice(null);
       setLatestVideoPreviewMessage(null);
       return;
@@ -5509,7 +5486,15 @@ export default function App() {
   );
 
   const handlePlaybackToggleExpanded = useCallback(() => {
+    if (isMobileViewport) {
+      setIsMobileQueueOpen((previous) => !previous);
+      return;
+    }
     setIsPlaybackExpanded((previous) => !previous);
+  }, [isMobileViewport]);
+
+  const handleMobileQueueClose = useCallback(() => {
+    setIsMobileQueueOpen(false);
   }, []);
 
   const handlePlaybackEnded = useCallback(() => {
@@ -5647,6 +5632,24 @@ export default function App() {
     const filteredIds = new Set(filteredPlaylistEntries.map((entry) => entry.itemId));
     return playbackBarItems.filter((item) => item.itemId < 0 || filteredIds.has(item.itemId));
   }, [filteredPlaylistEntries, normalizedPlaylistQuery, playbackBarItems]);
+
+  const handleMobileQueueRemove = useCallback(
+    (index: number) => {
+      const targetItem = filteredPlaybackBarItems[index];
+      if (!targetItem) {
+        return;
+      }
+      handlePlaybackQueueRemove(targetItem.itemId);
+    },
+    [filteredPlaybackBarItems, handlePlaybackQueueRemove]
+  );
+
+  const handleMobileQueueSelect = useCallback(
+    (clip: PlaylistBarItem) => {
+      handlePlaybackSelect(clip.key);
+    },
+    [handlePlaybackSelect]
+  );
 
   useEffect(() => {
     if (!expandedPlaylistEntryId) {
@@ -6481,14 +6484,7 @@ export default function App() {
   })();
 
   const rightSidebarContent = (
-    <aside
-      id="rightSidebarDrawer"
-      className={`right-sidebar${isMobileViewport ? ' right-sidebar--drawer' : ''}${
-        isSidebarDrawerOpen ? ' is-open' : ''
-      }`}
-      aria-label="보조 위젯"
-      aria-hidden={isMobileViewport && !isSidebarDrawerOpen ? true : undefined}
-    >
+    <aside id="rightSidebarDrawer" className="right-sidebar" aria-label="보조 위젯">
       <div className="search-widget">
         <div className="search-input-group">
           <SearchIcon />
@@ -6732,16 +6728,6 @@ export default function App() {
             <div className="mobile-appbar__logo">
               <img src={utahubLogo} alt={translate('layout.logoAlt')} />
             </div>
-            <button
-              type="button"
-              className="mobile-appbar__widget-toggle"
-              aria-label="위젯 토글"
-              aria-expanded={isSidebarDrawerOpen}
-              aria-controls="rightSidebarDrawer"
-              onClick={handleSidebarDrawerToggle}
-            >
-              <WidgetIcon />
-            </button>
           </div>
         )}
         {!isMobileViewport && (
@@ -8534,38 +8520,31 @@ export default function App() {
         </div>
       </main>
 
-      {!isMobileViewport ? (
-        rightSidebarContent
-      ) : (
-        <>
-          {isSidebarDrawerOpen && (
-            <div className="mobile-queue-overlay" role="dialog" aria-modal="true" aria-label="재생 목록">
-              <div className="mobile-queue-overlay__header">
-                <h2>재생 목록</h2>
-                <button
-                  type="button"
-                  className="mobile-queue-overlay__close"
-                  onClick={handleSidebarDrawerClose}
-                  aria-label="재생 목록 닫기"
-                >
-                  <span aria-hidden="true">×</span>
-                </button>
-              </div>
-              <div className="mobile-queue-content">{rightSidebarContent}</div>
-            </div>
-          )}
-          {isSidebarDrawerOpen && (
-            <button
-              type="button"
-              className="right-sidebar__backdrop"
-              aria-label="위젯 닫기"
-              onClick={handleSidebarDrawerClose}
+      {!isMobileViewport && rightSidebarContent}
+
+      {isMobileViewport && isMobileQueueOpen && (
+        <div className="mobile-queue-layout" role="dialog" aria-modal="true" aria-label="다음 트랙">
+          <div className="mobile-queue-header">
+            <h3>다음 트랙</h3>
+            <button type="button" onClick={handleMobileQueueClose} aria-label="재생 목록 닫기">
+              닫기 ✕
+            </button>
+          </div>
+          <div className="mobile-queue-body">
+            <PlaylistWidgetControls
+              queue={filteredPlaybackBarItems}
+              currentClip={currentPlaybackItem}
+              onPlayClip={handleMobileQueueSelect}
+              onRemoveFromQueue={handleMobileQueueRemove}
+              isOpen
+              onClose={handleMobileQueueClose}
+              isMobileView
             />
-          )}
-        </>
+          </div>
+        </div>
       )}
 
-      {isMobileViewport && (
+      {isMobileViewport && !isMobileQueueOpen && (
         <nav className="mobile-bottom-nav" aria-label="하단 탐색">
           {sidebarTabs.map((tab) => {
             const isActive = activeSection === tab.id;
@@ -8592,7 +8571,7 @@ export default function App() {
           currentIndex={currentPlaybackIndex}
           playbackActivationNonce={playbackActivationNonce}
           isPlaying={isPlaybackActive}
-          isExpanded={isPlaybackExpanded}
+          isExpanded={!isMobileViewport && isPlaybackExpanded}
           isMobileViewport={isMobileViewport}
           showQueueToggle
           canCreatePlaylist={isAuthenticated}

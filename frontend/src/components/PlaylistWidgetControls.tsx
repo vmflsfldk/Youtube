@@ -9,6 +9,7 @@ interface PlaylistWidgetControlsProps {
   onRemoveFromQueue: (index: number) => void;
   isOpen: boolean;
   onClose: () => void;
+  isMobileView?: boolean;
 }
 
 const PlaylistWidgetControls: React.FC<PlaylistWidgetControlsProps> = ({
@@ -17,28 +18,30 @@ const PlaylistWidgetControls: React.FC<PlaylistWidgetControlsProps> = ({
   onPlayClip,
   onRemoveFromQueue,
   isOpen,
-  onClose
+  onClose,
+  isMobileView = false
 }) => {
   if (!isOpen) return null;
 
   return (
-    <div className="playlist-drawer">
-      {/* 헤더 영역: 타이틀 및 닫기 버튼 */}
-      <div className="drawer-header">
-        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-          <h3 style={{ margin: 0, fontSize: '16px' }}>다음 트랙</h3>
-          <span style={{ fontSize: '12px', color: '#666' }}>({queue.length}곡)</span>
+    <div className={`playlist-drawer${isMobileView ? ' mobile-view-mode' : ''}`}>
+      {!isMobileView && (
+        <div className="drawer-header">
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+            <h3 style={{ margin: 0, fontSize: '16px' }}>다음 트랙</h3>
+            <span style={{ fontSize: '12px', color: '#666' }}>({queue.length}곡)</span>
+          </div>
+          <button
+            className="close-drawer-btn"
+            type="button"
+            onClick={onClose}
+            aria-label="재생목록 닫기"
+            style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer' }}
+          >
+            ✕
+          </button>
         </div>
-        <button
-          className="close-drawer-btn"
-          type="button"
-          onClick={onClose}
-          aria-label="재생목록 닫기"
-          style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer' }}
-        >
-          ✕
-        </button>
-      </div>
+      )}
 
       {/* 리스트 영역 */}
       <div className="drawer-content">
