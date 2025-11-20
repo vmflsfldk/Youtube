@@ -615,11 +615,17 @@ function parseDurationSeconds(
 
 type ArtistCountryKey = 'availableKo' | 'availableEn' | 'availableJp';
 
-const parseTags = (value: string): string[] =>
-  value
+const parseTags = (value: string | string[]): string[] => {
+  if (Array.isArray(value)) {
+    return value.map((tag) => tag.trim()).filter(Boolean);
+  }
+  return value
     .split(',')
     .map((tag) => tag.trim())
     .filter(Boolean);
+};
+
+const normalizeTagValue = (tag: string): string => tag.replace(/\s+/g, ' ').trim();
 
 const normalizeChannelId = (value: string | null | undefined): string =>
   (value ?? '').trim().toLowerCase();
@@ -652,6 +658,16 @@ const ARTIST_COUNTRY_METADATA: ReadonlyArray<{
   { key: 'availableKo', code: 'KR', label: 'KR' },
   { key: 'availableJp', code: 'JP', label: 'JP' },
   { key: 'availableEn', code: 'EN', label: 'EN' }
+];
+
+const ARTIST_FORM_COUNTRIES: ReadonlyArray<{
+  key: keyof ArtistFormState['countries'];
+  code: string;
+  label: string;
+}> = [
+  { key: 'ko', code: 'KR', label: 'KR' },
+  { key: 'jp', code: 'JP', label: 'JP' },
+  { key: 'en', code: 'EN', label: 'EN' }
 ];
 
 const AUTH_TOKEN_STORAGE_KEY = 'yt-clip.auth-token';
@@ -924,7 +940,8 @@ type VideoMetadataUpdatePayload = {
 type ArtistFormState = {
   name: string;
   channelId: string;
-  tags: string;
+  tags: string[];
+  tagInput: string;
   agency: string;
   countries: {
     ko: boolean;
@@ -936,7 +953,8 @@ type ArtistFormState = {
 const createInitialArtistFormState = (): ArtistFormState => ({
   name: '',
   channelId: '',
-  tags: '',
+  tags: [],
+  tagInput: '',
   agency: '',
   countries: {
     ko: true,
@@ -1683,6 +1701,78 @@ export default function App() {
       }
       return { ...previous, query: '' };
     });
+  }, []);
+
+  const addArtistTags = useCallback((rawTags: string[]) => {
+    setArtistForm((previous) => {
+      const normalizedExisting = new Set(previous.tags.map((tag) => tag.toLowerCase()));
+      const nextTags = [...previous.tags];
+
+      rawTags.forEach((tag) => {
+        const normalized = normalizeTagValue(tag);
+        if (!normalized) {
+          return;
+        }
+        const lowerCaseTag = normalized.toLowerCase();
+        if (normalizedExisting.has(lowerCaseTag)) {
+          return;
+        }
+        normalizedExisting.add(lowerCaseTag);
+        nextTags.push(normalized);
+      });
+
+      return { ...previous, tags: nextTags };
+    });
+  }, []);
+
+  const handleArtistTagInputChange = useCallback(
+    (value: string) => {
+      const segments = value.split(',');
+      const trailingInput = segments.pop() ?? '';
+      addArtistTags(segments);
+      setArtistForm((previous) => ({ ...previous, tagInput: trailingInput }));
+    },
+    [addArtistTags]
+  );
+
+  const commitArtistTagInput = useCallback(() => {
+    setArtistForm((previous) => {
+      const normalized = normalizeTagValue(previous.tagInput);
+      if (!normalized) {
+        return previous.tagInput ? { ...previous, tagInput: '' } : previous;
+      }
+      if (previous.tags.some((tag) => tag.toLowerCase() === normalized.toLowerCase())) {
+        return { ...previous, tagInput: '' };
+      }
+      return { ...previous, tags: [...previous.tags, normalized], tagInput: '' };
+    });
+  }, []);
+
+  const handleArtistTagKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLInputElement>) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        commitArtistTagInput();
+        return;
+      }
+      if (event.key === ',' && artistForm.tagInput.trim()) {
+        event.preventDefault();
+        handleArtistTagInputChange(`${artistForm.tagInput},`);
+        return;
+      }
+      if (event.key === 'Backspace' && !artistForm.tagInput && artistForm.tags.length > 0) {
+        event.preventDefault();
+        setArtistForm((previous) => ({ ...previous, tags: previous.tags.slice(0, -1) }));
+      }
+    },
+    [artistForm.tagInput, artistForm.tags.length, commitArtistTagInput, handleArtistTagInputChange]
+  );
+
+  const handleArtistTagRemove = useCallback((tag: string) => {
+    setArtistForm((previous) => ({
+      ...previous,
+      tags: previous.tags.filter((existing) => existing !== tag)
+    }));
   }, []);
 
   useEffect(() => {
@@ -2512,7 +2602,7 @@ export default function App() {
     const trimmedName = artistForm.name.trim();
     const trimmedChannelId = artistForm.channelId.trim();
     const trimmedAgency = artistForm.agency.trim();
-    const parsedTags = parseTags(artistForm.tags);
+    const parsedTags = parseTags([...artistForm.tags, artistForm.tagInput]);
     const { ko, en, jp } = artistForm.countries;
     const hasCountrySelection = ko || en || jp;
     setArtistPreviewError(null);
@@ -6039,14 +6129,35 @@ export default function App() {
       <div className="artist-registration__field-grid">
         <div className="artist-registration__field">
           <label htmlFor="artistTags">아티스트 태그</label>
-          <input
-            id="artistTags"
-            placeholder="예: 라이브, 커버"
-            value={artistForm.tags}
-            onChange={(event) => setArtistForm((prev) => ({ ...prev, tags: event.target.value }))}
-            disabled={creationDisabled}
-          />
-          <p className="form-hint">콤마(,)로 구분하여 입력하세요.</p>
+          <div className="chip-input">
+            <div className="chip-input__list" aria-live="polite">
+              {artistForm.tags.map((tag) => (
+                <span key={tag} className="chip-input__chip">
+                  <span className="chip-input__chip-label">{tag}</span>
+                  <button
+                    type="button"
+                    className="chip-input__remove"
+                    onClick={() => handleArtistTagRemove(tag)}
+                    aria-label={`${tag} 태그 제거`}
+                    disabled={creationDisabled}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+              <input
+                id="artistTags"
+                className="chip-input__input"
+                placeholder="예: 라이브, 커버"
+                value={artistForm.tagInput}
+                onChange={(event) => handleArtistTagInputChange(event.target.value)}
+                onKeyDown={handleArtistTagKeyDown}
+                onBlur={commitArtistTagInput}
+                disabled={creationDisabled}
+              />
+            </div>
+          </div>
+          <p className="form-hint">Enter 또는 콤마(,)로 태그를 추가하세요.</p>
         </div>
         <div className="artist-registration__field">
           <label htmlFor="artistAgency">소속사</label>
@@ -6063,54 +6174,32 @@ export default function App() {
         <legend>서비스 국가</legend>
         <p className="artist-registration__countries-hint">복수 선택 가능</p>
         <div className="artist-registration__country-options">
-          <label className="artist-registration__country-option">
-            <input
-              type="checkbox"
-              checked={artistForm.countries.ko}
-              onChange={(event) =>
-                setArtistForm((prev) => ({
-                  ...prev,
-                  countries: { ...prev.countries, ko: event.target.checked }
-                }))
-              }
-              disabled={creationDisabled}
-            />
-            <span className="artist-registration__country-label">
-              <span className="artist-registration__country-code">KR</span>
-            </span>
-          </label>
-          <label className="artist-registration__country-option">
-            <input
-              type="checkbox"
-              checked={artistForm.countries.jp}
-              onChange={(event) =>
-                setArtistForm((prev) => ({
-                  ...prev,
-                  countries: { ...prev.countries, jp: event.target.checked }
-                }))
-              }
-              disabled={creationDisabled}
-            />
-            <span className="artist-registration__country-label">
-              <span className="artist-registration__country-code">JP</span>
-            </span>
-          </label>
-          <label className="artist-registration__country-option">
-            <input
-              type="checkbox"
-              checked={artistForm.countries.en}
-              onChange={(event) =>
-                setArtistForm((prev) => ({
-                  ...prev,
-                  countries: { ...prev.countries, en: event.target.checked }
-                }))
-              }
-              disabled={creationDisabled}
-            />
-            <span className="artist-registration__country-label">
-              <span className="artist-registration__country-code">EN</span>
-            </span>
-          </label>
+          {ARTIST_FORM_COUNTRIES.map((country) => {
+            const isSelected = artistForm.countries[country.key];
+            return (
+              <button
+                key={country.code}
+                type="button"
+                className={`artist-country-toggle${
+                  isSelected ? ' artist-country-toggle--active' : ''
+                }`}
+                aria-pressed={isSelected}
+                onClick={() =>
+                  setArtistForm((prev) => ({
+                    ...prev,
+                    countries: {
+                      ...prev.countries,
+                      [country.key]: !prev.countries[country.key]
+                    }
+                  }))
+                }
+                disabled={creationDisabled}
+              >
+                <span className="artist-country-toggle__code">{country.code}</span>
+                <span className="artist-country-toggle__label">{country.label}</span>
+              </button>
+            );
+          })}
         </div>
       </fieldset>
     </>
