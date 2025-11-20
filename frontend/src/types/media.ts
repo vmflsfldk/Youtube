@@ -1,3 +1,5 @@
+import type { ArtistResponse } from './artists';
+
 export interface VideoSectionResponse {
   title: string;
   startSec: number;
@@ -60,4 +62,13 @@ export interface ClipResponse {
   artists?: VideoArtistResponse[];
   createdAt?: string | null;
   updatedAt?: string | null;
+}
+
+export interface VideoChannelResolutionResponse {
+  youtubeVideoId: string;
+  channelId?: string | null;
+  channelTitle?: string | null;
+  videoTitle?: string | null;
+  thumbnailUrl?: string | null;
+  artist?: ArtistResponse | null;
 }

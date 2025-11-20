@@ -9,6 +9,7 @@ import {
   useRef,
   useState
 } from 'react';
+import type { YouTubePlayer } from 'react-youtube';
 import { AnimatePresence, animate, motion, useMotionValue, useSpring } from 'framer-motion';
 
 const ClipPlayer = lazy(() => import('./ClipPlayer'));
@@ -55,6 +56,7 @@ interface PlaylistBarProps {
   onSelectItem: (key: string) => void;
   onRemoveItem: (itemId: number) => void | Promise<unknown>;
   onTrackEnded: () => void;
+  onPlayerInstanceChange?: (player: YouTubePlayer | null) => void;
 }
 
 const PlayIcon = () => (
@@ -168,7 +170,8 @@ export default function PlaylistBar({
   onToggleExpanded,
   onSelectItem,
   onRemoveItem,
-  onTrackEnded
+  onTrackEnded,
+  onPlayerInstanceChange
 }: PlaylistBarProps) {
   const [isCreatingPlaylist, setIsCreatingPlaylist] = useState(false);
   const [hasActivatedPlayback, setHasActivatedPlayback] = useState(false);
@@ -675,6 +678,7 @@ export default function PlaylistBar({
           shouldLoop={repeatMode === 'one'}
           onEnded={onTrackEnded}
           activationNonce={playbackActivationNonce}
+          onPlayerInstanceChange={onPlayerInstanceChange}
         />
       </Suspense>
     );
@@ -684,7 +688,8 @@ export default function PlaylistBar({
     isPlaying,
     onTrackEnded,
     playbackActivationNonce,
-    repeatMode
+    repeatMode,
+    onPlayerInstanceChange
   ]);
 
   const hiddenPlayerContent = useMemo(() => {
