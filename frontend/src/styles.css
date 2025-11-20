@@ -28,7 +28,8 @@
   --sidebar-width: 275px;
   --main-width: 600px;
   --right-sidebar-width: 350px;
-  
+  --playback-bar-height: 148px;
+
   --mobile-bottom-nav-height: 53px;
   --mobile-header-height: 53px;
   --mobile-playback-height: 60px;
@@ -267,7 +268,7 @@ body {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
-  padding-bottom: 120px;
+  padding-bottom: calc(var(--playback-bar-height) + 12px);
 }
 
 .content-header {
@@ -298,7 +299,7 @@ body {
 /* 3. Right Sidebar (Widgets) */
 .right-sidebar {
   width: var(--right-sidebar-width);
-  padding: 12px 0 12px 30px;
+  padding: 12px 0 calc(12px + var(--playback-bar-height)) 30px;
   display: flex;
   flex-direction: column;
   gap: 16px;
