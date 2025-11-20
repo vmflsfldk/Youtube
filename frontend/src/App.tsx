@@ -232,30 +232,43 @@ const ensureArray = <T,>(value: MaybeArray<T>): T[] => {
 };
 
 const formatSeconds = (value: number): string => {
-  if (!Number.isFinite(value) || value < 0) {
-    return '0:00';
-  }
-  const total = Math.floor(value);
-  const hours = Math.floor(total / 3600);
-  const minutes = Math.floor((total % 3600) / 60);
-  const seconds = total % 60;
+  const safeValue = Number.isFinite(value) ? Math.max(value, 0) : 0;
+  const roundedToTenth = Math.round(safeValue * 10) / 10;
+  const wholeSeconds = Math.floor(roundedToTenth);
+  const fractional = Math.round((roundedToTenth - wholeSeconds) * 10) / 10;
+
+  const hours = Math.floor(wholeSeconds / 3600);
+  const minutes = Math.floor((wholeSeconds % 3600) / 60);
+  const seconds = wholeSeconds % 60;
+
+  const secondsDisplay = fractional > 0 ? (seconds + fractional).toFixed(1) : seconds.toString();
+  const paddedSeconds = secondsDisplay.includes('.')
+    ? secondsDisplay.padStart(4, '0')
+    : secondsDisplay.padStart(2, '0');
   const minutePart = minutes.toString().padStart(2, '0');
-  const secondPart = seconds.toString().padStart(2, '0');
   if (hours > 0) {
-    return `${hours}:${minutePart}:${secondPart}`;
+    return `${hours}:${minutePart}:${paddedSeconds}`;
   }
-  return `${minutes}:${secondPart}`;
+  return `${minutes}:${paddedSeconds}`;
 };
 
 const clamp = (value: number, min: number, max: number): number => Math.min(Math.max(value, min), max);
 
+const CLIP_NUDGE_STEP = 0.5;
+const CLIP_NUDGE_LARGE_STEP = 1;
+const normalizeClipSeconds = (value: number) => Math.round(value * 2) / 2;
+
 export { mediaMatchesArtist } from './library/mediaMatchesArtist';
 
-const sanitizeTimePartInput = (value: string, options: { maxLength?: number; maxValue?: number | null }) => {
-  const digitsOnly = value.replace(/\D/g, '');
-  const truncated = options.maxLength ? digitsOnly.slice(0, options.maxLength) : digitsOnly;
+const sanitizeTimePartInput = (
+  value: string,
+  options: { maxLength?: number | null; maxValue?: number | null; allowDecimal?: boolean }
+) => {
+  const filtered = options.allowDecimal ? value.replace(/[^0-9.]/g, '') : value.replace(/\D/g, '');
+  const sanitized = options.allowDecimal ? filtered.replace(/(\..*)\./g, '$1') : filtered;
+  const truncated = options.maxLength ? sanitized.slice(0, options.maxLength) : sanitized;
 
-  if (truncated === '') {
+  if (truncated === '' || truncated === '.') {
     return '';
   }
 
@@ -276,7 +289,7 @@ const parseClipTimeParts = (hours: string, minutes: string, seconds: string): nu
     if (!value) {
       return 0;
     }
-    const numeric = Number(value);
+    const numeric = Number(value.replace(/(\..*)\./g, '$1'));
     if (!Number.isFinite(numeric) || numeric < 0) {
       return 0;
     }
@@ -288,7 +301,7 @@ const parseClipTimeParts = (hours: string, minutes: string, seconds: string): nu
 
   const hourValue = parsePart(hours);
   const minuteValue = parsePart(minutes, 59);
-  const secondValue = parsePart(seconds, 59);
+  const secondValue = parsePart(seconds, 59.9);
 
   return hourValue * 3600 + minuteValue * 60 + secondValue;
 };
@@ -298,15 +311,18 @@ const createClipTimePartValues = (totalSeconds: number) => {
     return { hours: '0', minutes: '00', seconds: '00' } as const;
   }
 
-  const total = Math.floor(totalSeconds);
+  const total = Math.round(totalSeconds * 10) / 10;
   const hours = Math.floor(total / 3600);
   const minutes = Math.floor((total % 3600) / 60);
-  const seconds = total % 60;
+  const seconds = Math.round((total - hours * 3600 - minutes * 60) * 10) / 10;
+  const secondsDisplay = Number.isInteger(seconds)
+    ? Math.floor(seconds).toString().padStart(2, '0')
+    : seconds.toFixed(1).padStart(4, '0');
 
   return {
     hours: hours.toString(),
     minutes: minutes.toString().padStart(2, '0'),
-    seconds: seconds.toString().padStart(2, '0')
+    seconds: secondsDisplay
   } as const;
 };
 
@@ -1654,6 +1670,7 @@ export default function App() {
     ? ''
     : String(parseClipTimeParts(clipEditForm.endHours, clipEditForm.endMinutes, clipEditForm.endSeconds));
   const playbackPlayerRef = useRef<YouTubePlayer | null>(null);
+  const clipPreviewPlayerRef = useRef<YouTubePlayer | null>(null);
   const [hasPlaybackPlayer, setHasPlaybackPlayer] = useState(false);
   const [videoChannelResolution, setVideoChannelResolution] =
     useState<VideoChannelResolutionResponse | null>(null);
@@ -1923,7 +1940,9 @@ export default function App() {
     (key: ClipTimeField) => (event: ChangeEvent<HTMLInputElement>) => {
       const options = key.endsWith('Hours')
         ? { maxLength: 3, maxValue: null }
-        : { maxLength: 2, maxValue: 59 };
+        : key.endsWith('Seconds')
+          ? { maxLength: null, maxValue: 59.9, allowDecimal: true }
+          : { maxLength: 2, maxValue: 59 };
       const sanitized = sanitizeTimePartInput(event.target.value, options);
       setClipForm((prev) => ({ ...prev, [key]: sanitized }));
     },
@@ -1938,7 +1957,9 @@ export default function App() {
     (key: ClipTimeField) => (event: ChangeEvent<HTMLInputElement>) => {
       const options = key.endsWith('Hours')
         ? { maxLength: 3, maxValue: null }
-        : { maxLength: 2, maxValue: 59 };
+        : key.endsWith('Seconds')
+          ? { maxLength: null, maxValue: 59.9, allowDecimal: true }
+          : { maxLength: 2, maxValue: 59 };
       const sanitized = sanitizeTimePartInput(event.target.value, options);
       setClipEditForm((prev) => ({ ...prev, [key]: sanitized }));
       setClipEditStatus(null);
@@ -1948,6 +1969,23 @@ export default function App() {
   const handlePlaybackPlayerChange = useCallback((player: YouTubePlayer | null) => {
     playbackPlayerRef.current = player;
     setHasPlaybackPlayer(Boolean(player));
+  }, []);
+  const handleClipPreviewPlayerChange = useCallback((player: YouTubePlayer | null) => {
+    clipPreviewPlayerRef.current = player;
+  }, []);
+  const previewClipPosition = useCallback((seconds: number) => {
+    const player = clipPreviewPlayerRef.current;
+    if (!player || typeof player.seekTo !== 'function') {
+      return;
+    }
+    try {
+      player.seekTo(Math.max(0, seconds), true);
+      if (typeof player.playVideo === 'function') {
+        player.playVideo();
+      }
+    } catch {
+      // Ignore preview playback errors
+    }
   }, []);
   const getCurrentPlaybackSeconds = useCallback(() => {
     const player = playbackPlayerRef.current;
@@ -5650,14 +5688,18 @@ export default function App() {
     }
     return Math.max(previewEndSec, previewStartSec + 60);
   }, [previewEndSec, previewStartSec, selectedVideoDurationSec]);
+  const clipRangeStartPercent = clipRangeMax > 0 ? Math.min((previewStartSec / clipRangeMax) * 100, 100) : 0;
+  const clipRangeEndPercent = clipRangeMax > 0 ? Math.min((previewEndSec / clipRangeMax) * 100, 100) : 0;
   const updateClipStartFromSlider = useCallback(
-    (nextStartSec: number) => {
-      const clampedStart = clamp(Math.floor(nextStartSec), 0, clipRangeMax);
+    (nextStartSec: number, options?: { preview?: boolean }) => {
+      const clampedStart = clamp(normalizeClipSeconds(nextStartSec), 0, clipRangeMax);
       setClipForm((prev) => {
         const endSeconds = parseClipTimeParts(prev.endHours, prev.endMinutes, prev.endSeconds);
-        const adjustedEnd = endSeconds > clampedStart ? endSeconds : Math.min(clampedStart + 15, clipRangeMax);
+        const adjustedEnd = endSeconds > clampedStart ? endSeconds : clampedStart + 15;
+        const safeEnd = Math.min(Math.max(clampedStart + CLIP_NUDGE_STEP, adjustedEnd), clipRangeMax);
+        const normalizedEnd = normalizeClipSeconds(safeEnd);
         const startParts = createClipTimePartValues(clampedStart);
-        const endParts = createClipTimePartValues(adjustedEnd);
+        const endParts = createClipTimePartValues(normalizedEnd);
         return {
           ...prev,
           startHours: startParts.hours,
@@ -5668,12 +5710,16 @@ export default function App() {
           endSeconds: endParts.seconds
         };
       });
+      if (options?.preview) {
+        previewClipPosition(clampedStart);
+      }
     },
-    [clipRangeMax]
+    [clipRangeMax, previewClipPosition]
   );
   const updateClipEndFromSlider = useCallback(
-    (nextEndSec: number) => {
-      const clampedEnd = clamp(Math.floor(nextEndSec), previewStartSec + 1, clipRangeMax);
+    (nextEndSec: number, options?: { preview?: boolean }) => {
+      const minimumEnd = normalizeClipSeconds(previewStartSec + CLIP_NUDGE_STEP);
+      const clampedEnd = clamp(normalizeClipSeconds(nextEndSec), minimumEnd, clipRangeMax);
       setClipForm((prev) => {
         const endParts = createClipTimePartValues(clampedEnd);
         return {
@@ -5683,8 +5729,11 @@ export default function App() {
           endSeconds: endParts.seconds
         };
       });
+      if (options?.preview) {
+        previewClipPosition(Math.max(clampedEnd - CLIP_NUDGE_LARGE_STEP, previewStartSec));
+      }
     },
-    [clipRangeMax, previewStartSec]
+    [clipRangeMax, previewStartSec, previewClipPosition]
   );
   const applyFullVideoRange = useCallback(() => {
     updateClipStartFromSlider(0);
@@ -5693,6 +5742,27 @@ export default function App() {
   const applyThirtySecondRange = useCallback(() => {
     updateClipEndFromSlider(Math.min(previewStartSec + 30, clipRangeMax));
   }, [clipRangeMax, previewStartSec, updateClipEndFromSlider]);
+  const nudgeClipBoundary = useCallback(
+    (target: 'start' | 'end', delta: number, options?: { preview?: boolean }) => {
+      if (target === 'start') {
+        updateClipStartFromSlider(previewStartSec + delta, options);
+        return;
+      }
+      updateClipEndFromSlider(previewEndSec + delta, options);
+    },
+    [previewEndSec, previewStartSec, updateClipEndFromSlider, updateClipStartFromSlider]
+  );
+  const handleRangeKeyDown = useCallback(
+    (target: 'start' | 'end') => (event: ReactKeyboardEvent<HTMLInputElement>) => {
+      if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+        const magnitude = event.shiftKey ? CLIP_NUDGE_LARGE_STEP : CLIP_NUDGE_STEP;
+        const direction = event.key === 'ArrowLeft' ? -1 : 1;
+        nudgeClipBoundary(target, magnitude * direction, { preview: true });
+        event.preventDefault();
+      }
+    },
+    [nudgeClipBoundary]
+  );
   const applyPlaybackPositionToClipStart = useCallback(() => {
     const currentSeconds = getCurrentPlaybackSeconds();
     if (currentSeconds === null) {
@@ -7561,36 +7631,156 @@ export default function App() {
                                           </span>
                                         ) : null}
                                       </div>
-                                      <label className="clip-range-control__label" htmlFor="clipRangeStart">
-                                        시작 위치
-                                      </label>
-                                      <input
-                                        id="clipRangeStart"
-                                        type="range"
-                                        min={0}
-                                        max={clipRangeMax}
-                                        step={1}
-                                        value={previewStartSec}
-                                        onChange={(event) => updateClipStartFromSlider(Number(event.target.value))}
-                                        disabled={creationDisabled}
-                                      />
-                                      <label className="clip-range-control__label" htmlFor="clipRangeEnd">
-                                        종료 위치
-                                      </label>
-                                      <input
-                                        id="clipRangeEnd"
-                                        type="range"
-                                        min={previewStartSec + 1}
-                                        max={clipRangeMax}
-                                        step={1}
-                                        value={previewEndSec}
-                                        onChange={(event) => updateClipEndFromSlider(Number(event.target.value))}
-                                        disabled={creationDisabled}
-                                      />
+                                      {clipRangeMax ? (
+                                        <div className="clip-range-control__timeline" aria-hidden="true">
+                                          <div className="clip-range-control__timeline-track" />
+                                          <span
+                                            className="clip-range-control__pin clip-range-control__pin--start"
+                                            style={{ left: `${clipRangeStartPercent}%` }}
+                                          />
+                                          <span
+                                            className="clip-range-control__pin clip-range-control__pin--end"
+                                            style={{ left: `${clipRangeEndPercent}%` }}
+                                          />
+                                        </div>
+                                      ) : null}
+                                      <div className="clip-range-control__row">
+                                        <div className="clip-range-control__slider-group">
+                                          <label className="clip-range-control__label" htmlFor="clipRangeStart">
+                                            시작 위치
+                                          </label>
+                                          <input
+                                            id="clipRangeStart"
+                                            type="range"
+                                            min={0}
+                                            max={clipRangeMax}
+                                            step={CLIP_NUDGE_STEP}
+                                            value={previewStartSec}
+                                            onChange={(event) =>
+                                              updateClipStartFromSlider(Number(event.target.value), { preview: true })
+                                            }
+                                            onKeyDown={handleRangeKeyDown('start')}
+                                            disabled={creationDisabled}
+                                          />
+                                        </div>
+                                        <div className="clip-range-control__fine-tune" aria-label="시작 위치 미세 조정">
+                                          <p className="clip-range-control__fine-tune-label">미세 조정</p>
+                                          <div className="clip-range-control__fine-tune-actions">
+                                            <button
+                                              type="button"
+                                              className="clip-range-control__fine-tune-button"
+                                              onClick={() =>
+                                                nudgeClipBoundary('start', -CLIP_NUDGE_LARGE_STEP, { preview: true })
+                                              }
+                                              disabled={creationDisabled}
+                                            >
+                                              −1s
+                                            </button>
+                                            <button
+                                              type="button"
+                                              className="clip-range-control__fine-tune-button"
+                                              onClick={() =>
+                                                nudgeClipBoundary('start', -CLIP_NUDGE_STEP, { preview: true })
+                                              }
+                                              disabled={creationDisabled}
+                                            >
+                                              −0.5s
+                                            </button>
+                                            <button
+                                              type="button"
+                                              className="clip-range-control__fine-tune-button"
+                                              onClick={() =>
+                                                nudgeClipBoundary('start', CLIP_NUDGE_STEP, { preview: true })
+                                              }
+                                              disabled={creationDisabled}
+                                            >
+                                              +0.5s
+                                            </button>
+                                            <button
+                                              type="button"
+                                              className="clip-range-control__fine-tune-button"
+                                              onClick={() =>
+                                                nudgeClipBoundary('start', CLIP_NUDGE_LARGE_STEP, { preview: true })
+                                              }
+                                              disabled={creationDisabled}
+                                            >
+                                              +1s
+                                            </button>
+                                          </div>
+                                        </div>
+                                      </div>
+                                      <div className="clip-range-control__row clip-range-control__row--end">
+                                        <div className="clip-range-control__slider-group">
+                                          <label className="clip-range-control__label" htmlFor="clipRangeEnd">
+                                            종료 위치
+                                          </label>
+                                          <input
+                                            id="clipRangeEnd"
+                                            type="range"
+                                            min={previewStartSec + CLIP_NUDGE_STEP}
+                                            max={clipRangeMax}
+                                            step={CLIP_NUDGE_STEP}
+                                            value={previewEndSec}
+                                            onChange={(event) =>
+                                              updateClipEndFromSlider(Number(event.target.value), { preview: true })
+                                            }
+                                            onKeyDown={handleRangeKeyDown('end')}
+                                            disabled={creationDisabled}
+                                          />
+                                        </div>
+                                        <div className="clip-range-control__fine-tune" aria-label="종료 위치 미세 조정">
+                                          <p className="clip-range-control__fine-tune-label">미세 조정</p>
+                                          <div className="clip-range-control__fine-tune-actions">
+                                            <button
+                                              type="button"
+                                              className="clip-range-control__fine-tune-button"
+                                              onClick={() =>
+                                                nudgeClipBoundary('end', -CLIP_NUDGE_LARGE_STEP, { preview: true })
+                                              }
+                                              disabled={creationDisabled}
+                                            >
+                                              −1s
+                                            </button>
+                                            <button
+                                              type="button"
+                                              className="clip-range-control__fine-tune-button"
+                                              onClick={() =>
+                                                nudgeClipBoundary('end', -CLIP_NUDGE_STEP, { preview: true })
+                                              }
+                                              disabled={creationDisabled}
+                                            >
+                                              −0.5s
+                                            </button>
+                                            <button
+                                              type="button"
+                                              className="clip-range-control__fine-tune-button"
+                                              onClick={() =>
+                                                nudgeClipBoundary('end', CLIP_NUDGE_STEP, { preview: true })
+                                              }
+                                              disabled={creationDisabled}
+                                            >
+                                              +0.5s
+                                            </button>
+                                            <button
+                                              type="button"
+                                              className="clip-range-control__fine-tune-button"
+                                              onClick={() =>
+                                                nudgeClipBoundary('end', CLIP_NUDGE_LARGE_STEP, { preview: true })
+                                              }
+                                              disabled={creationDisabled}
+                                            >
+                                              +1s
+                                            </button>
+                                          </div>
+                                        </div>
+                                      </div>
                                       <div className="clip-range-control__times">
                                         <span>시작 {formatSeconds(previewStartSec)}</span>
                                         <span>종료 {formatSeconds(previewEndSec)}</span>
                                       </div>
+                                      <p className="clip-range-control__hint">
+                                        슬라이더에 포커스한 뒤 ←/→ 키(Shift 누르고 사용 시 ±1초)로 빠르게 미세 조정할 수 있습니다.
+                                      </p>
                                       <div className="clip-range-control__actions">
                                         <button
                                           type="button"
@@ -7806,6 +7996,7 @@ export default function App() {
                                               startSec={previewStartSec}
                                               endSec={previewEndSec}
                                               autoplay={false}
+                                              onPlayerInstanceChange={handleClipPreviewPlayerChange}
                                             />
                                           </Suspense>
                                         </div>
