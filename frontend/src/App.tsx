@@ -1914,18 +1914,9 @@ export default function App() {
     [location.pathname, navigate]
   );
   const [activeClipId, setActiveClipId] = useState<number | null>(null);
-  type LatestPreview = {
-    key: string;
-    type: 'video' | 'clip';
-    title: string;
-    artistName: string;
-    youtubeVideoId: string;
-    startSec: number;
-    endSec?: number | null;
-  };
-
-  const [activeLatestPreview, setActiveLatestPreview] = useState<LatestPreview | null>(null);
+  const [latestPlaybackNotice, setLatestPlaybackNotice] = useState<string | null>(null);
   const [latestVideoPreviewMessage, setLatestVideoPreviewMessage] = useState<string | null>(null);
+  const [adHocPlaybackItems, setAdHocPlaybackItems] = useState<PlaylistBarItem[]>([]);
 
   const appendArtistDebugLog = useCallback((entry: Omit<ArtistDebugLogEntry, 'id'>) => {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -3890,6 +3881,125 @@ export default function App() {
     return map;
   }, [playlistItems]);
 
+  const adHocItemIdRef = useRef(-1);
+
+  const createPlaylistVideoBarItem = useCallback(
+    ({
+      video,
+      itemId,
+      key,
+      titleOverride,
+      artistOverride
+    }: {
+      video: VideoResponse;
+      itemId: number;
+      key: string;
+      titleOverride?: string;
+      artistOverride?: string;
+    }): PlaylistBarItem => {
+      const youtubeVideoId = (video.youtubeVideoId ?? '').trim();
+      const hasYoutube = youtubeVideoId.length > 0;
+      const artistLabel =
+        artistOverride ||
+        video.artistDisplayName ||
+        video.artistName ||
+        video.artistYoutubeChannelTitle ||
+        null;
+      const summary = formatVideoMetaSummary(video, { includeDuration: false });
+      const subtitleParts = [artistLabel, summary].filter((part): part is string => Boolean(part));
+      const durationSec = parseDurationSeconds(video.durationSec);
+      const durationLabel = durationSec !== null ? formatSeconds(durationSec) : null;
+      const title =
+        titleOverride ||
+        formatSongTitle(video.title, { fallback: video.youtubeVideoId || '제목 없는 영상' }) ||
+        video.title ||
+        video.youtubeVideoId ||
+        '제목 없는 영상';
+
+      return {
+        itemId,
+        key,
+        type: 'video' as const,
+        title,
+        subtitle: subtitleParts.length > 0 ? subtitleParts.join(' · ') : null,
+        thumbnailUrl: video.thumbnailUrl ?? null,
+        youtubeVideoId: hasYoutube ? youtubeVideoId : null,
+        startSec: 0,
+        endSec: durationSec ?? undefined,
+        durationLabel,
+        isPlayable: hasYoutube,
+        badgeLabel: '영상',
+        rangeLabel: null
+      } satisfies PlaylistBarItem;
+    },
+    [formatVideoMetaSummary]
+  );
+
+  const createPlaylistClipBarItem = useCallback(
+    ({
+      clip,
+      parentVideo,
+      itemId,
+      key,
+      titleOverride,
+      artistOverride
+    }: {
+      clip: ClipResponse;
+      parentVideo: VideoResponse | null;
+      itemId: number;
+      key: string;
+      titleOverride?: string;
+      artistOverride?: string;
+    }): PlaylistBarItem => {
+      const youtubeVideoId = (clip.youtubeVideoId || parentVideo?.youtubeVideoId || '').trim();
+      const hasYoutube = youtubeVideoId.length > 0;
+      const rawClipTitle =
+        clip.title ||
+        clip.sectionTitle ||
+        clip.youtubeChapterTitle ||
+        clip.videoTitle ||
+        '제목 없는 클립';
+      const clipTitle =
+        titleOverride || formatSongTitle(clip.title, { tags: clip.tags, fallback: rawClipTitle }) || rawClipTitle;
+      const artistLabel =
+        artistOverride ||
+        clip.artistDisplayName ||
+        clip.artistName ||
+        clip.artistYoutubeChannelTitle ||
+        parentVideo?.artistDisplayName ||
+        parentVideo?.artistName ||
+        parentVideo?.artistYoutubeChannelTitle ||
+        null;
+      const parentTitle = clip.videoTitle || parentVideo?.title || null;
+      const rangeLabel =
+        Number.isFinite(clip.startSec) && Number.isFinite(clip.endSec)
+          ? `${formatSeconds(clip.startSec)} – ${formatSeconds(clip.endSec)}`
+          : null;
+      const durationLabel =
+        typeof clip.endSec === 'number' && typeof clip.startSec === 'number'
+          ? formatSeconds(Math.max(clip.endSec - clip.startSec, 0))
+          : null;
+      const subtitleParts = [artistLabel, parentTitle].filter((part): part is string => Boolean(part));
+
+      return {
+        itemId,
+        key,
+        type: 'clip' as const,
+        title: clipTitle,
+        subtitle: subtitleParts.length > 0 ? subtitleParts.join(' · ') : null,
+        thumbnailUrl: clip.thumbnailUrl ?? parentVideo?.thumbnailUrl ?? null,
+        youtubeVideoId: hasYoutube ? youtubeVideoId : null,
+        startSec: clip.startSec,
+        endSec: clip.endSec,
+        durationLabel,
+        isPlayable: hasYoutube,
+        badgeLabel: '클립',
+        rangeLabel
+      } satisfies PlaylistBarItem;
+    },
+    []
+  );
+
   const availablePlaylists = useMemo<PlaylistResponse[]>(
     () => (isAuthenticated ? userPlaylists : publicPlaylists),
     [isAuthenticated, publicPlaylists, userPlaylists]
@@ -4029,6 +4139,17 @@ export default function App() {
       }
     },
     [activePlaylist, applyUserPlaylistUpdate, authHeaders, http, isAuthenticated]
+  );
+
+  const handlePlaybackQueueRemove = useCallback(
+    async (itemId: number) => {
+      if (itemId < 0) {
+        setAdHocPlaybackItems((previous) => previous.filter((item) => item.itemId !== itemId));
+        return;
+      }
+      await handlePlaylistEntryRemove(itemId);
+    },
+    [handlePlaylistEntryRemove]
   );
 
   const handleVideoPlaylistToggle = useCallback(
@@ -4246,57 +4367,67 @@ export default function App() {
     });
   }, []);
 
+  const enqueueLatestPlaybackItem = useCallback(
+    (item: PlaylistBarItem, noticeLabel: string) => {
+      setAdHocPlaybackItems((previous) => {
+        const filtered = previous.filter((queued) => queued.key !== item.key);
+        return [...filtered, item];
+      });
+      setLatestPlaybackNotice(noticeLabel);
+      setLatestVideoPreviewMessage(null);
+      setPlaybackActivationNonce((previous) => previous + 1);
+      setActivePlaybackKey(item.key);
+      setIsPlaybackActive(true);
+      setIsPlaybackExpanded(true);
+      focusLatestPreviewRegion();
+    },
+    [focusLatestPreviewRegion, setIsPlaybackExpanded]
+  );
+
   const handleLatestVideoPlay = useCallback(
     (video: VideoResponse, displayTitle: string, artistName: string) => {
       const youtubeVideoId = (video.youtubeVideoId ?? '').trim();
-      const endSec = typeof video.durationSec === 'number' ? video.durationSec : null;
       if (youtubeVideoId) {
-        setActiveLatestPreview({
-          key: `video-${video.id}`,
-          type: 'video',
-          title: displayTitle,
-          artistName,
-          youtubeVideoId,
-          startSec: 0,
-          endSec
+        const itemId = adHocItemIdRef.current--;
+        const adHocItem = createPlaylistVideoBarItem({
+          video,
+          itemId,
+          key: `adhoc-video-${video.id}-${Math.abs(itemId)}`,
+          titleOverride: displayTitle,
+          artistOverride: artistName
         });
-        setLatestVideoPreviewMessage(null);
-        setIsPlaybackExpanded(true);
-        focusLatestPreviewRegion();
+        enqueueLatestPlaybackItem(adHocItem, `${displayTitle} · ${artistName}`);
         return;
       }
-      setActiveLatestPreview(null);
+      setLatestPlaybackNotice(null);
       setLatestVideoPreviewMessage(translate('latest.panel.previewUnavailable'));
     },
-    [focusLatestPreviewRegion, setIsPlaybackExpanded, translate]
+    [createPlaylistVideoBarItem, enqueueLatestPlaybackItem, translate]
   );
 
   const handleLatestClipPlay = useCallback(
     (clip: ClipResponse, parentVideo: VideoResponse | null, clipTitle: string, artistName: string) => {
       const youtubeVideoId = (clip.youtubeVideoId || parentVideo?.youtubeVideoId || '').trim();
       if (youtubeVideoId) {
-        setActiveLatestPreview({
-          key: `clip-${clip.id}`,
-          type: 'clip',
-          title: clipTitle,
-          artistName,
-          youtubeVideoId,
-          startSec: Number.isFinite(clip.startSec) ? Number(clip.startSec) : 0,
-          endSec: Number.isFinite(clip.endSec) ? Number(clip.endSec) : null
+        const itemId = adHocItemIdRef.current--;
+        const adHocItem = createPlaylistClipBarItem({
+          clip,
+          parentVideo: parentVideo ?? null,
+          itemId,
+          key: `adhoc-clip-${clip.id}-${Math.abs(itemId)}`,
+          titleOverride: clipTitle,
+          artistOverride: artistName
         });
-        setLatestVideoPreviewMessage(null);
-        setIsPlaybackExpanded(true);
-        focusLatestPreviewRegion();
+        enqueueLatestPlaybackItem(adHocItem, `${clipTitle} · ${artistName}`);
         return;
       }
-      setActiveLatestPreview(null);
+      setLatestPlaybackNotice(null);
       setLatestVideoPreviewMessage(translate('latest.panel.previewUnavailable'));
     },
-    [focusLatestPreviewRegion, setIsPlaybackExpanded, translate]
+    [createPlaylistClipBarItem, enqueueLatestPlaybackItem, translate]
   );
-
-  const handleLatestVideoClose = useCallback(() => {
-    setActiveLatestPreview(null);
+  const handleLatestPreviewDismiss = useCallback(() => {
+    setLatestPlaybackNotice(null);
     setLatestVideoPreviewMessage(null);
   }, []);
   const handleShowVideoList = useCallback(() => {
@@ -5032,93 +5163,28 @@ export default function App() {
 
   const isPlaylistEntryRemovalDisabled = !activePlaylist;
 
-  const playbackBarItems = useMemo<PlaylistBarItem[]>(() => {
+  const playlistPlaybackItems = useMemo<PlaylistBarItem[]>(() => {
     return playlistEntries.map((entry, index) => {
       const key = resolvePlaylistEntryKey(entry, index);
 
       if (entry.type === 'video') {
-        const video = entry.video;
-        const youtubeVideoId = (video.youtubeVideoId ?? '').trim();
-        const hasYoutube = youtubeVideoId.length > 0;
-        const artistLabel =
-          video.artistDisplayName || video.artistName || video.artistYoutubeChannelTitle || null;
-        const summary = formatVideoMetaSummary(video, { includeDuration: false });
-        const subtitleParts = [artistLabel, summary].filter((part): part is string => Boolean(part));
-        const durationSec = parseDurationSeconds(video.durationSec);
-        const durationLabel = durationSec !== null ? formatSeconds(durationSec) : null;
-        const title =
-          formatSongTitle(video.title, { fallback: video.youtubeVideoId || '제목 없는 영상' }) ||
-          video.title ||
-          video.youtubeVideoId ||
-          '제목 없는 영상';
-
-        return {
-          itemId: entry.itemId,
-          key,
-          type: 'video' as const,
-          title,
-          subtitle: subtitleParts.length > 0 ? subtitleParts.join(' · ') : null,
-          thumbnailUrl: video.thumbnailUrl ?? null,
-          youtubeVideoId: hasYoutube ? youtubeVideoId : null,
-          startSec: 0,
-          endSec: durationSec ?? undefined,
-          durationLabel,
-          isPlayable: hasYoutube,
-          badgeLabel: '영상',
-          rangeLabel: null
-        } satisfies PlaylistBarItem;
+        return createPlaylistVideoBarItem({ video: entry.video, itemId: entry.itemId, key });
       }
 
-      const clip = entry.clip;
       const parentVideo = entry.parentVideo;
-      const youtubeVideoId = (clip.youtubeVideoId || parentVideo?.youtubeVideoId || '').trim();
-      const hasYoutube = youtubeVideoId.length > 0;
-      const rawClipTitle =
-        clip.title ||
-        clip.sectionTitle ||
-        clip.youtubeChapterTitle ||
-        clip.videoTitle ||
-        '제목 없는 클립';
-      const clipTitle =
-        formatSongTitle(clip.title, { tags: clip.tags, fallback: rawClipTitle }) || rawClipTitle;
-      const artistLabel =
-        clip.artistDisplayName ||
-        clip.artistName ||
-        clip.artistYoutubeChannelTitle ||
-        parentVideo?.artistDisplayName ||
-        parentVideo?.artistName ||
-        parentVideo?.artistYoutubeChannelTitle ||
-        null;
-      const parentTitle = clip.videoTitle || parentVideo?.title || null;
-      const rangeLabel =
-        Number.isFinite(clip.startSec) && Number.isFinite(clip.endSec)
-          ? `${formatSeconds(clip.startSec)} – ${formatSeconds(clip.endSec)}`
-          : null;
-      const durationLabel =
-        typeof clip.endSec === 'number' && typeof clip.startSec === 'number'
-          ? formatSeconds(Math.max(clip.endSec - clip.startSec, 0))
-          : null;
-      const subtitleParts = [artistLabel, parentTitle].filter(
-        (part): part is string => Boolean(part)
-      );
 
-      return {
+      return createPlaylistClipBarItem({
+        clip: entry.clip,
+        parentVideo,
         itemId: entry.itemId,
-        key,
-        type: 'clip' as const,
-        title: clipTitle,
-        subtitle: subtitleParts.length > 0 ? subtitleParts.join(' · ') : null,
-        thumbnailUrl: clip.thumbnailUrl ?? parentVideo?.thumbnailUrl ?? null,
-        youtubeVideoId: hasYoutube ? youtubeVideoId : null,
-        startSec: clip.startSec,
-        endSec: clip.endSec,
-        durationLabel,
-        isPlayable: hasYoutube,
-        badgeLabel: '클립',
-        rangeLabel
-      } satisfies PlaylistBarItem;
+        key
+      });
     });
-  }, [playlistEntries, resolvePlaylistEntryKey]);
+  }, [createPlaylistClipBarItem, createPlaylistVideoBarItem, playlistEntries, resolvePlaylistEntryKey]);
+
+  const playbackBarItems = useMemo<PlaylistBarItem[]>(() => {
+    return [...adHocPlaybackItems, ...playlistPlaybackItems];
+  }, [adHocPlaybackItems, playlistPlaybackItems]);
 
 
   const hasPlaybackItems = playbackBarItems.length > 0;
@@ -5142,6 +5208,8 @@ export default function App() {
       setActivePlaybackKey(null);
       setIsPlaybackActive(false);
       setIsPlaybackExpanded(false);
+      setLatestPlaybackNotice(null);
+      setLatestVideoPreviewMessage(null);
       return;
     }
 
@@ -5431,7 +5499,7 @@ export default function App() {
       return playbackBarItems;
     }
     const filteredIds = new Set(filteredPlaylistEntries.map((entry) => entry.itemId));
-    return playbackBarItems.filter((item) => filteredIds.has(item.itemId));
+    return playbackBarItems.filter((item) => item.itemId < 0 || filteredIds.has(item.itemId));
   }, [filteredPlaylistEntries, normalizedPlaylistQuery, playbackBarItems]);
 
   useEffect(() => {
@@ -6462,67 +6530,84 @@ export default function App() {
                   <div className="latest-block__header">
                     <h3>{translate('latest.panel.videosHeading')}</h3>
                   </div>
-                  {(activeLatestPreview || latestVideoPreviewMessage) && (
+                  {(latestPlaybackNotice || latestVideoPreviewMessage || currentPlaybackItem) && (
                     <div
                       className="latest-video-preview-region"
                       aria-live="polite"
                       ref={latestPreviewRegionRef}
                     >
-                      {activeLatestPreview ? (
-                        <div
-                          className="latest-video-preview"
-                          role="dialog"
-                          aria-modal="false"
-                          aria-label={`${translate('latest.panel.previewAriaLabel')} · ${
-                            activeLatestPreview.title
-                          }`}
-                        >
-                          <div className="latest-video-preview__header">
-                            <div>
-                              <h4 className="latest-video-preview__title">{activeLatestPreview.title}</h4>
-                              <p className="latest-video-preview__subtitle">{activeLatestPreview.artistName}</p>
-                            </div>
-                            <button
-                              type="button"
-                              className="latest-video-preview__close"
-                              onClick={handleLatestVideoClose}
-                              aria-label={translate('latest.panel.closePreviewAriaLabel')}
-                            >
-                              {translate('latest.panel.closePreview')}
-                            </button>
-                          </div>
-                          {activeLatestPreview.youtubeVideoId ? (
-                            <div className="latest-video-preview__player">
-                              <Suspense
-                                fallback={
-                                  <div
-                                    className="latest-video-preview__loading"
-                                    role="status"
-                                    aria-live="polite"
-                                  >
-                                    {translate('latest.panel.previewLoading')}
-                                  </div>
-                                }
-                              >
-                                <ClipPlayer
-                                  key={activeLatestPreview.key}
-                                  youtubeVideoId={activeLatestPreview.youtubeVideoId}
-                                  startSec={activeLatestPreview.startSec}
-                                  endSec={activeLatestPreview.endSec ?? undefined}
-                                />
-                              </Suspense>
-                            </div>
-                          ) : (
-                            <p className="latest-video-preview__message" role="status">
-                              {translate('latest.panel.previewUnavailable')}
+                      <div
+                        className="latest-video-preview"
+                        role="dialog"
+                        aria-modal="false"
+                        aria-label={`${translate('latest.panel.previewAriaLabel')} · ${
+                          latestPlaybackNotice ?? translate('latest.panel.heading')
+                        }`}
+                      >
+                        <div className="latest-video-preview__header">
+                          <div>
+                            <h4 className="latest-video-preview__title">
+                              {latestPlaybackNotice || translate('latest.panel.heading')}
+                            </h4>
+                            <p className="latest-video-preview__subtitle">
+                              {latestPlaybackNotice
+                                ? '하단 재생바에서 이어서 감상할 수 있어요.'
+                                : translate('latest.panel.previewLoading')}
                             </p>
-                          )}
+                          </div>
+                          <button
+                            type="button"
+                            className="latest-video-preview__close"
+                            onClick={handleLatestPreviewDismiss}
+                            aria-label={translate('latest.panel.closePreviewAriaLabel')}
+                          >
+                            {translate('latest.panel.closePreview')}
+                          </button>
                         </div>
-                      ) : latestVideoPreviewMessage ? (
-                        <p className="latest-video-preview__message" role="status">
-                          {latestVideoPreviewMessage}
-                        </p>
-                      ) : null}
+                        {latestVideoPreviewMessage ? (
+                          <p className="latest-video-preview__message" role="status">
+                            {latestVideoPreviewMessage}
+                          </p>
+                        ) : currentPlaybackItem ? (
+                          <div className="latest-video-preview__queue-status">
+                            <p className="latest-video-preview__subtitle">지금 재생 중</p>
+                            <p className="latest-video-preview__title">{currentPlaybackItem.title}</p>
+                            {currentPlaybackItem.subtitle && (
+                              <p className="latest-video-preview__subtitle">{currentPlaybackItem.subtitle}</p>
+                            )}
+                            <div className="latest-video-preview__actions" role="group" aria-label="재생 제어">
+                              <button
+                                type="button"
+                                className="latest-video-preview__action"
+                                onClick={handlePlaybackPrevious}
+                              >
+                                이전
+                              </button>
+                              <button
+                                type="button"
+                                className="latest-video-preview__action"
+                                onClick={handlePlaybackToggle}
+                              >
+                                {isPlaybackActive ? '일시정지' : '재생'}
+                              </button>
+                              <button
+                                type="button"
+                                className="latest-video-preview__action"
+                                onClick={handlePlaybackNext}
+                              >
+                                다음
+                              </button>
+                            </div>
+                            <p className="latest-video-preview__message">
+                              재생/반복 제어는 하단 재생바와 동일하게 적용돼요.
+                            </p>
+                          </div>
+                        ) : (
+                          <p className="latest-video-preview__message" role="status">
+                            {translate('latest.panel.previewUnavailable')}
+                          </p>
+                        )}
+                      </div>
                     </div>
                   )}
                   {latestVideos.length > 0 ? (
@@ -8218,7 +8303,7 @@ export default function App() {
           onRepeatModeChange={setPlaybackRepeatMode}
           onToggleExpanded={handlePlaybackToggleExpanded}
           onSelectItem={handlePlaybackSelect}
-          onRemoveItem={handlePlaylistEntryRemove}
+          onRemoveItem={handlePlaybackQueueRemove}
           onTrackEnded={handlePlaybackEnded}
           onPlayerInstanceChange={handlePlaybackPlayerChange}
         />
