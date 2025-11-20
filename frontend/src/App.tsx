@@ -20,7 +20,6 @@ import PlaylistBar, {
   type PlaybackRepeatMode,
   type PlaylistBarItem
 } from './components/PlaylistBar';
-import PlaylistWidgetControls from './components/PlaylistWidgetControls';
 import AuthPanel from './components/AuthPanel';
 import LanguageToggle from './components/LanguageToggle';
 import utahubLogo from './assets/utahub-logo.svg';
@@ -8169,24 +8168,6 @@ export default function App() {
               <p className="playlist-widget__subtitle">{playlistSubtitle}</p>
             </div>
           </div>
-          {hasPlaybackItems && !isMobileViewport && (
-            <PlaylistWidgetControls
-              items={playbackBarItems}
-              currentItemKey={activePlaybackKey}
-              currentIndex={currentPlaybackIndex}
-              playbackActivationNonce={playbackActivationNonce}
-              isPlaying={isPlaybackActive}
-              canCreatePlaylist={isAuthenticated}
-              onCreatePlaylist={handleCreatePlaylist}
-              onPlayPause={handlePlaybackToggle}
-              onNext={handlePlaybackNext}
-              onPrevious={handlePlaybackPrevious}
-              repeatMode={playbackRepeatMode}
-              onRepeatModeChange={setPlaybackRepeatMode}
-              onTrackEnded={handlePlaybackEnded}
-              onPlayerInstanceChange={handlePlaybackPlayerChange}
-            />
-          )}
           <div className="playlist-widget__selector">
             <label className="playlist-selector__label" htmlFor="playlistWidgetSelector">
               {playlistSelectorLabel}
@@ -8280,7 +8261,7 @@ export default function App() {
         </nav>
       )}
       </div>
-      {hasPlaybackItems && isMobileViewport && (
+      {hasPlaybackItems && (
         <PlaylistBar
           items={playbackBarItems}
           queueItems={filteredPlaybackBarItems}
@@ -8290,7 +8271,7 @@ export default function App() {
           isPlaying={isPlaybackActive}
           isExpanded={isPlaybackExpanded}
           isMobileViewport={isMobileViewport}
-          showQueueToggle={isMobileViewport}
+          showQueueToggle
           canCreatePlaylist={isAuthenticated}
           canModifyPlaylist={canModifyActivePlaylist}
           playlistSearchQuery={playlistSearchQuery}
