@@ -2040,6 +2040,25 @@ export default function App() {
     },
     [location.pathname, navigate]
   );
+  const previousMobileSectionRef = useRef<SectionKey | null>(null);
+  const handleSidebarDrawerOpen = useCallback(() => {
+    previousMobileSectionRef.current = activeSection;
+    setSidebarDrawerOpen(true);
+  }, [activeSection]);
+  const handleSidebarDrawerClose = useCallback(() => {
+    setSidebarDrawerOpen(false);
+    const previousSection = previousMobileSectionRef.current;
+    if (previousSection) {
+      navigateToSection(previousSection);
+    }
+  }, [navigateToSection]);
+  const handleSidebarDrawerToggle = useCallback(() => {
+    if (isSidebarDrawerOpen) {
+      handleSidebarDrawerClose();
+      return;
+    }
+    handleSidebarDrawerOpen();
+  }, [handleSidebarDrawerClose, handleSidebarDrawerOpen, isSidebarDrawerOpen]);
   const [activeClipId, setActiveClipId] = useState<number | null>(null);
   const [latestPlaybackNotice, setLatestPlaybackNotice] = useState<string | null>(null);
   const [latestVideoPreviewMessage, setLatestVideoPreviewMessage] = useState<string | null>(null);
@@ -6461,6 +6480,121 @@ export default function App() {
     }
   })();
 
+  const rightSidebarContent = (
+    <aside
+      id="rightSidebarDrawer"
+      className={`right-sidebar${isMobileViewport ? ' right-sidebar--drawer' : ''}${
+        isSidebarDrawerOpen ? ' is-open' : ''
+      }`}
+      aria-label="보조 위젯"
+      aria-hidden={isMobileViewport && !isSidebarDrawerOpen ? true : undefined}
+    >
+      <div className="search-widget">
+        <div className="search-input-group">
+          <SearchIcon />
+          <input
+            type="search"
+            value={artistSearch.query}
+            onChange={(event) => handleArtistSearchQueryChange(event.target.value)}
+            placeholder="아티스트 검색"
+            aria-label="아티스트 검색"
+          />
+        </div>
+      </div>
+
+      <div className="widget-box">
+        <h3>라이브</h3>
+        {isLiveArtistsLoading ? (
+          <p className="live-mini-item" aria-live="polite">
+            방송 정보를 불러오는 중...
+          </p>
+        ) : liveWidgetEntries.length === 0 ? (
+          <p className="live-mini-item" aria-live="polite">
+            현재 진행 중인 라이브가 없습니다.
+          </p>
+        ) : (
+          liveWidgetEntries.map((entry) => (
+            <div key={entry.key} className="live-mini-item">
+              <strong>{entry.artistName}</strong>
+              <span>{entry.title}</span>
+            </div>
+          ))
+        )}
+      </div>
+
+      <div className="widget-box playlist-widget">
+        <div className="playlist-widget__header">
+          <div>
+            <h3>재생목록</h3>
+            <p className="playlist-widget__subtitle">{playlistSubtitle}</p>
+          </div>
+        </div>
+        <div className="playlist-widget__selector">
+          <label className="playlist-selector__label" htmlFor="playlistWidgetSelector">
+            {playlistSelectorLabel}
+          </label>
+          {availablePlaylists.length > 0 ? (
+            <select
+              id="playlistWidgetSelector"
+              className="playlist-selector__dropdown"
+              value={playlistSelectionValue}
+              onChange={handlePlaylistSelectionChange}
+            >
+              {!activePlaylist && (
+                <option value="" disabled>
+                  재생목록을 선택하세요
+                </option>
+              )}
+              {availablePlaylists.map((playlist) => {
+                const trimmedTitle = playlist.title.trim();
+                const optionLabel = trimmedTitle.length > 0 ? trimmedTitle : `재생목록 ${playlist.id}`;
+                return (
+                  <option key={playlist.id} value={playlist.id}>
+                    {optionLabel}
+                  </option>
+                );
+              })}
+            </select>
+          ) : (
+            <div className="playlist-selector__empty" role="status" aria-live="polite">
+              표시할 재생목록이 없습니다.
+            </div>
+          )}
+        </div>
+        <div className="playlist-widget__search">
+          <label className="playlist-search__label" htmlFor="playlistWidgetSearch">
+            검색
+          </label>
+          <div className="playlist-search__input">
+            <SearchIcon />
+            <input
+              id="playlistWidgetSearch"
+              type="search"
+              value={playlistSearchQuery}
+              onChange={(event) => setPlaylistSearchQuery(event.target.value)}
+              placeholder="영상 또는 클립 검색"
+              aria-label="영상 또는 클립 검색"
+            />
+          </div>
+        </div>
+        <div className="playlist-widget__entries">
+          {!playlistHasResults ? (
+            <p className="empty-state">{playlistEmptyMessage}</p>
+          ) : (
+            <PlaylistEntriesList
+              entries={filteredPlaylistEntries}
+              expandedPlaylistEntryId={expandedPlaylistEntryId}
+              handlePlaylistEntryRemove={handlePlaylistEntryRemove}
+              setExpandedPlaylistEntryId={setExpandedPlaylistEntryId}
+              resolvePlaylistEntryKey={resolvePlaylistEntryKey}
+              isRemovalDisabled={isPlaylistEntryRemovalDisabled}
+            />
+          )}
+        </div>
+      </div>
+    </aside>
+  );
+
   return (
     <>
       <div className="toast-stack" aria-live="polite" aria-atomic="true">
@@ -6604,7 +6738,7 @@ export default function App() {
               aria-label="위젯 토글"
               aria-expanded={isSidebarDrawerOpen}
               aria-controls="rightSidebarDrawer"
-              onClick={() => setSidebarDrawerOpen((previous) => !previous)}
+              onClick={handleSidebarDrawerToggle}
             >
               <WidgetIcon />
             </button>
@@ -8400,126 +8534,35 @@ export default function App() {
         </div>
       </main>
 
-      <aside
-        id="rightSidebarDrawer"
-        className={`right-sidebar${isMobileViewport ? ' right-sidebar--drawer' : ''}${
-          isSidebarDrawerOpen ? ' is-open' : ''
-        }`}
-        aria-label="보조 위젯"
-        aria-hidden={isMobileViewport && !isSidebarDrawerOpen ? true : undefined}
-      >
-        <div className="search-widget">
-          <div className="search-input-group">
-            <SearchIcon />
-            <input
-              type="search"
-              value={artistSearch.query}
-              onChange={(event) => handleArtistSearchQueryChange(event.target.value)}
-              placeholder="아티스트 검색"
-              aria-label="아티스트 검색"
-            />
-          </div>
-        </div>
-
-        <div className="widget-box">
-          <h3>라이브</h3>
-          {isLiveArtistsLoading ? (
-            <p className="live-mini-item" aria-live="polite">
-              방송 정보를 불러오는 중...
-            </p>
-          ) : liveWidgetEntries.length === 0 ? (
-            <p className="live-mini-item" aria-live="polite">
-              현재 진행 중인 라이브가 없습니다.
-            </p>
-          ) : (
-            liveWidgetEntries.map((entry) => (
-              <div key={entry.key} className="live-mini-item">
-                <strong>{entry.artistName}</strong>
-                <span>{entry.title}</span>
+      {!isMobileViewport ? (
+        rightSidebarContent
+      ) : (
+        <>
+          {isSidebarDrawerOpen && (
+            <div className="mobile-queue-overlay" role="dialog" aria-modal="true" aria-label="재생 목록">
+              <div className="mobile-queue-overlay__header">
+                <h2>재생 목록</h2>
+                <button
+                  type="button"
+                  className="mobile-queue-overlay__close"
+                  onClick={handleSidebarDrawerClose}
+                  aria-label="재생 목록 닫기"
+                >
+                  <span aria-hidden="true">×</span>
+                </button>
               </div>
-            ))
+              <div className="mobile-queue-content">{rightSidebarContent}</div>
+            </div>
           )}
-        </div>
-
-        <div className="widget-box playlist-widget">
-          <div className="playlist-widget__header">
-            <div>
-              <h3>재생목록</h3>
-              <p className="playlist-widget__subtitle">{playlistSubtitle}</p>
-            </div>
-          </div>
-          <div className="playlist-widget__selector">
-            <label className="playlist-selector__label" htmlFor="playlistWidgetSelector">
-              {playlistSelectorLabel}
-            </label>
-            {availablePlaylists.length > 0 ? (
-              <select
-                id="playlistWidgetSelector"
-                className="playlist-selector__dropdown"
-                value={playlistSelectionValue}
-                onChange={handlePlaylistSelectionChange}
-              >
-                {!activePlaylist && (
-                  <option value="" disabled>
-                    재생목록을 선택하세요
-                  </option>
-                )}
-                {availablePlaylists.map((playlist) => {
-                  const trimmedTitle = playlist.title.trim();
-                  const optionLabel = trimmedTitle.length > 0 ? trimmedTitle : `재생목록 ${playlist.id}`;
-                  return (
-                    <option key={playlist.id} value={playlist.id}>
-                      {optionLabel}
-                    </option>
-                  );
-                })}
-              </select>
-            ) : (
-              <div className="playlist-selector__empty" role="status" aria-live="polite">
-                표시할 재생목록이 없습니다.
-              </div>
-            )}
-          </div>
-          <div className="playlist-widget__search">
-            <label className="playlist-search__label" htmlFor="playlistWidgetSearch">
-              검색
-            </label>
-            <div className="playlist-search__input">
-              <SearchIcon />
-              <input
-                id="playlistWidgetSearch"
-                type="search"
-                value={playlistSearchQuery}
-                onChange={(event) => setPlaylistSearchQuery(event.target.value)}
-                placeholder="영상 또는 클립 검색"
-                aria-label="영상 또는 클립 검색"
-              />
-            </div>
-          </div>
-          <div className="playlist-widget__entries">
-            {!playlistHasResults ? (
-              <p className="empty-state">{playlistEmptyMessage}</p>
-            ) : (
-              <PlaylistEntriesList
-                entries={filteredPlaylistEntries}
-                expandedPlaylistEntryId={expandedPlaylistEntryId}
-                handlePlaylistEntryRemove={handlePlaylistEntryRemove}
-                setExpandedPlaylistEntryId={setExpandedPlaylistEntryId}
-                resolvePlaylistEntryKey={resolvePlaylistEntryKey}
-                isRemovalDisabled={isPlaylistEntryRemovalDisabled}
-              />
-            )}
-          </div>
-        </div>
-      </aside>
-
-      {isMobileViewport && isSidebarDrawerOpen && (
-        <button
-          type="button"
-          className="right-sidebar__backdrop"
-          aria-label="위젯 닫기"
-          onClick={() => setSidebarDrawerOpen(false)}
-        />
+          {isSidebarDrawerOpen && (
+            <button
+              type="button"
+              className="right-sidebar__backdrop"
+              aria-label="위젯 닫기"
+              onClick={handleSidebarDrawerClose}
+            />
+          )}
+        </>
       )}
 
       {isMobileViewport && (
