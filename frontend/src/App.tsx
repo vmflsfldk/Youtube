@@ -1458,7 +1458,9 @@ export default function App() {
   const [playbackRepeatMode, setPlaybackRepeatMode] = useState<PlaybackRepeatMode>('off');
   const [activePlaybackKey, setActivePlaybackKey] = useState<string | null>(null);
   const [playbackActivationNonce, setPlaybackActivationNonce] = useState(0);
-  const [isMobileViewport, setIsMobileViewport] = useState(false);
+  const resolveIsMobileViewport = () =>
+    typeof window !== 'undefined' ? window.innerWidth <= 768 : false;
+  const [isMobileViewport, setIsMobileViewport] = useState(resolveIsMobileViewport);
   const [isMobileAuthOverlayOpen, setMobileAuthOverlayOpen] = useState(false);
   const [isMobileQueueOpen, setIsMobileQueueOpen] = useState(false);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
@@ -1891,25 +1893,15 @@ export default function App() {
   }, [isMobileAuthOverlayOpen]);
 
   useEffect(() => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+    if (typeof window === 'undefined') {
       return;
     }
 
-    const mediaQuery = window.matchMedia('(max-width: 1280px)');
-    const updateViewportState = (event: MediaQueryListEvent | MediaQueryList) => {
-      setIsMobileViewport(event.matches);
-    };
+    const handleResize = () => setIsMobileViewport(resolveIsMobileViewport());
+    handleResize();
 
-    updateViewportState(mediaQuery);
-
-    const listener = (event: MediaQueryListEvent) => updateViewportState(event);
-    if (typeof mediaQuery.addEventListener === 'function') {
-      mediaQuery.addEventListener('change', listener);
-      return () => mediaQuery.removeEventListener('change', listener);
-    }
-
-    mediaQuery.addListener(listener);
-    return () => mediaQuery.removeListener(listener);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
   }, []);
 
   useEffect(() => {
@@ -6652,72 +6644,73 @@ export default function App() {
         </div>
       )}
 
-      <div className="app-shell app-container">
-        <aside
-          id="app-sidebar"
-          className={`sidebar${isMobileViewport ? ' hidden' : ''}`}
-          aria-label={translate('layout.sidebarNavLabel')}
-          aria-hidden={isMobileViewport ? true : undefined}
-        >
-          <div className="sidebar__brand">
-            <div className="sidebar__logo">
-              <img src={utahubLogo} alt={translate('layout.logoAlt')} />
+      <div className={`app-layout ${isMobileViewport ? 'mobile-layout' : 'desktop-layout'}`}>
+        {!isMobileViewport && (
+          <aside
+            id="app-sidebar"
+            className="sidebar sidebar-left"
+            aria-label={translate('layout.sidebarNavLabel')}
+          >
+            <div className="sidebar__brand">
+              <div className="sidebar__logo">
+                <img src={utahubLogo} alt={translate('layout.logoAlt')} />
+              </div>
+              <div className="sidebar__brand-copy">
+                <p className="sidebar__eyebrow">{translate('app.brand')}</p>
+                <h1>{translate('app.title')}</h1>
+              </div>
             </div>
-            <div className="sidebar__brand-copy">
-              <p className="sidebar__eyebrow">{translate('app.brand')}</p>
-              <h1>{translate('app.title')}</h1>
+            <nav className="sidebar__nav">
+              {sidebarTabs.map((tab) => {
+                const isActive = activeSection === tab.id;
+                return (
+                  <Link
+                    key={tab.id}
+                    id={`sidebar-tab-${tab.id}`}
+                    className={`sidebar__tab${isActive ? ' active' : ''}`}
+                    to={SECTION_PATHS[tab.id]}
+                    aria-current={isActive ? 'page' : undefined}
+                  >
+                    <span className="sidebar__tab-icon">{tab.icon}</span>
+                    <span className="sidebar__tab-text">
+                      <span className="sidebar__tab-label">{tab.label}</span>
+                      <span className="sidebar__tab-description">{tab.description}</span>
+                    </span>
+                  </Link>
+                );
+              })}
+            </nav>
+            <div className="sidebar__footer">
+              <AuthPanel
+                className="auth-panel--sidebar"
+                isAuthenticated={isAuthenticated}
+                greetingMessage={greetingMessage}
+                isLoadingUser={isLoadingUser}
+                nicknameInput={nicknameInput}
+                onNicknameInputChange={(value) => setNicknameInput(value)}
+                onNicknameSubmit={handleNicknameSubmit}
+                nicknameStatus={nicknameStatus}
+                nicknameError={nicknameError}
+                onSignOut={handleSignOut}
+                isGoogleReady={isGoogleReady}
+                onGoogleCredential={handleGoogleCredential}
+                shouldAutoPromptGoogle={shouldAutoPromptGoogle}
+              />
+              <p className="sidebar__contact">
+                문의 및 오류 제보는{' '}
+                <a href="https://x.com/utahuboffcial" target="_blank" rel="noopener noreferrer">
+                  X의 @utahuboffcial
+                </a>{' '}
+                또는{' '}
+                <a href="mailto:utahubcs@gmail.com">utahubcs@gmail.com</a>
+                으로 부탁드립니다.
+              </p>
             </div>
-          </div>
-          <nav className="sidebar__nav">
-            {sidebarTabs.map((tab) => {
-              const isActive = activeSection === tab.id;
-              return (
-                <Link
-                  key={tab.id}
-                  id={`sidebar-tab-${tab.id}`}
-                  className={`sidebar__tab${isActive ? ' active' : ''}`}
-                  to={SECTION_PATHS[tab.id]}
-                  aria-current={isActive ? 'page' : undefined}
-                >
-                  <span className="sidebar__tab-icon">{tab.icon}</span>
-                  <span className="sidebar__tab-text">
-                    <span className="sidebar__tab-label">{tab.label}</span>
-                    <span className="sidebar__tab-description">{tab.description}</span>
-                  </span>
-                </Link>
-              );
-            })}
-          </nav>
-          <div className="sidebar__footer">
-            <AuthPanel
-              className="auth-panel--sidebar"
-              isAuthenticated={isAuthenticated}
-              greetingMessage={greetingMessage}
-              isLoadingUser={isLoadingUser}
-              nicknameInput={nicknameInput}
-              onNicknameInputChange={(value) => setNicknameInput(value)}
-              onNicknameSubmit={handleNicknameSubmit}
-              nicknameStatus={nicknameStatus}
-              nicknameError={nicknameError}
-              onSignOut={handleSignOut}
-              isGoogleReady={isGoogleReady}
-              onGoogleCredential={handleGoogleCredential}
-              shouldAutoPromptGoogle={shouldAutoPromptGoogle}
-            />
-            <p className="sidebar__contact">
-              문의 및 오류 제보는{' '}
-              <a href="https://x.com/utahuboffcial" target="_blank" rel="noopener noreferrer">
-                X의 @utahuboffcial
-              </a>{' '}
-              또는{' '}
-              <a href="mailto:utahubcs@gmail.com">utahubcs@gmail.com</a>
-              으로 부탁드립니다.
-            </p>
-          </div>
-        </aside>
+          </aside>
+        )}
 
         {isMobileViewport && (
-          <header className="mobile-top-header">
+          <header className="mobile-header">
             <div className="mobile-logo-area">
               <img src={utahubLogo} alt={translate('layout.logoAlt')} className="mobile-logo" />
             </div>
@@ -6737,65 +6730,66 @@ export default function App() {
           </header>
         )}
 
-        <main className="content-area">
-          {!isMobileViewport && (
-            <header className="content-header">
-              <div className="content-header__body">
-                <div className="content-header__top-row">
-                  <p className="content-header__eyebrow">{translate('header.eyebrow')}</p>
-                  <LanguageToggle className="content-header__language-toggle" />
+        <main className="main-content">
+          <div className="content-area">
+            {!isMobileViewport && (
+              <header className="content-header">
+                <div className="content-header__body">
+                  <div className="content-header__top-row">
+                    <p className="content-header__eyebrow">{translate('header.eyebrow')}</p>
+                    <LanguageToggle className="content-header__language-toggle" />
+                  </div>
+                  <h2>{activeSidebarTab.label}</h2>
+                  <p className="content-header__description">{activeSidebarTab.description}</p>
                 </div>
-                <h2>{activeSidebarTab.label}</h2>
-                <p className="content-header__description">{activeSidebarTab.description}</p>
-              </div>
-            </header>
-          )}
+              </header>
+            )}
 
-          {isMobileViewport && isMobileAuthOverlayOpen && (
-            <div className="mobile-auth-overlay">
-              <div
-                className="mobile-auth-overlay__backdrop"
-                role="presentation"
-                onClick={() => setMobileAuthOverlayOpen(false)}
-              />
-              <div
-                className="mobile-auth-overlay__content"
-                role="dialog"
-                aria-modal="true"
-                aria-label={mobileAuthOverlayLabel}
-                id="mobileAuthDialog"
-                ref={mobileAuthOverlayContentRef}
-                tabIndex={-1}
-              >
-                <button
-                  type="button"
-                  className="mobile-auth-overlay__close"
+            {isMobileViewport && isMobileAuthOverlayOpen && (
+              <div className="mobile-auth-overlay">
+                <div
+                  className="mobile-auth-overlay__backdrop"
+                  role="presentation"
                   onClick={() => setMobileAuthOverlayOpen(false)}
-                  aria-label={translate('mobile.auth.closeAriaLabel')}
-                >
-                  <span aria-hidden="true">×</span>
-                </button>
-                <AuthPanel
-                  className="auth-panel--mobile"
-                  isAuthenticated={isAuthenticated}
-                  greetingMessage={greetingMessage}
-                  isLoadingUser={isLoadingUser}
-                  nicknameInput={nicknameInput}
-                  onNicknameInputChange={(value) => setNicknameInput(value)}
-                  onNicknameSubmit={handleNicknameSubmit}
-                  nicknameStatus={nicknameStatus}
-                  nicknameError={nicknameError}
-                  onSignOut={handleSignOut}
-                  isGoogleReady={isGoogleReady}
-                  onGoogleCredential={handleGoogleCredential}
-                  shouldAutoPromptGoogle={shouldAutoPromptGoogle}
                 />
+                <div
+                  className="mobile-auth-overlay__content"
+                  role="dialog"
+                  aria-modal="true"
+                  aria-label={mobileAuthOverlayLabel}
+                  id="mobileAuthDialog"
+                  ref={mobileAuthOverlayContentRef}
+                  tabIndex={-1}
+                >
+                  <button
+                    type="button"
+                    className="mobile-auth-overlay__close"
+                    onClick={() => setMobileAuthOverlayOpen(false)}
+                    aria-label={translate('mobile.auth.closeAriaLabel')}
+                  >
+                    <span aria-hidden="true">×</span>
+                  </button>
+                  <AuthPanel
+                    className="auth-panel--mobile"
+                    isAuthenticated={isAuthenticated}
+                    greetingMessage={greetingMessage}
+                    isLoadingUser={isLoadingUser}
+                    nicknameInput={nicknameInput}
+                    onNicknameInputChange={(value) => setNicknameInput(value)}
+                    onNicknameSubmit={handleNicknameSubmit}
+                    nicknameStatus={nicknameStatus}
+                    nicknameError={nicknameError}
+                    onSignOut={handleSignOut}
+                    isGoogleReady={isGoogleReady}
+                    onGoogleCredential={handleGoogleCredential}
+                    shouldAutoPromptGoogle={shouldAutoPromptGoogle}
+                  />
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          <div className="content-panels">
-          <Routes>
+            <div className="content-panels">
+            <Routes>
 
             <Route
               path={SECTION_PATHS.latest}
@@ -8526,6 +8520,7 @@ export default function App() {
           </Routes>
 
         </div>
+          </div>
       </main>
 
         {!isMobileViewport && rightSidebarContent}
@@ -8552,61 +8547,63 @@ export default function App() {
           </div>
         )}
 
-        {(hasPlaybackItems || (isMobileViewport && !isMobileQueueOpen)) && (
-          <div className="bottom-stack">
-            {hasPlaybackItems && (
-              <PlaylistBar
-                items={playbackBarItems}
-                queueItems={filteredPlaybackBarItems}
-                currentItemKey={activePlaybackKey}
-                currentIndex={currentPlaybackIndex}
-                className="stack-player"
-                playbackActivationNonce={playbackActivationNonce}
-                isPlaying={isPlaybackActive}
-                isExpanded={!isMobileViewport && isPlaybackExpanded}
-                isMobileViewport={isMobileViewport}
-                showQueueToggle
-                canCreatePlaylist={isAuthenticated}
-                canModifyPlaylist={canModifyActivePlaylist}
-                playlistSearchQuery={playlistSearchQuery}
-                onPlaylistSearchChange={setPlaylistSearchQuery}
-                onCreatePlaylist={handleCreatePlaylist}
-                onPlayPause={handlePlaybackToggle}
-                onNext={handlePlaybackNext}
-                onPrevious={handlePlaybackPrevious}
-                repeatMode={playbackRepeatMode}
-                onRepeatModeChange={setPlaybackRepeatMode}
-                onToggleExpanded={handlePlaybackToggleExpanded}
-                onSelectItem={handlePlaybackSelect}
-                onRemoveItem={handlePlaybackQueueRemove}
-                onTrackEnded={handlePlaybackEnded}
-                onPlayerInstanceChange={handlePlaybackPlayerChange}
-              />
-            )}
+        <div className="bottom-fixed-area">
+          {(hasPlaybackItems || (isMobileViewport && !isMobileQueueOpen)) && (
+            <div className="bottom-stack">
+              {hasPlaybackItems && (
+                <PlaylistBar
+                  items={playbackBarItems}
+                  queueItems={filteredPlaybackBarItems}
+                  currentItemKey={activePlaybackKey}
+                  currentIndex={currentPlaybackIndex}
+                  className="stack-player"
+                  playbackActivationNonce={playbackActivationNonce}
+                  isPlaying={isPlaybackActive}
+                  isExpanded={!isMobileViewport && isPlaybackExpanded}
+                  isMobileViewport={isMobileViewport}
+                  showQueueToggle
+                  canCreatePlaylist={isAuthenticated}
+                  canModifyPlaylist={canModifyActivePlaylist}
+                  playlistSearchQuery={playlistSearchQuery}
+                  onPlaylistSearchChange={setPlaylistSearchQuery}
+                  onCreatePlaylist={handleCreatePlaylist}
+                  onPlayPause={handlePlaybackToggle}
+                  onNext={handlePlaybackNext}
+                  onPrevious={handlePlaybackPrevious}
+                  repeatMode={playbackRepeatMode}
+                  onRepeatModeChange={setPlaybackRepeatMode}
+                  onToggleExpanded={handlePlaybackToggleExpanded}
+                  onSelectItem={handlePlaybackSelect}
+                  onRemoveItem={handlePlaybackQueueRemove}
+                  onTrackEnded={handlePlaybackEnded}
+                  onPlayerInstanceChange={handlePlaybackPlayerChange}
+                />
+              )}
 
-            {isMobileViewport && !isMobileQueueOpen && (
-              <nav className="mobile-bottom-nav" aria-label="하단 탐색">
-                {sidebarTabs.map((tab) => {
-                  const isActive = activeSection === tab.id;
-                  const tabIcon = { latest: '🏠', catalog: '🔍', library: '📚', live: '🎤' }[tab.id];
+              {isMobileViewport && !isMobileQueueOpen && (
+                <nav className="mobile-bottom-nav" aria-label="하단 탐색">
+                  {sidebarTabs.map((tab) => {
+                    const isActive = activeSection === tab.id;
+                    const tabIcon = { latest: '🏠', catalog: '🔍', library: '📚', live: '🎤' }[tab.id];
 
-                  return (
-                    <Link
-                      key={`mobile-tab-${tab.id}`}
-                      className={`nav-item${isActive ? ' active' : ''}`}
-                      to={SECTION_PATHS[tab.id]}
-                      aria-current={isActive ? 'page' : undefined}
-                      aria-label={tab.label}
-                    >
-                      <span aria-hidden="true">{tabIcon}</span>
-                      <span>{tab.label}</span>
-                    </Link>
-                  );
-                })}
-              </nav>
-            )}
-          </div>
-        )}
+                    return (
+                      <Link
+                        key={`mobile-tab-${tab.id}`}
+                        className={`nav-item${isActive ? ' active' : ''}`}
+                        to={SECTION_PATHS[tab.id]}
+                        aria-current={isActive ? 'page' : undefined}
+                        aria-label={tab.label}
+                      >
+                        <span aria-hidden="true">{tabIcon}</span>
+                        <span>{tab.label}</span>
+                      </Link>
+                    );
+                  })}
+                </nav>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </>
   );
