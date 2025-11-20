@@ -4351,6 +4351,49 @@ input:focus {
   font-weight: 600;
 }
 
+.clip-range-control__timeline {
+  position: relative;
+  height: 8px;
+  margin: 4px 0 10px;
+}
+
+.clip-range-control__timeline-track {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #e2e8f0 0%, #e2e8f0 100%);
+}
+
+.clip-range-control__pin {
+  position: absolute;
+  top: -4px;
+  width: 10px;
+  height: 16px;
+  border-radius: 999px;
+  background: #c026d3;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+.clip-range-control__pin--end {
+  background: #0ea5e9;
+}
+
+.clip-range-control__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+}
+
+.clip-range-control__row--end {
+  margin-top: 4px;
+}
+
+.clip-range-control__slider-group {
+  flex: 1 1 280px;
+  min-width: 220px;
+}
+
 .clip-range-control__label {
   font-size: 13px;
   color: #475569;
@@ -4361,11 +4404,60 @@ input:focus {
   accent-color: #c026d3;
 }
 
+.clip-range-control__fine-tune {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+}
+
+.clip-range-control__fine-tune-label {
+  font-size: 12px;
+  color: #475569;
+  margin: 0;
+}
+
+.clip-range-control__fine-tune-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.clip-range-control__fine-tune-button {
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #0f172a;
+  cursor: pointer;
+  font-size: 13px;
+  min-width: 64px;
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.clip-range-control__fine-tune-button:hover:not(:disabled),
+.clip-range-control__fine-tune-button:focus-visible {
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  outline: none;
+  transform: translateY(-1px);
+}
+
+.clip-range-control__fine-tune-button:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
 .clip-range-control__times {
   display: flex;
   justify-content: space-between;
   font-size: 13px;
   color: #0f172a;
+}
+
+.clip-range-control__hint {
+  font-size: 12px;
+  color: #475569;
+  margin: 0;
 }
 
 .clip-range-control__actions {
