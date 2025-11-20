@@ -4991,117 +4991,101 @@ input:focus {
   cursor: pointer;
 }
 
-/* =========================================
-   📱 모바일 전용 레이아웃 수정 (Mobile Fixes)
-   ========================================= */
-
+/* =================================================================
+   🚨 [긴급 수정] 모바일 전용 강제 레이아웃 (Mobile Layout Force Fix)
+   ================================================================= */
 @media (max-width: 768px) {
-  /* 1. 전체 컨테이너 리셋 */
+
+  /* 1. PC용 그리드 레이아웃 해제 및 세로 정렬 */
   .app-container {
-    display: flex;
-    flex-direction: column;
-    height: 100dvh;
-    overflow: hidden;
+    display: flex !important;
+    flex-direction: column !important;
+    height: 100dvh !important; /* 모바일 브라우저 높이 오류 수정 */
+    width: 100vw !important;
+    overflow: hidden !important;
+    background-color: #000 !important;
   }
 
-  /* 2. 데스크탑 요소 숨김 */
+  /* 2. PC용 사이드바(좌/우) 공간 아예 삭제 */
   .sidebar,
-  .right-sidebar {
-    display: none !important;
+  .right-sidebar,
+  .playlist-drawer {
+    display: none !important; /* 화면에서 완전히 제거 */
+    width: 0 !important;
+    flex: 0 !important;
   }
 
-  /* 3. [NEW] 모바일 상단 헤더 스타일 */
+  /* 3. 상단 헤더 (로고 영역) 고정 */
   .mobile-top-header {
-    position: fixed;
+    display: flex !important;
+    position: fixed !important;
     top: 0;
     left: 0;
-    width: 100%;
-    height: 56px;
-    background-color: rgba(0, 0, 0, 0.9);
+    width: 100% !important;
+    height: 56px !important;
+    background-color: rgba(0, 0, 0, 0.95) !important;
     backdrop-filter: blur(10px);
     border-bottom: 1px solid #333;
-    display: flex;
-    justify-content: space-between;
+    z-index: 9999 !important; /* 최상위 보장 */
     align-items: center;
+    justify-content: center; /* 로고 중앙 정렬 */
     padding: 0 16px;
-    z-index: 8000;
   }
 
+  /* 로고 이미지 크기 조절 */
   .mobile-logo {
-    height: 28px;
-    width: auto;
+    height: 24px !important;
+    width: auto !important;
   }
 
-  /* 4. 메인 콘텐츠 영역 여백 확보 (가려짐 방지) */
+  /* 4. 메인 콘텐츠 영역: 상/하단 여백 확보 */
   .content-area {
-    margin-left: 0 !important;
+    display: block !important;
     width: 100% !important;
-    padding-top: 60px;
-    padding-bottom: 140px;
-    overflow-y: auto;
+    margin: 0 !important; /* 사이드바 여백 제거 */
+    padding: 0 !important;
+    padding-top: 60px !important; /* 상단 헤더 높이만큼 띄움 */
+    padding-bottom: 150px !important; /* 하단 플레이어(70px) + 탭(60px) + 여유공간 */
+    overflow-y: auto !important;
+    flex: 1 !important;
+    height: 100% !important;
   }
 
-  /* 5. 하단 스택 (플레이어 + 네비게이션) */
-  .bottom-stack {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    width: 100%;
-    z-index: 9000;
-    display: flex;
-    flex-direction: column;
-  }
-
-  /* 플레이어 바 위치 조정 */
-  .playlist-bar {
-    position: relative !important;
-    bottom: auto !important;
-    border-bottom: 1px solid #222;
-    height: 64px;
-  }
-
-  /* 모바일 하단 네비게이션 */
-  .mobile-bottom-nav {
-    height: 60px;
-    background-color: #000;
-    border-top: 1px solid #333;
-    display: flex;
-    justify-content: space-around;
-    align-items: center;
-    padding-bottom: env(safe-area-inset-bottom);
-  }
-
-  .nav-item {
-    background: none;
-    border: none;
-    color: #777;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    font-size: 10px;
-    gap: 4px;
-    padding: 8px;
-    flex: 1;
-  }
-
-  .nav-item span {
-    font-size: 11px;
-  }
-
-  .nav-item.active {
-    color: #fff;
-  }
-
-  /* 아이콘 크기 */
-  .nav-item::before {
-    font-size: 20px;
-  }
-
-  /* 아티스트 탭 그리드 깨짐 방지 */
-  .artist-grid,
-  .video-grid {
+  /* 아티스트 그리드 2열로 강제 고정 */
+  .artist-grid, .video-grid {
+    display: grid !important;
     grid-template-columns: repeat(2, 1fr) !important;
     gap: 12px !important;
     padding: 12px !important;
+  }
+
+  /* 5. 하단 고정 영역 (플레이어 + 탭바) */
+  .bottom-stack {
+    position: fixed !important;
+    bottom: 0;
+    left: 0;
+    width: 100% !important;
+    z-index: 9000 !important;
+    background-color: #000;
+  }
+
+  /* 하단 플레이어 바 */
+  .playlist-bar {
+    position: relative !important; /* fixed 해제하고 스택 안에 배치 */
+    width: 100% !important;
+    height: 64px !important;
+    border-top: 1px solid #333;
+    border-bottom: 1px solid #333;
+    padding-bottom: 0 !important;
+  }
+
+  /* 하단 네비게이션 탭 */
+  .mobile-bottom-nav {
+    display: flex !important;
+    height: 60px !important;
+    padding-bottom: env(safe-area-inset-bottom);
+    background-color: #000;
+    justify-content: space-around;
+    align-items: center;
   }
 }
