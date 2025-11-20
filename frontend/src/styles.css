@@ -112,6 +112,127 @@ body {
   z-index: 1000;
 }
 
+.mobile-mini-player-trigger {
+  cursor: pointer;
+}
+
+/* =========================================
+   📱 모바일 전체 화면 플레이어 (Full Screen Player)
+   ========================================= */
+.mobile-full-player-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100dvh;
+  background: linear-gradient(to bottom, #1a1a1a, #000000);
+  z-index: 10000;
+  transform: translateY(100%);
+  transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.mobile-full-player-overlay.open {
+  transform: translateY(0);
+}
+
+.player-drag-handle {
+  width: 100%;
+  height: 24px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding-top: 8px;
+  cursor: pointer;
+}
+
+.handle-bar {
+  width: 40px;
+  height: 4px;
+  background-color: rgba(255, 255, 255, 0.3);
+  border-radius: 2px;
+}
+
+.player-main-section {
+  padding: 20px 32px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.big-album-art {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  object-fit: cover;
+  margin-bottom: 32px;
+}
+
+.player-track-info {
+  width: 100%;
+  margin-bottom: 32px;
+  text-align: left;
+}
+
+.player-track-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 4px;
+}
+
+.player-track-artist {
+  font-size: 18px;
+  color: #aaa;
+}
+
+.player-main-controls {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 40px;
+}
+
+.ctrl-btn-lg {
+  font-size: 32px;
+  background: none;
+  border: none;
+  color: #fff;
+}
+
+.play-btn-xl {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: #fff;
+  color: #000;
+  font-size: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+}
+
+.player-queue-section {
+  background-color: rgba(0, 0, 0, 0.3);
+  border-top-left-radius: 24px;
+  border-top-right-radius: 24px;
+  padding: 24px;
+  min-height: 50vh;
+}
+
+.queue-label {
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+  margin-bottom: 16px;
+}
+
 /* Mobile Layout */
 .mobile-layout {
   display: flex;
@@ -5032,6 +5153,12 @@ input:focus {
   cursor: pointer;
   padding: 8px; /* 터치 영역 확보 */
   font-size: 18px;
+}
+
+.playlist-widget-container.mobile-mode .ci-remove {
+  color: #fff;
+  background-color: rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
 }
 
 .ci-remove:hover {

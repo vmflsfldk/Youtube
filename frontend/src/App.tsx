@@ -1462,7 +1462,7 @@ export default function App() {
     typeof window !== 'undefined' ? window.innerWidth <= 768 : false;
   const [isMobileViewport, setIsMobileViewport] = useState(resolveIsMobileViewport);
   const [isMobileAuthOverlayOpen, setMobileAuthOverlayOpen] = useState(false);
-  const [isMobileQueueOpen, setIsMobileQueueOpen] = useState(false);
+  const [isFullPlayerOpen, setIsFullPlayerOpen] = useState(false);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const toastTimeoutRef = useRef<Record<string, number>>({});
   const [isPlaylistDialogOpen, setPlaylistDialogOpen] = useState(false);
@@ -1906,9 +1906,9 @@ export default function App() {
 
   useEffect(() => {
     if (!isMobileViewport) {
-      setIsMobileQueueOpen(false);
+      setIsFullPlayerOpen(false);
     }
-  }, [isMobileViewport]);
+  }, [isFullPlayerOpen, isMobileViewport]);
 
   const scrollToSection = useCallback((sectionRef: RefObject<HTMLElement | null>) => {
     sectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -5322,7 +5322,7 @@ export default function App() {
       setActivePlaybackKey(null);
       setIsPlaybackActive(false);
       setIsPlaybackExpanded(false);
-      setIsMobileQueueOpen(false);
+      setIsFullPlayerOpen(false);
       setLatestPlaybackNotice(null);
       setLatestVideoPreviewMessage(null);
       return;
@@ -5479,14 +5479,20 @@ export default function App() {
 
   const handlePlaybackToggleExpanded = useCallback(() => {
     if (isMobileViewport) {
-      setIsMobileQueueOpen((previous) => !previous);
+      setIsFullPlayerOpen((previous) => !previous);
       return;
     }
     setIsPlaybackExpanded((previous) => !previous);
   }, [isMobileViewport]);
 
+  const handleMiniPlayerClick = useCallback(() => {
+    if (isMobileViewport && hasPlaybackItems) {
+      setIsFullPlayerOpen(true);
+    }
+  }, [hasPlaybackItems, isMobileViewport]);
+
   const handleMobileQueueClose = useCallback(() => {
-    setIsMobileQueueOpen(false);
+    setIsFullPlayerOpen(false);
   }, []);
 
   const handlePlaybackEnded = useCallback(() => {
@@ -8527,15 +8533,56 @@ export default function App() {
 
         {!isMobileViewport && rightSidebarContent}
 
-        {isMobileViewport && isMobileQueueOpen && (
-          <div className="mobile-queue-layout" role="dialog" aria-modal="true" aria-label="다음 트랙">
-            <div className="mobile-queue-header">
-              <h3>다음 트랙</h3>
-              <button type="button" onClick={handleMobileQueueClose} aria-label="재생 목록 닫기">
-                닫기 ✕
-              </button>
+        {isMobileViewport && (
+          <div
+            className={`mobile-full-player-overlay${isFullPlayerOpen ? ' open' : ''}`}
+            role="dialog"
+            aria-modal="true"
+            aria-hidden={isFullPlayerOpen ? undefined : true}
+            aria-label="전체 화면 플레이어"
+          >
+            <div className="player-drag-handle" onClick={handleMobileQueueClose}>
+              <div className="handle-bar" />
             </div>
-            <div className="mobile-queue-body">
+
+            <div className="player-main-section">
+              <img
+                src={
+                  currentPlaybackItem?.thumbnailUrl ||
+                  (currentPlaybackItem?.youtubeVideoId
+                    ? `https://img.youtube.com/vi/${currentPlaybackItem.youtubeVideoId}/hqdefault.jpg`
+                    : '/default-album.jpg')
+                }
+                className="big-album-art"
+                alt="Album Art"
+              />
+
+              <div className="player-track-info">
+                <div className="player-track-title">{currentPlaybackItem?.title ?? '재생 중인 곡 없음'}</div>
+                <div className="player-track-artist">{currentPlaybackItem?.subtitle ?? 'Artist'}</div>
+              </div>
+
+              <input type="range" className="progress-slider" style={{ width: '100%', marginBottom: '24px' }} />
+
+              <div className="player-main-controls">
+                <button className="ctrl-btn-lg" type="button" aria-label="셔플">🔀</button>
+                <button className="ctrl-btn-lg" type="button" onClick={handlePlaybackPrevious} aria-label="이전 곡">
+                  ⏮
+                </button>
+                <button className="play-btn-xl" type="button" onClick={handlePlaybackToggle} aria-label="재생/일시정지">
+                  {isPlaybackActive ? '⏸' : '▶'}
+                </button>
+                <button className="ctrl-btn-lg" type="button" onClick={handlePlaybackNext} aria-label="다음 곡">
+                  ⏭
+                </button>
+                <button className="ctrl-btn-lg" type="button" aria-label="반복">
+                  🔁
+                </button>
+              </div>
+            </div>
+
+            <div className="player-queue-section">
+              <div className="queue-label">다음 트랙</div>
               <PlaylistWidgetControls
                 queue={filteredPlaybackBarItems}
                 currentClip={currentPlaybackItem}
@@ -8550,39 +8597,83 @@ export default function App() {
         )}
 
         <div className="bottom-fixed-area">
-          {(hasPlaybackItems || (isMobileViewport && !isMobileQueueOpen)) && (
+          {(hasPlaybackItems || (isMobileViewport && !isFullPlayerOpen)) && (
             <div className="bottom-stack">
               {hasPlaybackItems && (
-                <PlaylistBar
-                  items={playbackBarItems}
-                  queueItems={filteredPlaybackBarItems}
-                  currentItemKey={activePlaybackKey}
-                  currentIndex={currentPlaybackIndex}
-                  className="stack-player"
-                  playbackActivationNonce={playbackActivationNonce}
-                  isPlaying={isPlaybackActive}
-                  isExpanded={!isMobileViewport && isPlaybackExpanded}
-                  isMobileViewport={isMobileViewport}
-                  showQueueToggle
-                  canCreatePlaylist={isAuthenticated}
-                  canModifyPlaylist={canModifyActivePlaylist}
-                  playlistSearchQuery={playlistSearchQuery}
-                  onPlaylistSearchChange={setPlaylistSearchQuery}
-                  onCreatePlaylist={handleCreatePlaylist}
-                  onPlayPause={handlePlaybackToggle}
-                  onNext={handlePlaybackNext}
-                  onPrevious={handlePlaybackPrevious}
-                  repeatMode={playbackRepeatMode}
-                  onRepeatModeChange={setPlaybackRepeatMode}
-                  onToggleExpanded={handlePlaybackToggleExpanded}
-                  onSelectItem={handlePlaybackSelect}
-                  onRemoveItem={handlePlaybackQueueRemove}
-                  onTrackEnded={handlePlaybackEnded}
-                  onPlayerInstanceChange={handlePlaybackPlayerChange}
-                />
+                isMobileViewport ? (
+                  <div
+                    className="mobile-mini-player-trigger"
+                    onClick={handleMiniPlayerClick}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        handleMiniPlayerClick();
+                      }
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    aria-label="전체 화면 플레이어 열기"
+                  >
+                    <PlaylistBar
+                      items={playbackBarItems}
+                      queueItems={filteredPlaybackBarItems}
+                      currentItemKey={activePlaybackKey}
+                      currentIndex={currentPlaybackIndex}
+                      className="stack-player"
+                      playbackActivationNonce={playbackActivationNonce}
+                      isPlaying={isPlaybackActive}
+                      isExpanded={false}
+                      isMobileViewport={isMobileViewport}
+                      showQueueToggle={false}
+                      canCreatePlaylist={isAuthenticated}
+                      canModifyPlaylist={canModifyActivePlaylist}
+                      playlistSearchQuery={playlistSearchQuery}
+                      onPlaylistSearchChange={setPlaylistSearchQuery}
+                      onCreatePlaylist={handleCreatePlaylist}
+                      onPlayPause={handlePlaybackToggle}
+                      onNext={handlePlaybackNext}
+                      onPrevious={handlePlaybackPrevious}
+                      repeatMode={playbackRepeatMode}
+                      onRepeatModeChange={setPlaybackRepeatMode}
+                      onToggleExpanded={handlePlaybackToggleExpanded}
+                      onSelectItem={handlePlaybackSelect}
+                      onRemoveItem={handlePlaybackQueueRemove}
+                      onTrackEnded={handlePlaybackEnded}
+                      onPlayerInstanceChange={handlePlaybackPlayerChange}
+                    />
+                  </div>
+                ) : (
+                  <PlaylistBar
+                    items={playbackBarItems}
+                    queueItems={filteredPlaybackBarItems}
+                    currentItemKey={activePlaybackKey}
+                    currentIndex={currentPlaybackIndex}
+                    className="stack-player"
+                    playbackActivationNonce={playbackActivationNonce}
+                    isPlaying={isPlaybackActive}
+                    isExpanded={isPlaybackExpanded}
+                    isMobileViewport={isMobileViewport}
+                    showQueueToggle
+                    canCreatePlaylist={isAuthenticated}
+                    canModifyPlaylist={canModifyActivePlaylist}
+                    playlistSearchQuery={playlistSearchQuery}
+                    onPlaylistSearchChange={setPlaylistSearchQuery}
+                    onCreatePlaylist={handleCreatePlaylist}
+                    onPlayPause={handlePlaybackToggle}
+                    onNext={handlePlaybackNext}
+                    onPrevious={handlePlaybackPrevious}
+                    repeatMode={playbackRepeatMode}
+                    onRepeatModeChange={setPlaybackRepeatMode}
+                    onToggleExpanded={handlePlaybackToggleExpanded}
+                    onSelectItem={handlePlaybackSelect}
+                    onRemoveItem={handlePlaybackQueueRemove}
+                    onTrackEnded={handlePlaybackEnded}
+                    onPlayerInstanceChange={handlePlaybackPlayerChange}
+                  />
+                )
               )}
 
-              {isMobileViewport && !isMobileQueueOpen && (
+              {isMobileViewport && !isFullPlayerOpen && (
                 <nav className="mobile-bottom-nav" aria-label="하단 탐색">
                   {sidebarTabs.map((tab) => {
                     const isActive = activeSection === tab.id;
