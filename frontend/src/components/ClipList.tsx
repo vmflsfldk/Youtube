@@ -79,13 +79,14 @@ const ClipListItem = <TItem, TItemData>({
   }
 
   const { className, content } = renderItem(clip, { index, clip, isVisible, itemData });
+  const combinedClassName = ['clip-list__item', className].filter(Boolean).join(' ');
   const adjustedStyle: CSSProperties = {
     ...style,
     width: '100%'
   };
 
   return (
-    <li ref={itemRef} style={adjustedStyle} className={className}>
+    <li ref={itemRef} style={adjustedStyle} className={combinedClassName}>
       {content}
     </li>
   );

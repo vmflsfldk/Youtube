@@ -891,6 +891,7 @@ interface ClipListItemData {
   playlistClipItemMap: Map<number, PlaylistItemResponse>;
   handleClipPlaylistToggle: (clipId: number) => Promise<void>;
   getParentVideo: (clip: ClipResponse) => VideoResponse | null;
+  addToQueue: (clip: ClipResponse) => void;
 }
 
 interface ClipPreviewData {
@@ -1472,6 +1473,9 @@ export default function App() {
   const playlistTitleResolverRef = useRef<((value: string | null) => void) | null>(null);
   const playlistDialogInputRef = useRef<HTMLInputElement | null>(null);
   const [selectedVideo, setSelectedVideo] = useState<number | null>(null);
+  const [, setQueue] = useState<ClipResponse[]>([]);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const toastMessageTimeoutRef = useRef<number | null>(null);
   const [clipCandidates, setClipCandidates] = useState<ClipCandidateResponse[]>([]);
   const libraryVideos = isAuthenticated ? videos : publicVideos;
   const librarySongVideos = isAuthenticated ? songVideos : publicSongVideos;
@@ -1509,8 +1513,30 @@ export default function App() {
       Object.values(toastTimeoutRef.current).forEach((timeoutId) =>
         window.clearTimeout(timeoutId)
       );
+      if (toastMessageTimeoutRef.current) {
+        window.clearTimeout(toastMessageTimeoutRef.current);
+      }
     };
   }, []);
+
+  const showQueueToastMessage = useCallback((message: string) => {
+    if (toastMessageTimeoutRef.current) {
+      window.clearTimeout(toastMessageTimeoutRef.current);
+    }
+    setToastMessage(message);
+    toastMessageTimeoutRef.current = window.setTimeout(() => setToastMessage(null), 2000);
+  }, []);
+
+  const addToQueue = useCallback(
+    (clip: ClipResponse) => {
+      setQueue((previous) => {
+        const nextQueue = [...previous, clip];
+        showQueueToastMessage(`'${clip.title}' 추가됨 (총 ${nextQueue.length}곡)`);
+        return nextQueue;
+      });
+    },
+    [showQueueToastMessage]
+  );
 
   const resolvePlaylistTitle = useCallback((value: string | null) => {
     playlistTitleResolverRef.current?.(value);
@@ -4828,7 +4854,8 @@ export default function App() {
       canModifyPlaylist: canModifyActivePlaylist,
       playlistClipItemMap,
       handleClipPlaylistToggle,
-      getParentVideo: (clip: ClipResponse) => artistLibraryVideoMap.get(clip.videoId) ?? null
+      getParentVideo: (clip: ClipResponse) => artistLibraryVideoMap.get(clip.videoId) ?? null,
+      addToQueue
     }),
     [
       activeClipId,
@@ -4841,7 +4868,8 @@ export default function App() {
       canModifyActivePlaylist,
       playlistClipItemMap,
       handleClipPlaylistToggle,
-      artistLibraryVideoMap
+      artistLibraryVideoMap,
+      addToQueue
     ]
   );
 
@@ -4955,7 +4983,8 @@ export default function App() {
         canModifyPlaylist,
         playlistClipItemMap: currentPlaylistClipItemMap,
         handleClipPlaylistToggle: toggleClipPlaylist,
-        getParentVideo
+        getParentVideo,
+        addToQueue: enqueueClip
       } = itemData;
 
       const isActive = currentActiveClipId === clip.id;
@@ -5009,6 +5038,18 @@ export default function App() {
                 ))}
               </div>
             )}
+          </button>
+          <button
+            type="button"
+            className="add-to-queue-btn"
+            onClick={(event) => {
+              event.stopPropagation();
+              enqueueClip(clip);
+            }}
+            aria-label="재생목록에 추가"
+            disabled={!hasYoutubeId}
+          >
+            +
           </button>
           <div className="artist-library__clip-footer">
             <button
@@ -6606,6 +6647,8 @@ export default function App() {
           </div>
         ))}
       </div>
+
+      {toastMessage && <div className="toast-message">{toastMessage}</div>}
 
       {isPlaylistDialogOpen && (
         <div className="playlist-dialog" role="dialog" aria-modal="true" aria-label="새 재생목록 만들기">
