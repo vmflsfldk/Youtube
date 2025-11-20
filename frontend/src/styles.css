@@ -132,27 +132,68 @@ body {
   display: flex;
   flex-direction: column;
   overflow-y: auto;
+  padding-top: env(safe-area-inset-top);
 }
 
 .mobile-full-player-overlay.open {
   transform: translateY(0);
 }
 
-.player-drag-handle {
-  width: 100%;
-  height: 24px;
+/* --- 📱 모바일 플레이어 상단 헤더 (접기 버튼용) --- */
+.player-header-controls {
   display: flex;
-  justify-content: center;
   align-items: center;
-  padding-top: 8px;
-  cursor: pointer;
+  justify-content: space-between;
+  width: 100%;
+  height: 56px;
+  padding: 0 16px;
+  background: transparent;
+  z-index: 10;
+  flex-shrink: 0;
 }
 
-.handle-bar {
-  width: 40px;
-  height: 4px;
-  background-color: rgba(255, 255, 255, 0.3);
-  border-radius: 2px;
+/* 접기 버튼 (Down Arrow) */
+.collapse-btn {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 32px;
+  font-weight: 300;
+  cursor: pointer;
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 0;
+}
+
+/* 중앙 텍스트 info */
+.header-title-info {
+  flex: 1;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+}
+
+/* 우측 더보기 버튼 */
+.more-options-btn {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 24px;
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+/* 기존 드래그 핸들바 스타일은 제거하거나 유지해도 됨 (선택) */
+.player-drag-handle {
+  display: none;
 }
 
 .player-main-section {

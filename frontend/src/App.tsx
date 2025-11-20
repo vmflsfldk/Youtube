@@ -8584,8 +8584,22 @@ export default function App() {
             aria-hidden={isFullPlayerOpen ? undefined : true}
             aria-label="전체 화면 플레이어"
           >
-            <div className="player-drag-handle" onClick={handleMobileQueueClose}>
-              <div className="handle-bar" />
+            <div className="player-header-controls">
+              <button
+                className="collapse-btn"
+                onClick={() => setIsFullPlayerOpen(false)}
+                aria-label="플레이어 닫기"
+              >
+                ⌄
+              </button>
+
+              <div className="header-title-info">
+                <span className="header-source-text">노래</span>
+              </div>
+
+              <button className="more-options-btn" type="button">
+                ⋮
+              </button>
             </div>
 
             <div className="player-main-section">
