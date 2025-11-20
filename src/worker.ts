@@ -189,6 +189,15 @@ interface ClipResponse {
   updatedAt?: string | null;
 }
 
+interface VideoChannelResolutionResponse {
+  youtubeVideoId: string;
+  channelId: string | null;
+  channelTitle: string | null;
+  videoTitle: string | null;
+  thumbnailUrl: string | null;
+  artist: ArtistResponse | null;
+}
+
 interface ClipCandidateResponse {
   startSec: number;
   endSec: number;
@@ -1504,6 +1513,9 @@ async function handleApi(
     if (request.method === "POST" && path === "/api/videos/clip-suggestions") {
       return await suggestClipCandidates(request, env, requireUser(user), cors);
     }
+    if (request.method === "POST" && path === "/api/videos/resolve-channel") {
+      return await resolveVideoChannel(request, env, requireUser(user), cors);
+    }
     if (path === "/api/clips") {
       if (request.method === "POST") {
         return await createClip(request, env, requireUser(user), cors);
@@ -2336,6 +2348,52 @@ async function suggestClipCandidates(
     200,
     cors
   );
+}
+
+async function resolveVideoChannel(
+  request: Request,
+  env: Env,
+  _user: UserContext,
+  cors: CorsConfig
+): Promise<Response> {
+  const body = await readJson(request);
+  const videoUrl = typeof body.videoUrl === "string" ? body.videoUrl.trim() : "";
+  if (!videoUrl) {
+    throw new HttpError(400, "videoUrl is required");
+  }
+
+  const videoId = extractVideoId(videoUrl);
+  if (!videoId) {
+    throw new HttpError(400, "Unable to parse videoId from URL");
+  }
+
+  const metadata = await testOverrides.fetchVideoMetadata(env, videoId);
+  const channelId = metadata.channelId?.trim() || null;
+  let channelTitle: string | null = null;
+  if (channelId) {
+    const channelMetadata = await testOverrides.fetchChannelMetadata(env, channelId);
+    channelTitle = channelMetadata.title ?? null;
+  }
+
+  let artistResponse: ArtistResponse | null = null;
+  if (channelId) {
+    const artistRow = await findArtistByChannelId(env, channelId);
+    if (artistRow) {
+      const hydrated = await refreshArtistMetadataIfNeeded(env, artistRow);
+      artistResponse = toArtistResponse(hydrated);
+    }
+  }
+
+  const payload: VideoChannelResolutionResponse = {
+    youtubeVideoId: videoId,
+    channelId,
+    channelTitle,
+    videoTitle: metadata.title ?? null,
+    thumbnailUrl: metadata.thumbnailUrl ?? null,
+    artist: artistResponse
+  };
+
+  return jsonResponse(payload, 200, cors);
 }
 
 async function listVideos(
@@ -3482,6 +3540,43 @@ async function refreshArtistMetadataIfNeeded(env: Env, row: ArtistRow): Promise<
     youtube_channel_title: youtubeChannelTitle ?? row.youtube_channel_title,
     profile_image_url: profileImageUrl ?? row.profile_image_url
   };
+}
+
+async function findArtistByChannelId(env: Env, channelId: string): Promise<ArtistRow | null> {
+  const normalized = channelId.trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+
+  await ensureArtistUpdatedAtColumn(env.DB);
+  await ensureArtistDisplayNameColumn(env.DB);
+  await ensureArtistProfileImageColumn(env.DB);
+  await ensureArtistChannelTitleColumn(env.DB);
+  await ensureArtistCountryColumns(env.DB);
+  await ensureArtistAgencyColumn(env.DB);
+
+  const row = await env.DB
+    .prepare(
+      `SELECT a.id,
+              a.name,
+              a.display_name,
+              a.youtube_channel_id,
+              a.youtube_channel_title,
+              a.profile_image_url,
+              a.available_ko,
+              a.available_en,
+              a.available_jp,
+              a.agency,
+              GROUP_CONCAT(at.tag, char(31)) AS tags
+         FROM artists a
+         LEFT JOIN artist_tags at ON at.artist_id = a.id
+        WHERE LOWER(a.youtube_channel_id) = ?
+     GROUP BY a.id`
+    )
+    .bind(normalized)
+    .first<ArtistQueryRow | null>();
+
+  return row ? normalizeArtistRow(row) : null;
 }
 
 function toArtistResponse(row: ArtistRow): ArtistResponse {

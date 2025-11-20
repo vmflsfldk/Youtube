@@ -12,6 +12,7 @@ interface ClipPlayerProps {
   shouldLoop?: boolean;
   onEnded?: () => void;
   activationNonce?: number;
+  onPlayerInstanceChange?: (player: YouTubePlayer | null) => void;
 }
 
 type YouTubeReadyEvent = Parameters<NonNullable<YouTubeProps['onReady']>>[0];
@@ -24,7 +25,8 @@ export default function ClipPlayer({
   playing,
   shouldLoop = true,
   onEnded,
-  activationNonce
+  activationNonce,
+  onPlayerInstanceChange
 }: ClipPlayerProps) {
   const playerRef = useRef<YouTubePlayer | null>(null);
   const { playerOrigin, playerReferrer } = useMemo(() => {
@@ -65,6 +67,7 @@ export default function ClipPlayer({
   const handleReady = useCallback<NonNullable<YouTubeProps['onReady']>>(
     (event: YouTubeReadyEvent) => {
       playerRef.current = event.target;
+      onPlayerInstanceChange?.(event.target);
       loadSegment(event.target);
       if (typeof playing === 'boolean') {
         if (playing) {
@@ -74,7 +77,7 @@ export default function ClipPlayer({
         }
       }
     },
-    [loadSegment, playing]
+    [loadSegment, onPlayerInstanceChange, playing]
   );
 
   const handleStateChange = useMemo<NonNullable<YouTubeProps['onStateChange']>>(() => {
@@ -135,9 +138,10 @@ export default function ClipPlayer({
         // Ignore errors triggered when the iframe has already been torn down.
       } finally {
         playerRef.current = null;
+        onPlayerInstanceChange?.(null);
       }
     };
-  }, []);
+  }, [onPlayerInstanceChange]);
 
   useEffect(() => {
     if (!playerRef.current || typeof playing !== 'boolean') {

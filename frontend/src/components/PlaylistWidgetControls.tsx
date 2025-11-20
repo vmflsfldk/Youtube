@@ -1,4 +1,5 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
+import type { YouTubePlayer } from 'react-youtube';
 import type { PlaybackRepeatMode, PlaylistBarItem } from './PlaylistBar';
 
 const ClipPlayer = lazy(() => import('./ClipPlayer'));
@@ -17,6 +18,7 @@ interface PlaylistWidgetControlsProps {
   repeatMode: PlaybackRepeatMode;
   onRepeatModeChange: (mode: PlaybackRepeatMode) => void;
   onTrackEnded: () => void;
+  onPlayerInstanceChange?: (player: YouTubePlayer | null) => void;
 }
 
 const PlayIcon = () => (
@@ -74,7 +76,8 @@ export default function PlaylistWidgetControls({
   onPrevious,
   repeatMode,
   onRepeatModeChange,
-  onTrackEnded
+  onTrackEnded,
+  onPlayerInstanceChange
 }: PlaylistWidgetControlsProps) {
   const [hasActivatedPlayback, setHasActivatedPlayback] = useState(false);
   const [isCreatingPlaylist, setIsCreatingPlaylist] = useState(false);
@@ -156,6 +159,7 @@ export default function PlaylistWidgetControls({
           shouldLoop={repeatMode === 'one'}
           onEnded={onTrackEnded}
           activationNonce={playbackActivationNonce}
+          onPlayerInstanceChange={onPlayerInstanceChange}
         />
       </Suspense>
     );
@@ -165,7 +169,8 @@ export default function PlaylistWidgetControls({
     isPlaying,
     onTrackEnded,
     playbackActivationNonce,
-    repeatMode
+    repeatMode,
+    onPlayerInstanceChange
   ]);
 
   const nowPlayingLabel = currentIndex >= 0 ? `${currentIndex + 1}/${items.length}` : `0/${items.length}`;

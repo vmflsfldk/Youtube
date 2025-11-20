@@ -12,6 +12,7 @@ import {
   useRef,
   useState
 } from 'react';
+import type { YouTubePlayer } from 'react-youtube';
 import axios from 'axios';
 import ClipList, { type ClipListRenderContext, type ClipListRenderResult } from './components/ClipList';
 import PlaylistBar, {
@@ -27,7 +28,11 @@ import ArtistLibraryCard, { type ArtistLibraryCardData } from './components/Arti
 import ArtistSearchControls from './components/ArtistSearchControls';
 import ClipPreviewPanel from './components/ClipPreviewPanel';
 import SongCatalogTable from './components/SongCatalogTable';
-import type { VideoResponse, VideoSectionResponse } from './types/media';
+import type {
+  VideoChannelResolutionResponse,
+  VideoResponse,
+  VideoSectionResponse
+} from './types/media';
 import type { ArtistResponse, LiveArtistResponse, LiveBroadcastResponse } from './types/artists';
 import {
   isClipSourceVideo,
@@ -108,6 +113,8 @@ type ClipTimeField =
   | 'endHours'
   | 'endMinutes'
   | 'endSeconds';
+
+type ClipTimePrefix = 'start' | 'end';
 
 type ClipFormState = {
   title: string;
@@ -296,6 +303,22 @@ const createClipTimePartValues = (totalSeconds: number) => {
     seconds: seconds.toString().padStart(2, '0')
   } as const;
 };
+
+const createClipTimePatch = (
+  parts: ReturnType<typeof createClipTimePartValues>,
+  prefix: ClipTimePrefix
+) =>
+  prefix === 'start'
+    ? { startHours: parts.hours, startMinutes: parts.minutes, startSeconds: parts.seconds }
+    : { endHours: parts.hours, endMinutes: parts.minutes, endSeconds: parts.seconds };
+
+const createEmptyClipTimePatch = (prefix: ClipTimePrefix) =>
+  prefix === 'start'
+    ? { startHours: '', startMinutes: '', startSeconds: '' }
+    : { endHours: '', endMinutes: '', endSeconds: '' };
+
+const sanitizeSecondsInput = (value: string, maxLength = 6): string =>
+  value.replace(/\D/g, '').slice(0, maxLength);
 
 const isActivationKey = (key: string): boolean =>
   key === 'Enter' || key === ' ' || key === 'Space' || key === 'Spacebar';
@@ -830,6 +853,7 @@ interface ClipListItemData {
   selectedVideoData: VideoResponse | null;
   creationDisabled: boolean;
   isClipUpdateSaving: boolean;
+  hasPlaybackPlayer: boolean;
   canModifyPlaylist: boolean;
   playlistClipItemMap: Map<number, PlaylistItemResponse>;
   handleClipPlaylistToggle: (clipId: number) => Promise<void>;
@@ -1576,6 +1600,24 @@ export default function App() {
   const [videoForm, setVideoForm] = useState<VideoFormState>(() => createInitialVideoFormState());
   const [clipForm, setClipForm] = useState<ClipFormState>(() => createInitialClipFormState());
   const [clipEditForm, setClipEditForm] = useState<ClipEditFormState>(() => createInitialClipEditFormState());
+  const clipEditStartFieldsEmpty =
+    clipEditForm.startHours === '' &&
+    clipEditForm.startMinutes === '' &&
+    clipEditForm.startSeconds === '';
+  const clipEditEndFieldsEmpty =
+    clipEditForm.endHours === '' && clipEditForm.endMinutes === '' && clipEditForm.endSeconds === '';
+  const clipEditStartCompactValue = clipEditStartFieldsEmpty
+    ? ''
+    : String(parseClipTimeParts(clipEditForm.startHours, clipEditForm.startMinutes, clipEditForm.startSeconds));
+  const clipEditEndCompactValue = clipEditEndFieldsEmpty
+    ? ''
+    : String(parseClipTimeParts(clipEditForm.endHours, clipEditForm.endMinutes, clipEditForm.endSeconds));
+  const playbackPlayerRef = useRef<YouTubePlayer | null>(null);
+  const [hasPlaybackPlayer, setHasPlaybackPlayer] = useState(false);
+  const [videoChannelResolution, setVideoChannelResolution] =
+    useState<VideoChannelResolutionResponse | null>(null);
+  const [videoChannelResolutionError, setVideoChannelResolutionError] = useState<string | null>(null);
+  const [isResolvingVideoChannel, setResolvingVideoChannel] = useState(false);
   const [isClipUpdateSaving, setClipUpdateSaving] = useState(false);
   const [clipEditStatus, setClipEditStatus] = useState<ClipEditStatus | null>(null);
   const [videoCategoryStatusMap, setVideoCategoryStatusMap] = useState<
@@ -1784,6 +1826,25 @@ export default function App() {
     },
     []
   );
+  const handlePlaybackPlayerChange = useCallback((player: YouTubePlayer | null) => {
+    playbackPlayerRef.current = player;
+    setHasPlaybackPlayer(Boolean(player));
+  }, []);
+  const getCurrentPlaybackSeconds = useCallback(() => {
+    const player = playbackPlayerRef.current;
+    if (!player || typeof player.getCurrentTime !== 'function') {
+      return null;
+    }
+    try {
+      const position = player.getCurrentTime();
+      if (!Number.isFinite(position)) {
+        return null;
+      }
+      return Math.max(0, Math.floor(position));
+    } catch {
+      return null;
+    }
+  }, []);
   const mediaRegistrationType = useMemo(
     () => resolveMediaRegistrationType(videoForm.url, selectedVideo),
     [videoForm.url, selectedVideo]
@@ -3624,11 +3685,77 @@ export default function App() {
       setVideoForm((prev) => ({ ...prev, url: value }));
       setClipForm((prev) => ({ ...prev, videoUrl: value }));
       setVideoSubmissionStatus(null);
+      setVideoChannelResolution(null);
+      setVideoChannelResolutionError(null);
       if (trimmedValue.length > 0) {
         setSelectedVideo(null);
       }
     },
     [setClipForm, setSelectedVideo, setVideoForm]
+  );
+  const handleArtistClick = useCallback((artistId: number) => {
+    setVideoForm((prev) => ({ ...prev, artistId: String(artistId) }));
+    setSelectedVideo(null);
+    setActiveClipId(null);
+    setClipCandidates([]);
+    setVideoSubmissionStatus(null);
+  }, []);
+  const handleVideoChannelResolve = useCallback(async () => {
+    if (creationDisabled) {
+      return;
+    }
+    const trimmedUrl = videoForm.url.trim();
+    if (!trimmedUrl) {
+      setVideoChannelResolutionError('YouTube URL을 입력해 주세요.');
+      setVideoChannelResolution(null);
+      return;
+    }
+    setResolvingVideoChannel(true);
+    setVideoChannelResolution(null);
+    setVideoChannelResolutionError(null);
+    setVideoSubmissionStatus(null);
+    try {
+      const response = await http.post<VideoChannelResolutionResponse>(
+        '/videos/resolve-channel',
+        { videoUrl: trimmedUrl },
+        { headers: authHeaders }
+      );
+      const payload = response.data;
+      setVideoChannelResolution(payload);
+      if (payload.artist) {
+        handleArtistClick(payload.artist.id);
+      } else {
+        setVideoForm((prev) => ({ ...prev, artistId: '' }));
+        setSelectedVideo(null);
+        setClipCandidates([]);
+        setActiveClipId(null);
+      }
+      setActiveLibraryView('videoForm');
+    } catch (error) {
+      const message = extractAxiosErrorMessage(error, '채널 정보를 확인하지 못했습니다.');
+      setVideoChannelResolution(null);
+      setVideoChannelResolutionError(message);
+    } finally {
+      setResolvingVideoChannel(false);
+    }
+  }, [
+    creationDisabled,
+    videoForm.url,
+    http,
+    authHeaders,
+    handleArtistClick,
+    setSelectedVideo,
+    setClipCandidates,
+    setActiveClipId,
+    setVideoForm,
+    setActiveLibraryView
+  ]);
+  const handleVideoChannelResolveSubmit = useCallback(
+    (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      void handleVideoChannelResolve();
+    },
+    [handleVideoChannelResolve]
   );
 
   const runAutoDetect = useCallback(async () => {
@@ -3672,13 +3799,6 @@ export default function App() {
     };
   }, [reloadArtistVideos]);
 
-  const handleArtistClick = (artistId: number) => {
-    setVideoForm((prev) => ({ ...prev, artistId: String(artistId) }));
-    setSelectedVideo(null);
-    setActiveClipId(null);
-    setClipCandidates([]);
-    setVideoSubmissionStatus(null);
-  };
 
   const handleArtistClear = () => {
     setVideoForm((prev) => ({ ...prev, artistId: '' }));
@@ -3686,6 +3806,8 @@ export default function App() {
     setClipCandidates([]);
     setActiveLibraryView('videoList');
     setVideoSubmissionStatus(null);
+    setVideoChannelResolution(null);
+    setVideoChannelResolutionError(null);
   };
 
   const handleLibraryVideoSelect = (videoId: number) => {
@@ -4058,10 +4180,9 @@ export default function App() {
   }, [selectedArtistId]);
 
   const handleLibraryVideoRegister = useCallback(() => {
-    if (!selectedArtistId) {
-      return;
+    if (selectedArtistId) {
+      setVideoForm((prev) => ({ ...prev, artistId: String(selectedArtistId) }));
     }
-    setVideoForm((prev) => ({ ...prev, artistId: String(selectedArtistId) }));
     setActiveLibraryView('videoForm');
     setVideoSubmissionStatus(null);
   }, [selectedArtistId]);
@@ -4414,6 +4535,7 @@ export default function App() {
       selectedVideoData: selectedVideoData ?? null,
       creationDisabled,
       isClipUpdateSaving,
+      hasPlaybackPlayer,
       canModifyPlaylist: canModifyActivePlaylist,
       playlistClipItemMap,
       handleClipPlaylistToggle,
@@ -4426,6 +4548,7 @@ export default function App() {
       selectedVideoData,
       creationDisabled,
       isClipUpdateSaving,
+      hasPlaybackPlayer,
       canModifyActivePlaylist,
       playlistClipItemMap,
       handleClipPlaylistToggle,
@@ -4539,6 +4662,7 @@ export default function App() {
         selectedVideoData: currentSelectedVideo,
         creationDisabled: currentCreationDisabled,
         isClipUpdateSaving: currentClipUpdateSaving,
+        hasPlaybackPlayer: currentHasPlaybackPlayer,
         canModifyPlaylist,
         playlistClipItemMap: currentPlaylistClipItemMap,
         handleClipPlaylistToggle: toggleClipPlaylist,
@@ -4636,91 +4760,155 @@ export default function App() {
                   <div className="clip-edit-form__fields">
                     <fieldset className="clip-time-fieldset">
                       <legend>시작 시간</legend>
-                      <div className="clip-time-inputs">
-                        <div className="clip-time-input">
-                          <label htmlFor={`clipEditStartHours-${clip.id}`}>시간</label>
+                      <div className="clip-time-quick-actions">
+                        <button
+                          type="button"
+                          className="clip-time-quickset"
+                          onClick={() => applyPlaybackPositionToClipEditForm('start')}
+                          disabled={!currentHasPlaybackPlayer || currentClipUpdateSaving}
+                        >
+                          현재 위치로 시작 설정
+                        </button>
+                      </div>
+                      {shouldUseCompactTimeInputs ? (
+                        <div className="clip-time-inputs clip-time-inputs--compact">
+                          <label htmlFor={`clipEditStartTotal-${clip.id}`}>총 초</label>
                           <input
-                            id={`clipEditStartHours-${clip.id}`}
+                            id={`clipEditStartTotal-${clip.id}`}
                             type="text"
                             inputMode="numeric"
                             placeholder="0"
-                            maxLength={3}
-                            value={currentClipEditForm.startHours}
-                            onChange={handleClipEditTimePartChange('startHours')}
+                            value={clipEditStartCompactValue}
+                            onChange={handleClipEditCompactTimeChange('start')}
                             disabled={currentClipUpdateSaving}
                           />
+                          <p className="clip-time-hint">
+                            현재 {formatSeconds(parseClipTimeParts(
+                              currentClipEditForm.startHours,
+                              currentClipEditForm.startMinutes,
+                              currentClipEditForm.startSeconds
+                            ))}
+                          </p>
                         </div>
-                        <div className="clip-time-input">
-                          <label htmlFor={`clipEditStartMinutes-${clip.id}`}>분</label>
-                          <input
-                            id={`clipEditStartMinutes-${clip.id}`}
-                            type="text"
-                            inputMode="numeric"
-                            placeholder="00"
-                            maxLength={2}
-                            value={currentClipEditForm.startMinutes}
-                            onChange={handleClipEditTimePartChange('startMinutes')}
-                            disabled={currentClipUpdateSaving}
-                          />
+                      ) : (
+                        <div className="clip-time-inputs">
+                          <div className="clip-time-input">
+                            <label htmlFor={`clipEditStartHours-${clip.id}`}>시간</label>
+                            <input
+                              id={`clipEditStartHours-${clip.id}`}
+                              type="text"
+                              inputMode="numeric"
+                              placeholder="0"
+                              maxLength={3}
+                              value={currentClipEditForm.startHours}
+                              onChange={handleClipEditTimePartChange('startHours')}
+                              disabled={currentClipUpdateSaving}
+                            />
+                          </div>
+                          <div className="clip-time-input">
+                            <label htmlFor={`clipEditStartMinutes-${clip.id}`}>분</label>
+                            <input
+                              id={`clipEditStartMinutes-${clip.id}`}
+                              type="text"
+                              inputMode="numeric"
+                              placeholder="00"
+                              maxLength={2}
+                              value={currentClipEditForm.startMinutes}
+                              onChange={handleClipEditTimePartChange('startMinutes')}
+                              disabled={currentClipUpdateSaving}
+                            />
+                          </div>
+                          <div className="clip-time-input">
+                            <label htmlFor={`clipEditStartSeconds-${clip.id}`}>초</label>
+                            <input
+                              id={`clipEditStartSeconds-${clip.id}`}
+                              type="text"
+                              inputMode="numeric"
+                              placeholder="00"
+                              maxLength={2}
+                              value={currentClipEditForm.startSeconds}
+                              onChange={handleClipEditTimePartChange('startSeconds')}
+                              disabled={currentClipUpdateSaving}
+                            />
+                          </div>
                         </div>
-                        <div className="clip-time-input">
-                          <label htmlFor={`clipEditStartSeconds-${clip.id}`}>초</label>
-                          <input
-                            id={`clipEditStartSeconds-${clip.id}`}
-                            type="text"
-                            inputMode="numeric"
-                            placeholder="00"
-                            maxLength={2}
-                            value={currentClipEditForm.startSeconds}
-                            onChange={handleClipEditTimePartChange('startSeconds')}
-                            disabled={currentClipUpdateSaving}
-                          />
-                        </div>
-                      </div>
+                      )}
                     </fieldset>
                     <fieldset className="clip-time-fieldset">
                       <legend>종료 시간</legend>
-                      <div className="clip-time-inputs">
-                        <div className="clip-time-input">
-                          <label htmlFor={`clipEditEndHours-${clip.id}`}>시간</label>
+                      <div className="clip-time-quick-actions">
+                        <button
+                          type="button"
+                          className="clip-time-quickset"
+                          onClick={() => applyPlaybackPositionToClipEditForm('end')}
+                          disabled={!currentHasPlaybackPlayer || currentClipUpdateSaving}
+                        >
+                          현재 위치로 종료 설정
+                        </button>
+                      </div>
+                      {shouldUseCompactTimeInputs ? (
+                        <div className="clip-time-inputs clip-time-inputs--compact">
+                          <label htmlFor={`clipEditEndTotal-${clip.id}`}>총 초</label>
                           <input
-                            id={`clipEditEndHours-${clip.id}`}
+                            id={`clipEditEndTotal-${clip.id}`}
                             type="text"
                             inputMode="numeric"
                             placeholder="0"
-                            maxLength={3}
-                            value={currentClipEditForm.endHours}
-                            onChange={handleClipEditTimePartChange('endHours')}
+                            value={clipEditEndCompactValue}
+                            onChange={handleClipEditCompactTimeChange('end')}
                             disabled={currentClipUpdateSaving}
                           />
+                          <p className="clip-time-hint">
+                            현재 {formatSeconds(parseClipTimeParts(
+                              currentClipEditForm.endHours,
+                              currentClipEditForm.endMinutes,
+                              currentClipEditForm.endSeconds
+                            ))}
+                          </p>
                         </div>
-                        <div className="clip-time-input">
-                          <label htmlFor={`clipEditEndMinutes-${clip.id}`}>분</label>
-                          <input
-                            id={`clipEditEndMinutes-${clip.id}`}
-                            type="text"
-                            inputMode="numeric"
-                            placeholder="00"
-                            maxLength={2}
-                            value={currentClipEditForm.endMinutes}
-                            onChange={handleClipEditTimePartChange('endMinutes')}
-                            disabled={currentClipUpdateSaving}
-                          />
+                      ) : (
+                        <div className="clip-time-inputs">
+                          <div className="clip-time-input">
+                            <label htmlFor={`clipEditEndHours-${clip.id}`}>시간</label>
+                            <input
+                              id={`clipEditEndHours-${clip.id}`}
+                              type="text"
+                              inputMode="numeric"
+                              placeholder="0"
+                              maxLength={3}
+                              value={currentClipEditForm.endHours}
+                              onChange={handleClipEditTimePartChange('endHours')}
+                              disabled={currentClipUpdateSaving}
+                            />
+                          </div>
+                          <div className="clip-time-input">
+                            <label htmlFor={`clipEditEndMinutes-${clip.id}`}>분</label>
+                            <input
+                              id={`clipEditEndMinutes-${clip.id}`}
+                              type="text"
+                              inputMode="numeric"
+                              placeholder="00"
+                              maxLength={2}
+                              value={currentClipEditForm.endMinutes}
+                              onChange={handleClipEditTimePartChange('endMinutes')}
+                              disabled={currentClipUpdateSaving}
+                            />
+                          </div>
+                          <div className="clip-time-input">
+                            <label htmlFor={`clipEditEndSeconds-${clip.id}`}>초</label>
+                            <input
+                              id={`clipEditEndSeconds-${clip.id}`}
+                              type="text"
+                              inputMode="numeric"
+                              placeholder="00"
+                              maxLength={2}
+                              value={currentClipEditForm.endSeconds}
+                              onChange={handleClipEditTimePartChange('endSeconds')}
+                              disabled={currentClipUpdateSaving}
+                            />
+                          </div>
                         </div>
-                        <div className="clip-time-input">
-                          <label htmlFor={`clipEditEndSeconds-${clip.id}`}>초</label>
-                          <input
-                            id={`clipEditEndSeconds-${clip.id}`}
-                            type="text"
-                            inputMode="numeric"
-                            placeholder="00"
-                            maxLength={2}
-                            value={currentClipEditForm.endSeconds}
-                            onChange={handleClipEditTimePartChange('endSeconds')}
-                            disabled={currentClipUpdateSaving}
-                          />
-                        </div>
-                      </div>
+                      )}
                     </fieldset>
                   </div>
                   {currentClipEditStatus && isEditingClip && (
@@ -5244,6 +5432,17 @@ export default function App() {
     ? Math.min(selectedVideoDurationSec, previewStartSec + 30)
     : previewStartSec + 30;
   const previewEndSec = parsedPreviewEndSec > previewStartSec ? parsedPreviewEndSec : fallbackEnd;
+  const clipStartFieldsEmpty =
+    clipForm.startHours === '' && clipForm.startMinutes === '' && clipForm.startSeconds === '';
+  const clipEndFieldsEmpty =
+    clipForm.endHours === '' && clipForm.endMinutes === '' && clipForm.endSeconds === '';
+  const clipStartCompactValue = clipStartFieldsEmpty
+    ? ''
+    : String(parseClipTimeParts(clipForm.startHours, clipForm.startMinutes, clipForm.startSeconds));
+  const clipEndCompactValue = clipEndFieldsEmpty
+    ? ''
+    : String(parseClipTimeParts(clipForm.endHours, clipForm.endMinutes, clipForm.endSeconds));
+  const shouldUseCompactTimeInputs = isMobileViewport;
   const clipRangeMax = useMemo(() => {
     if (selectedVideoDurationSec && selectedVideoDurationSec > 0) {
       return selectedVideoDurationSec;
@@ -5293,6 +5492,85 @@ export default function App() {
   const applyThirtySecondRange = useCallback(() => {
     updateClipEndFromSlider(Math.min(previewStartSec + 30, clipRangeMax));
   }, [clipRangeMax, previewStartSec, updateClipEndFromSlider]);
+  const applyPlaybackPositionToClipStart = useCallback(() => {
+    const currentSeconds = getCurrentPlaybackSeconds();
+    if (currentSeconds === null) {
+      return;
+    }
+    updateClipStartFromSlider(currentSeconds);
+  }, [getCurrentPlaybackSeconds, updateClipStartFromSlider]);
+  const applyPlaybackPositionToClipEnd = useCallback(() => {
+    const currentSeconds = getCurrentPlaybackSeconds();
+    if (currentSeconds === null) {
+      return;
+    }
+    updateClipEndFromSlider(currentSeconds);
+  }, [getCurrentPlaybackSeconds, updateClipEndFromSlider]);
+  const applyPlaybackPositionToClipEditForm = useCallback(
+    (prefix: ClipTimePrefix) => {
+      const currentSeconds = getCurrentPlaybackSeconds();
+      if (currentSeconds === null) {
+        return;
+      }
+      setClipEditForm((prev) => {
+        const startValue = parseClipTimeParts(prev.startHours, prev.startMinutes, prev.startSeconds);
+        const endValue = parseClipTimeParts(prev.endHours, prev.endMinutes, prev.endSeconds);
+        if (prefix === 'start') {
+          const adjustedEnd = endValue <= currentSeconds ? currentSeconds + 1 : endValue;
+          const nextState = {
+            ...prev,
+            ...createClipTimePatch(createClipTimePartValues(currentSeconds), 'start')
+          };
+          return adjustedEnd !== endValue
+            ? {
+                ...nextState,
+                ...createClipTimePatch(createClipTimePartValues(adjustedEnd), 'end')
+              }
+            : nextState;
+        }
+        const adjustedEndValue = currentSeconds <= startValue ? startValue + 1 : currentSeconds;
+        return {
+          ...prev,
+          ...createClipTimePatch(createClipTimePartValues(adjustedEndValue), 'end')
+        };
+      });
+      setClipEditStatus(null);
+    },
+    [getCurrentPlaybackSeconds]
+  );
+  const handleClipCompactTimeChange = useCallback(
+    (prefix: ClipTimePrefix) => (event: ChangeEvent<HTMLInputElement>) => {
+      const sanitized = sanitizeSecondsInput(event.target.value);
+      if (!sanitized) {
+        setClipForm((prev) => ({ ...prev, ...createEmptyClipTimePatch(prefix) }));
+        return;
+      }
+      const total = Number(sanitized);
+      if (!Number.isFinite(total)) {
+        return;
+      }
+      const parts = createClipTimePartValues(total);
+      setClipForm((prev) => ({ ...prev, ...createClipTimePatch(parts, prefix) }));
+    },
+    []
+  );
+  const handleClipEditCompactTimeChange = useCallback(
+    (prefix: ClipTimePrefix) => (event: ChangeEvent<HTMLInputElement>) => {
+      const sanitized = sanitizeSecondsInput(event.target.value);
+      setClipEditStatus(null);
+      if (!sanitized) {
+        setClipEditForm((prev) => ({ ...prev, ...createEmptyClipTimePatch(prefix) }));
+        return;
+      }
+      const total = Number(sanitized);
+      if (!Number.isFinite(total)) {
+        return;
+      }
+      const parts = createClipTimePartValues(total);
+      setClipEditForm((prev) => ({ ...prev, ...createClipTimePatch(parts, prefix) }));
+    },
+    []
+  );
 
   const renderVideoListItem = (video: VideoResponse) => {
     const isVideoSelected = selectedVideo === video.id;
@@ -6694,6 +6972,52 @@ export default function App() {
                         </div>
                       </div>
                     </div>
+                    <div className="artist-library__link-panel">
+                      <form className="artist-library__link-form" onSubmit={handleVideoChannelResolveSubmit}>
+                        <label htmlFor="libraryMediaUrl">YouTube URL</label>
+                        <div className="artist-library__link-input">
+                          <input
+                            id="libraryMediaUrl"
+                            placeholder="https://www.youtube.com/watch?v=..."
+                            value={videoForm.url}
+                            onChange={(event) => handleMediaUrlChange(event.target.value)}
+                            disabled={creationDisabled}
+                          />
+                          <button
+                            type="submit"
+                            disabled={creationDisabled || isResolvingVideoChannel}
+                          >
+                            {isResolvingVideoChannel ? '확인 중...' : '채널 확인'}
+                          </button>
+                        </div>
+                        <p className="form-hint">
+                          YouTube URL에 live가 포함되면 자동으로 클립 등록으로 전환됩니다.
+                        </p>
+                        {videoChannelResolutionError && (
+                          <p className="form-hint form-hint--error" role="alert">
+                            {videoChannelResolutionError}
+                          </p>
+                        )}
+                        {videoChannelResolution && (
+                          <p
+                            className={`form-hint${
+                              videoChannelResolution.artist ? ' form-hint--success' : ''
+                            }`}
+                            role="status"
+                          >
+                            {videoChannelResolution.channelTitle || videoChannelResolution.channelId
+                              ? `${videoChannelResolution.channelTitle || videoChannelResolution.channelId} 채널을 확인했습니다.`
+                              : '채널 정보를 확인했습니다.'}{' '}
+                            {videoChannelResolution.artist
+                              ? `${
+                                  videoChannelResolution.artist.displayName ||
+                                  videoChannelResolution.artist.name
+                                } 아티스트가 자동으로 선택되었습니다.`
+                              : '등록된 아티스트를 찾지 못했습니다. 목록에서 선택하거나 새로 등록해 주세요.'}
+                          </p>
+                        )}
+                      </form>
+                    </div>
                     {noArtistsRegistered ? (
                       <div className="artist-empty">{translate('artistDirectory.empty')}</div>
                     ) : selectedArtist ? (
@@ -6845,18 +7169,6 @@ export default function App() {
                                 </span>
                               </div>
                               <form onSubmit={handleMediaSubmit} className="stacked-form artist-library__form">
-                                <p className="form-hint">YouTube URL에 live가 포함되면 자동으로 클립 등록으로 전환됩니다.</p>
-                                <label htmlFor="libraryMediaUrl">YouTube URL</label>
-                                <div className="number-row">
-                                  <input
-                                    id="libraryMediaUrl"
-                                    placeholder="https://www.youtube.com/watch?v=..."
-                                    value={videoForm.url}
-                                    onChange={(event) => handleMediaUrlChange(event.target.value)}
-                                    required={!isClipRegistration}
-                                    disabled={creationDisabled}
-                                  />
-                                </div>
                                 {videoSubmissionStatus && (
                                   <p
                                     className={`login-status__message${
@@ -7062,93 +7374,145 @@ export default function App() {
                                     <div className="clip-time-row">
                                       <fieldset className="clip-time-fieldset">
                                         <legend>시작 시간</legend>
-                                        <div className="clip-time-inputs">
-                                          <div className="clip-time-input">
-                                            <label htmlFor="libraryClipStartHours">시간</label>
+                                        <div className="clip-time-quick-actions">
+                                          <button
+                                            type="button"
+                                            className="clip-time-quickset"
+                                            onClick={applyPlaybackPositionToClipStart}
+                                            disabled={!hasPlaybackPlayer || creationDisabled}
+                                          >
+                                            현재 위치로 시작 설정
+                                          </button>
+                                        </div>
+                                        {shouldUseCompactTimeInputs ? (
+                                          <div className="clip-time-inputs clip-time-inputs--compact">
+                                            <label htmlFor="libraryClipStartTotal">총 초</label>
                                             <input
-                                              id="libraryClipStartHours"
+                                              id="libraryClipStartTotal"
                                               type="text"
                                               inputMode="numeric"
                                               placeholder="0"
-                                              maxLength={3}
-                                              value={clipForm.startHours}
-                                              onChange={handleClipTimePartChange('startHours')}
+                                              value={clipStartCompactValue}
+                                              onChange={handleClipCompactTimeChange('start')}
                                               disabled={creationDisabled}
                                             />
+                                            <p className="clip-time-hint">현재 {formatSeconds(parsedPreviewStartSec)}</p>
                                           </div>
-                                          <div className="clip-time-input">
-                                            <label htmlFor="libraryClipStartMinutes">분</label>
-                                            <input
-                                              id="libraryClipStartMinutes"
-                                              type="text"
-                                              inputMode="numeric"
-                                              placeholder="00"
-                                              maxLength={2}
-                                              value={clipForm.startMinutes}
-                                              onChange={handleClipTimePartChange('startMinutes')}
-                                              disabled={creationDisabled}
-                                            />
+                                        ) : (
+                                          <div className="clip-time-inputs">
+                                            <div className="clip-time-input">
+                                              <label htmlFor="libraryClipStartHours">시간</label>
+                                              <input
+                                                id="libraryClipStartHours"
+                                                type="text"
+                                                inputMode="numeric"
+                                                placeholder="0"
+                                                maxLength={3}
+                                                value={clipForm.startHours}
+                                                onChange={handleClipTimePartChange('startHours')}
+                                                disabled={creationDisabled}
+                                              />
+                                            </div>
+                                            <div className="clip-time-input">
+                                              <label htmlFor="libraryClipStartMinutes">분</label>
+                                              <input
+                                                id="libraryClipStartMinutes"
+                                                type="text"
+                                                inputMode="numeric"
+                                                placeholder="00"
+                                                maxLength={2}
+                                                value={clipForm.startMinutes}
+                                                onChange={handleClipTimePartChange('startMinutes')}
+                                                disabled={creationDisabled}
+                                              />
+                                            </div>
+                                            <div className="clip-time-input">
+                                              <label htmlFor="libraryClipStartSeconds">초</label>
+                                              <input
+                                                id="libraryClipStartSeconds"
+                                                type="text"
+                                                inputMode="numeric"
+                                                placeholder="00"
+                                                maxLength={2}
+                                                value={clipForm.startSeconds}
+                                                onChange={handleClipTimePartChange('startSeconds')}
+                                                required={clipFieldsRequired}
+                                                disabled={creationDisabled}
+                                              />
+                                            </div>
                                           </div>
-                                          <div className="clip-time-input">
-                                            <label htmlFor="libraryClipStartSeconds">초</label>
-                                            <input
-                                              id="libraryClipStartSeconds"
-                                              type="text"
-                                              inputMode="numeric"
-                                              placeholder="00"
-                                              maxLength={2}
-                                              value={clipForm.startSeconds}
-                                              onChange={handleClipTimePartChange('startSeconds')}
-                                              required={clipFieldsRequired}
-                                              disabled={creationDisabled}
-                                            />
-                                          </div>
-                                        </div>
+                                        )}
                                       </fieldset>
                                       <fieldset className="clip-time-fieldset">
                                         <legend>종료 시간</legend>
-                                        <div className="clip-time-inputs">
-                                          <div className="clip-time-input">
-                                            <label htmlFor="libraryClipEndHours">시간</label>
+                                        <div className="clip-time-quick-actions">
+                                          <button
+                                            type="button"
+                                            className="clip-time-quickset"
+                                            onClick={applyPlaybackPositionToClipEnd}
+                                            disabled={!hasPlaybackPlayer || creationDisabled}
+                                          >
+                                            현재 위치로 종료 설정
+                                          </button>
+                                        </div>
+                                        {shouldUseCompactTimeInputs ? (
+                                          <div className="clip-time-inputs clip-time-inputs--compact">
+                                            <label htmlFor="libraryClipEndTotal">총 초</label>
                                             <input
-                                              id="libraryClipEndHours"
+                                              id="libraryClipEndTotal"
                                               type="text"
                                               inputMode="numeric"
                                               placeholder="0"
-                                              maxLength={3}
-                                              value={clipForm.endHours}
-                                              onChange={handleClipTimePartChange('endHours')}
+                                              value={clipEndCompactValue}
+                                              onChange={handleClipCompactTimeChange('end')}
                                               disabled={creationDisabled}
                                             />
+                                            <p className="clip-time-hint">현재 {formatSeconds(previewEndSec)}</p>
                                           </div>
-                                          <div className="clip-time-input">
-                                            <label htmlFor="libraryClipEndMinutes">분</label>
-                                            <input
-                                              id="libraryClipEndMinutes"
-                                              type="text"
-                                              inputMode="numeric"
-                                              placeholder="00"
-                                              maxLength={2}
-                                              value={clipForm.endMinutes}
-                                              onChange={handleClipTimePartChange('endMinutes')}
-                                              disabled={creationDisabled}
-                                            />
+                                        ) : (
+                                          <div className="clip-time-inputs">
+                                            <div className="clip-time-input">
+                                              <label htmlFor="libraryClipEndHours">시간</label>
+                                              <input
+                                                id="libraryClipEndHours"
+                                                type="text"
+                                                inputMode="numeric"
+                                                placeholder="0"
+                                                maxLength={3}
+                                                value={clipForm.endHours}
+                                                onChange={handleClipTimePartChange('endHours')}
+                                                disabled={creationDisabled}
+                                              />
+                                            </div>
+                                            <div className="clip-time-input">
+                                              <label htmlFor="libraryClipEndMinutes">분</label>
+                                              <input
+                                                id="libraryClipEndMinutes"
+                                                type="text"
+                                                inputMode="numeric"
+                                                placeholder="00"
+                                                maxLength={2}
+                                                value={clipForm.endMinutes}
+                                                onChange={handleClipTimePartChange('endMinutes')}
+                                                disabled={creationDisabled}
+                                              />
+                                            </div>
+                                            <div className="clip-time-input">
+                                              <label htmlFor="libraryClipEndSeconds">초</label>
+                                              <input
+                                                id="libraryClipEndSeconds"
+                                                type="text"
+                                                inputMode="numeric"
+                                                placeholder="00"
+                                                maxLength={2}
+                                                value={clipForm.endSeconds}
+                                                onChange={handleClipTimePartChange('endSeconds')}
+                                                required={clipFieldsRequired}
+                                                disabled={creationDisabled}
+                                              />
+                                            </div>
                                           </div>
-                                          <div className="clip-time-input">
-                                            <label htmlFor="libraryClipEndSeconds">초</label>
-                                            <input
-                                              id="libraryClipEndSeconds"
-                                              type="text"
-                                              inputMode="numeric"
-                                              placeholder="00"
-                                              maxLength={2}
-                                              value={clipForm.endSeconds}
-                                              onChange={handleClipTimePartChange('endSeconds')}
-                                              required={clipFieldsRequired}
-                                              disabled={creationDisabled}
-                                            />
-                                          </div>
-                                        </div>
+                                        )}
                                       </fieldset>
                                     </div>
                                     <label htmlFor="libraryClipTags">태그 (쉼표로 구분)</label>
@@ -7654,6 +8018,7 @@ export default function App() {
               repeatMode={playbackRepeatMode}
               onRepeatModeChange={setPlaybackRepeatMode}
               onTrackEnded={handlePlaybackEnded}
+              onPlayerInstanceChange={handlePlaybackPlayerChange}
             />
           )}
           <div className="playlist-widget__selector">
@@ -7766,6 +8131,7 @@ export default function App() {
           onSelectItem={handlePlaybackSelect}
           onRemoveItem={handlePlaylistEntryRemove}
           onTrackEnded={handlePlaybackEnded}
+          onPlayerInstanceChange={handlePlaybackPlayerChange}
         />
       )}
     </>
