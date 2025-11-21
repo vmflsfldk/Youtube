@@ -10,6 +10,7 @@ public record ArtistProfileRequest(
         String nameKo,
         String nameEn,
         String nameJp,
-        List<@Valid LocalizedTextRequest> names
+        List<@Valid LocalizedTextRequest> names,
+        @Size(max = 255) String chzzkChannelId
 ) {
 }

@@ -60,6 +60,7 @@ public class ArtistService {
                 request.availableJp());
         artist.setTags(normalizeTags(request.tags()));
         artist.setAgency(trimToNull(request.agency()));
+        artist.setChzzkChannelId(trimToNull(request.chzzkChannelId()));
         applyLocalizedNames(artist, localizedNames);
         String profileImageUrl = channelMetadata.profileImageUrl();
         if (metadataTitle != null && !metadataTitle.isBlank()) {
@@ -80,12 +81,14 @@ public class ArtistService {
                                         String nameEn,
                                         String nameJp,
                                         List<LocalizedTextRequest> names,
+                                        String chzzkChannelId,
                                         UserAccount user) {
         Artist artist = artistRepository.findById(artistId)
                 .orElseThrow(() -> new EntityNotFoundException("Artist not found: " + artistId));
 
         artist.setTags(normalizeTags(tags));
         artist.setAgency(trimToNull(agency));
+        artist.setChzzkChannelId(trimToNull(chzzkChannelId));
         boolean updatesLocalizedNames = names != null || nameKo != null || nameEn != null || nameJp != null;
         if (updatesLocalizedNames) {
             Map<String, String> localizedNames;
@@ -190,6 +193,7 @@ public class ArtistService {
                 resolved.getNameJp(),
                 resolved.getYoutubeChannelId(),
                 resolved.getYoutubeChannelTitle(),
+                resolved.getChzzkChannelId(),
                 resolved.getProfileImageUrl(),
                 resolved.isAvailableKo(),
                 resolved.isAvailableEn(),
