@@ -955,6 +955,7 @@ type VideoMetadataUpdatePayload = {
 type ArtistFormState = {
   name: string;
   channelId: string;
+  chzzkChannelId: string;
   tags: string[];
   tagInput: string;
   agency: string;
@@ -968,6 +969,7 @@ type ArtistFormState = {
 const createInitialArtistFormState = (): ArtistFormState => ({
   name: '',
   channelId: '',
+  chzzkChannelId: '',
   tags: [],
   tagInput: '',
   agency: '',
@@ -2656,6 +2658,8 @@ export default function App() {
     }
     const trimmedName = artistForm.name.trim();
     const trimmedChannelId = artistForm.channelId.trim();
+    const trimmedChzzkChannelId = artistForm.chzzkChannelId.trim();
+    const chzzkChannelId = trimmedChzzkChannelId.length > 0 ? trimmedChzzkChannelId : null;
     const trimmedAgency = artistForm.agency.trim();
     const parsedTags = parseTags([...artistForm.tags, artistForm.tagInput]);
     const { ko, en, jp } = artistForm.countries;
@@ -2667,6 +2671,7 @@ export default function App() {
     const requestContext = {
       channelId: trimmedChannelId,
       name: trimmedName,
+      chzzkChannelId: chzzkChannelId ?? undefined,
       agency: trimmedAgency || undefined,
       tags: parsedTags,
       countries: { ko, en, jp }
@@ -2761,7 +2766,8 @@ export default function App() {
           availableEn: en,
           availableJp: jp,
           tags: parsedTags,
-          agency: trimmedAgency
+          agency: trimmedAgency,
+          chzzkChannelId
         },
         { headers: authHeaders }
       );
@@ -6374,6 +6380,19 @@ export default function App() {
             onChange={(event) => setArtistForm((prev) => ({ ...prev, agency: event.target.value }))}
             disabled={creationDisabled}
           />
+        </div>
+        <div className="artist-registration__field">
+          <label htmlFor="artistChzzkChannelId">치지직 채널 ID (선택)</label>
+          <input
+            id="artistChzzkChannelId"
+            placeholder="예: 80c2..."
+            value={artistForm.chzzkChannelId}
+            onChange={(event) =>
+              setArtistForm((prev) => ({ ...prev, chzzkChannelId: event.target.value }))
+            }
+            disabled={creationDisabled}
+          />
+          <p className="form-hint">URL 전체가 아닌 채널 ID만 입력하세요.</p>
         </div>
       </div>
       <fieldset className="artist-registration__countries">
