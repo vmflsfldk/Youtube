@@ -28,20 +28,30 @@ const ArtistLibraryGrid = ({
     const checkAllLives = async () => {
       const newLiveStatus: Record<string, boolean> = {};
 
-      const targetArtists = artists.filter((a) => a.chzzkChannelId);
+      const promises = artists.map(async (artist) => {
+        const chzzkChannelId = (artist as { chzzkChannelId?: string | null }).chzzkChannelId;
+        if (!chzzkChannelId) {
+          return;
+        }
 
-      await Promise.all(
-        targetArtists.map(async (artist) => {
-          try {
-            const res = await fetch(`/api/chzzk/status?channelId=${artist.chzzkChannelId}`);
-            const data = await res.json();
+        const artistId = getArtistId(artist);
+        if (!Number.isFinite(artistId)) {
+          return;
+        }
+
+        try {
+          const res = await fetch(`/api/chzzk/status?channelId=${chzzkChannelId}`);
+          const data = await res.json();
+          console.log(`📡 API 결과 [${(artist as { name?: string }).name ?? artistId}]:`, data);
 
           if (data.isLive) {
             newLiveStatus[String(artistId)] = true;
-            console.log(`✅ [${(artist as any)?.name ?? artistId}] 방송 중 확인됨!`);
+            console.log(`✅ [${(artist as { name?: string }).name ?? artistId}] 방송 중 확인됨!`);
           }
-        })
-      );
+        } catch (err) {
+          console.error(`❌ 치지직 체크 실패 [${(artist as { name?: string }).name ?? artistId}]:`, err);
+        }
+      });
 
       if (hasUpdates) {
         console.log('🔄 상태 업데이트 적용:', newLiveStatus);
@@ -59,9 +69,9 @@ const ArtistLibraryGrid = ({
       const artistId = getArtistId(artist);
       const chzzkKey = Number.isFinite(artistId) ? String(artistId) : undefined;
       const isChzzkLive = chzzkKey ? !!chzzkLiveMap[chzzkKey] : false;
-      const liveVideos = (artist as any)?.liveVideos;
+      const liveVideos = (artist as { liveVideos?: unknown }).liveVideos;
       const isYoutubeLive = Array.isArray(liveVideos) && liveVideos.length > 0;
-      const artistName = (artist as any)?.name ?? '';
+      const artistName = (artist as { name?: string }).name ?? '';
 
       if (artistName.includes('리제')) {
         console.log(`🔍 필터 검사 [${artistName}]:`, {
