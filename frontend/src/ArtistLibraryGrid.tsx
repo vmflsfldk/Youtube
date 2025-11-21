@@ -193,11 +193,11 @@ const ArtistLibraryGrid = <T,>({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [containerWidth, setContainerWidth] = useState(0);
   const [measuredCardHeight, setMeasuredCardHeight] = useState<number | null>(null);
-  const [chzzkLiveMap, setChzzkLiveMap] = useState<Record<number, boolean>>({});
+  const [chzzkLiveMap, setChzzkLiveMap] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     const checkAllLives = async () => {
-      const newLiveStatus: Record<number, boolean> = {};
+      const newLiveStatus: Record<string, boolean> = {};
 
       const promises = artists.map(async (artist: any) => {
         if (!artist?.chzzkChannelId) {
@@ -215,7 +215,7 @@ const ArtistLibraryGrid = <T,>({
           console.log(`📡 API 결과 [${(artist as any)?.name ?? artistId}]:`, data);
 
           if (data.isLive) {
-            newLiveStatus[artistId] = true;
+            newLiveStatus[String(artistId)] = true;
             console.log(`✅ [${(artist as any)?.name ?? artistId}] 방송 중 확인됨!`);
           }
         } catch (err) {
@@ -239,7 +239,8 @@ const ArtistLibraryGrid = <T,>({
   const getLiveStatus = useCallback(
     (artist: T) => {
       const artistId = getArtistId(artist);
-      const isChzzkLive = Number.isFinite(artistId) ? !!chzzkLiveMap[artistId] : false;
+      const chzzkKey = Number.isFinite(artistId) ? String(artistId) : undefined;
+      const isChzzkLive = chzzkKey ? !!chzzkLiveMap[chzzkKey] : false;
       const liveVideos = (artist as any)?.liveVideos;
       const isYoutubeLive = Array.isArray(liveVideos) && liveVideos.length > 0;
       const artistName = (artist as any)?.name ?? '';
@@ -249,7 +250,7 @@ const ArtistLibraryGrid = <T,>({
           isChzzkLive,
           isYoutubeLive,
           finalIsLive: isYoutubeLive || isChzzkLive,
-          chzzkMapValue: Number.isFinite(artistId) ? chzzkLiveMap[artistId] : undefined
+          chzzkMapValue: chzzkKey ? chzzkLiveMap[chzzkKey] : undefined
         });
       }
 
