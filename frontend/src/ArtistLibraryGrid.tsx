@@ -49,6 +49,9 @@ export interface ArtistLibraryGridRenderContext<T> {
   isActive: boolean;
   onSelect: () => void;
   artist: T;
+  isLive: boolean;
+  isChzzkLive: boolean;
+  isYoutubeLive: boolean;
 }
 
 interface ArtistLibraryGridProps<T> {
@@ -70,6 +73,11 @@ interface ArtistGridItemData<T> {
   selectedArtistId: number | null;
   onArtistClick: (artistId: number) => void;
   renderCard: (artist: T, context: ArtistLibraryGridRenderContext<T>) => ReactNode;
+  getLiveStatus: (artist: T) => {
+    isChzzkLive: boolean;
+    isYoutubeLive: boolean;
+    isLive: boolean;
+  };
 }
 
 const clampColumns = (columns: number): number => {
@@ -92,7 +100,16 @@ const createRows = <T,>(artists: readonly T[], columns: number): T[][] => {
 };
 
 const ArtistGridRow = <T,>({ data, index, style }: ListChildComponentProps<ArtistGridItemData<T>>) => {
-  const { rows, columns, rowGap, getArtistId, selectedArtistId, onArtistClick, renderCard } = data;
+  const {
+    rows,
+    columns,
+    rowGap,
+    getArtistId,
+    selectedArtistId,
+    onArtistClick,
+    renderCard,
+    getLiveStatus
+  } = data;
   const rowArtists = rows[index] ?? ([] as T[]);
   const adjustedStyle: CSSProperties = {
     ...style,
@@ -120,13 +137,17 @@ const ArtistGridRow = <T,>({ data, index, style }: ListChildComponentProps<Artis
               onArtistClick(artistId);
             }
           };
+          const { isLive, isChzzkLive, isYoutubeLive } = getLiveStatus(artist);
           return (
             <div key={cardKey} role="listitem" className="artist-library__grid-item">
               {renderCard(artist, {
                 index: index * columns + columnIndex,
                 isActive,
                 onSelect: handleSelect,
-                artist
+                artist,
+                isLive,
+                isChzzkLive,
+                isYoutubeLive
               })}
             </div>
           );
@@ -172,6 +193,41 @@ const ArtistLibraryGrid = <T,>({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [containerWidth, setContainerWidth] = useState(0);
   const [measuredCardHeight, setMeasuredCardHeight] = useState<number | null>(null);
+  const [chzzkLiveMap, setChzzkLiveMap] = useState<Record<number, boolean>>({});
+
+  useEffect(() => {
+    artists.forEach((artist: any) => {
+      if (artist?.chzzkChannelId) {
+        const artistId = getArtistId(artist);
+        if (!Number.isFinite(artistId)) {
+          return;
+        }
+        fetch(`/api/chzzk/status?channelId=${artist.chzzkChannelId}`)
+          .then((res) => res.json())
+          .then((data) => {
+            if (data.isLive) {
+              setChzzkLiveMap((prev) => ({ ...prev, [artistId]: true }));
+            }
+          })
+          .catch((err) => console.error('Chzzk check failed', err));
+      }
+    });
+  }, [artists, getArtistId]);
+
+  const getLiveStatus = useCallback(
+    (artist: T) => {
+      const artistId = getArtistId(artist);
+      const isChzzkLive = Number.isFinite(artistId) ? chzzkLiveMap[artistId] ?? false : false;
+      const liveVideos = (artist as any)?.liveVideos;
+      const isYoutubeLive = Array.isArray(liveVideos) && liveVideos.length > 0;
+      return {
+        isChzzkLive,
+        isYoutubeLive,
+        isLive: isYoutubeLive || isChzzkLive
+      };
+    },
+    [chzzkLiveMap, getArtistId]
+  );
 
   useEffect(() => {
     const element = containerRef.current;
@@ -240,8 +296,8 @@ const ArtistLibraryGrid = <T,>({
   const listHeight = visibleRowCount > 0 ? visibleRowCount * itemSize : 0;
 
   const itemData = useMemo<ArtistGridItemData<T>>(
-    () => ({ rows, columns, rowGap, getArtistId, selectedArtistId, onArtistClick, renderCard }),
-    [rows, columns, rowGap, getArtistId, selectedArtistId, onArtistClick, renderCard]
+    () => ({ rows, columns, rowGap, getArtistId, selectedArtistId, onArtistClick, renderCard, getLiveStatus }),
+    [rows, columns, rowGap, getArtistId, selectedArtistId, onArtistClick, renderCard, getLiveStatus]
   );
 
   const outerElementType = useMemo(
@@ -361,13 +417,17 @@ const ArtistLibraryGrid = <T,>({
               onArtistClick(artistId);
             }
           };
+          const { isLive, isChzzkLive, isYoutubeLive } = getLiveStatus(artist);
           return (
             <div key={key} role="listitem" className="artist-library__grid-item">
               {renderCard(artist, {
                 index,
                 isActive: Number.isFinite(artistId) && selectedArtistId === artistId,
                 onSelect: handleSelect,
-                artist
+                artist,
+                isLive,
+                isChzzkLive,
+                isYoutubeLive
               })}
             </div>
           );
