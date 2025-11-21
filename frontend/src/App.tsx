@@ -251,7 +251,8 @@ const clamp = (value: number, min: number, max: number): number => Math.min(Math
 
 const CLIP_NUDGE_STEP = 0.5;
 const CLIP_NUDGE_LARGE_STEP = 1;
-const normalizeClipSeconds = (value: number) => Math.round(value * 2) / 2;
+const CLIP_KEYBOARD_STEP = 0.1;
+const normalizeClipSeconds = (value: number) => Math.round(value * 10) / 10;
 
 export { mediaMatchesArtist } from './library/mediaMatchesArtist';
 
@@ -1188,6 +1189,21 @@ const resolveApiBaseUrl = () => {
   return normalized;
 };
 
+const extractYoutubeVideoId = (input: string): string | null => {
+  const trimmed = input.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const directIdMatch = trimmed.match(/^[a-zA-Z0-9_-]{11}$/);
+  if (directIdMatch) {
+    return directIdMatch[0];
+  }
+
+  const urlMatch = trimmed.match(/(?:v=|\.be\/|embed\/)([a-zA-Z0-9_-]{11})/);
+  return urlMatch ? urlMatch[1] : null;
+};
+
 const http = axios.create({
   baseURL: resolveApiBaseUrl()
 });
@@ -1698,6 +1714,7 @@ export default function App() {
   const [videoChannelResolution, setVideoChannelResolution] =
     useState<VideoChannelResolutionResponse | null>(null);
   const [videoChannelResolutionError, setVideoChannelResolutionError] = useState<string | null>(null);
+  const [magicInputMessage, setMagicInputMessage] = useState<string | null>(null);
   const [isResolvingVideoChannel, setResolvingVideoChannel] = useState(false);
   const [isClipUpdateSaving, setClipUpdateSaving] = useState(false);
   const [clipEditStatus, setClipEditStatus] = useState<ClipEditStatus | null>(null);
@@ -3862,6 +3879,7 @@ export default function App() {
       setVideoSubmissionStatus(null);
       setVideoChannelResolution(null);
       setVideoChannelResolutionError(null);
+      setMagicInputMessage(null);
       if (trimmedValue.length > 0) {
         setSelectedVideo(null);
       }
@@ -3904,6 +3922,10 @@ export default function App() {
         setSelectedVideo(null);
         setClipCandidates([]);
         setActiveClipId(null);
+        if (payload.channelId) {
+          setArtistForm((prev) => ({ ...prev, channelId: payload.channelId ?? '' }));
+          setArtistRegistrationOpen(true);
+        }
       }
       setActiveLibraryView('videoForm');
     } catch (error) {
@@ -3931,6 +3953,46 @@ export default function App() {
       void handleVideoChannelResolve();
     },
     [handleVideoChannelResolve]
+  );
+
+  const handleMagicInputSubmit = useCallback(
+    async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      const trimmedUrl = videoForm.url.trim();
+      if (!trimmedUrl) {
+        setVideoChannelResolutionError('YouTube 링크를 붙여넣어 주세요.');
+        return;
+      }
+
+      handleMediaUrlChange(trimmedUrl);
+      setMagicInputMessage(null);
+
+      const videoId = extractYoutubeVideoId(trimmedUrl);
+      if (videoId) {
+        const existingVideo = libraryVideos.find((video) => video.youtubeVideoId === videoId);
+        if (existingVideo) {
+          setVideoForm((prev) => ({ ...prev, artistId: String(existingVideo.artistId) }));
+          setSelectedVideo(existingVideo.id);
+          setActiveClipId(null);
+          setClipCandidates([]);
+          setActiveLibraryView('clipList');
+          setMagicInputMessage('등록된 영상으로 이동했어요. 클립을 추가해 보세요.');
+          clipListSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          return;
+        }
+      }
+
+      await handleVideoChannelResolve();
+    },
+    [
+      clipListSectionRef,
+      handleMediaUrlChange,
+      handleVideoChannelResolve,
+      libraryVideos,
+      setClipCandidates,
+      setSelectedVideo,
+      videoForm.url
+    ]
   );
 
   const runAutoDetect = useCallback(async () => {
@@ -5816,7 +5878,7 @@ export default function App() {
   const handleRangeKeyDown = useCallback(
     (target: 'start' | 'end') => (event: ReactKeyboardEvent<HTMLInputElement>) => {
       if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
-        const magnitude = event.shiftKey ? CLIP_NUDGE_LARGE_STEP : CLIP_NUDGE_STEP;
+        const magnitude = event.shiftKey ? CLIP_NUDGE_STEP : CLIP_KEYBOARD_STEP;
         const direction = event.key === 'ArrowLeft' ? -1 : 1;
         nudgeClipBoundary(target, magnitude * direction, { preview: true });
         event.preventDefault();
@@ -5838,6 +5900,32 @@ export default function App() {
     }
     updateClipEndFromSlider(currentSeconds);
   }, [getCurrentPlaybackSeconds, updateClipEndFromSlider]);
+  useEffect(() => {
+    if (!isLibraryClipFormOpen) {
+      return;
+    }
+
+    const handleHotkeys = (event: globalThis.KeyboardEvent) => {
+      const activeTag = (event.target as HTMLElement | null)?.tagName;
+      if (activeTag && ['INPUT', 'TEXTAREA', 'SELECT'].includes(activeTag)) {
+        return;
+      }
+      if (event.metaKey || event.ctrlKey || event.altKey) {
+        return;
+      }
+      if (event.key.toLowerCase() === 'i') {
+        event.preventDefault();
+        applyPlaybackPositionToClipStart();
+      }
+      if (event.key.toLowerCase() === 'o') {
+        event.preventDefault();
+        applyPlaybackPositionToClipEnd();
+      }
+    };
+
+    window.addEventListener('keydown', handleHotkeys);
+    return () => window.removeEventListener('keydown', handleHotkeys);
+  }, [applyPlaybackPositionToClipEnd, applyPlaybackPositionToClipStart, isLibraryClipFormOpen]);
   const applyPlaybackPositionToClipEditForm = useCallback(
     (prefix: ClipTimePrefix) => {
       const currentSeconds = getCurrentPlaybackSeconds();
@@ -7240,6 +7328,35 @@ export default function App() {
                         <span aria-hidden="true">+</span>
                       </button>
                     )}
+                    <section className="magic-input">
+                      <form className="magic-input__form" onSubmit={handleMagicInputSubmit}>
+                        <label className="sr-only" htmlFor="magicInputUrl">
+                          YouTube 링크 붙여넣기
+                        </label>
+                        <div className="magic-input__row">
+                          <input
+                            id="magicInputUrl"
+                            type="url"
+                            inputMode="url"
+                            placeholder="YouTube 링크 붙여넣기"
+                            value={videoForm.url}
+                            onChange={(event) => handleMediaUrlChange(event.target.value)}
+                            disabled={creationDisabled && !isAuthenticated}
+                          />
+                          <button type="submit" disabled={isResolvingVideoChannel}>
+                            {isResolvingVideoChannel ? '분석 중...' : '링크로 이동'}
+                          </button>
+                        </div>
+                      </form>
+                      {(magicInputMessage || videoChannelResolutionError) && (
+                        <p
+                          className={`form-hint${videoChannelResolutionError ? ' form-hint--error' : ''}`}
+                          role="status"
+                        >
+                          {magicInputMessage || videoChannelResolutionError}
+                        </p>
+                      )}
+                    </section>
                     {isArtistRegistrationOpen && (
                       <section className="artist-library__detail-section artist-library__form-section">
                         <div className="artist-library__section-header">
@@ -7807,6 +7924,32 @@ export default function App() {
                                       {clipRangeMax ? (
                                         <div className="clip-range-control__timeline" aria-hidden="true">
                                           <div className="clip-range-control__timeline-track" />
+                                          {clipRangeMax > 0
+                                            ? selectedVideoSectionsWithCandidates.map((section, index) => {
+                                                const startPercent = Math.min(
+                                                  (section.startSec / clipRangeMax) * 100,
+                                                  100
+                                                );
+                                                const endPercent = Math.min(
+                                                  (section.endSec / clipRangeMax) * 100,
+                                                  100
+                                                );
+                                                const width = Math.max(endPercent - startPercent, 0.75);
+                                                return (
+                                                  <span
+                                                    key={`${section.startSec}-${section.endSec}-${index}`}
+                                                    className="clip-range-control__chapter"
+                                                    style={{
+                                                      left: `${startPercent}%`,
+                                                      width: `${width}%`
+                                                    }}
+                                                    title={`${section.title || '추천 구간'} (${formatSeconds(
+                                                      section.startSec
+                                                    )} → ${formatSeconds(section.endSec)})`}
+                                                  />
+                                                );
+                                              })
+                                            : null}
                                           <span
                                             className="clip-range-control__pin clip-range-control__pin--start"
                                             style={{ left: `${clipRangeStartPercent}%` }}
