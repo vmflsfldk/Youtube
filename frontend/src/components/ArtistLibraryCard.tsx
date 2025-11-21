@@ -18,8 +18,8 @@ interface ArtistLibraryCardArtist {
   name: string;
   youtubeChannelTitle?: string | null;
   youtubeChannelId: string;
-  profileImageUrl?: string | null;
   chzzkChannelId?: string | null;
+  profileImageUrl?: string | null;
 }
 
 interface ArtistLibraryCardProps {
@@ -180,24 +180,48 @@ const ArtistLibraryCardComponent = ({
           ))}
         </div>
       )}
-      {artist.youtubeChannelId && (
-        <a
-          className="artist-library__link"
-          href={
-            artist.youtubeChannelId.startsWith('@')
-              ? `https://www.youtube.com/${artist.youtubeChannelId}`
-              : `https://www.youtube.com/channel/${artist.youtubeChannelId}`
-          }
-          target="_blank"
-          rel="noreferrer"
-          onClick={(event) => {
-            if (interactive) {
-              event.stopPropagation();
-            }
-          }}
+      {(artist.youtubeChannelId || artist.chzzkChannelId) && (
+        <div
+          className="artist-library__links"
+          style={{ marginTop: 'auto', display: 'flex', gap: '8px' }}
         >
-          유튜브 채널 보기
-        </a>
+          {artist.youtubeChannelId && (
+            <a
+              className="artist-library__link youtube"
+              href={
+                artist.youtubeChannelId.startsWith('@')
+                  ? `https://www.youtube.com/${artist.youtubeChannelId}`
+                  : `https://www.youtube.com/channel/${artist.youtubeChannelId}`
+              }
+              target="_blank"
+              rel="noreferrer"
+              onClick={(event) => {
+                if (interactive) {
+                  event.stopPropagation();
+                }
+              }}
+            >
+              YouTube
+            </a>
+          )}
+
+          {artist.chzzkChannelId && (
+            <a
+              className="artist-library__link chzzk"
+              href={`https://chzzk.naver.com/${artist.chzzkChannelId}`}
+              target="_blank"
+              rel="noreferrer"
+              onClick={(event) => {
+                if (interactive) {
+                  event.stopPropagation();
+                }
+              }}
+              style={{ backgroundColor: '#00FFA3', color: '#000', border: 'none' }}
+            >
+              Chzzk
+            </a>
+          )}
+        </div>
       )}
     </div>
   );
