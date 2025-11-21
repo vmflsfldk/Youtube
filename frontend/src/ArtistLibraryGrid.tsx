@@ -196,30 +196,50 @@ const ArtistLibraryGrid = <T,>({
   const [chzzkLiveMap, setChzzkLiveMap] = useState<Record<number, boolean>>({});
 
   useEffect(() => {
-    artists.forEach((artist: any) => {
-      if (artist?.chzzkChannelId) {
+    const checkAllLives = async () => {
+      const newLiveStatus: Record<number, boolean> = {};
+
+      const promises = artists.map(async (artist: any) => {
+        if (!artist?.chzzkChannelId) {
+          return;
+        }
+
         const artistId = getArtistId(artist);
         if (!Number.isFinite(artistId)) {
           return;
         }
-        fetch(`/api/chzzk/status?channelId=${artist.chzzkChannelId}`)
-          .then((res) => res.json())
-          .then((data) => {
-            console.log(`📡 API 결과 [${(artist as any)?.name ?? artistId}]:`, data);
 
-            if (data.isLive) {
-              setChzzkLiveMap((prev) => ({ ...prev, [artistId]: true }));
-            }
-          })
-          .catch((err) => console.error('❌ 치지직 체크 실패:', err));
+        try {
+          const res = await fetch(`/api/chzzk/status?channelId=${artist.chzzkChannelId}`);
+          const data = await res.json();
+          console.log(`📡 API 결과 [${(artist as any)?.name ?? artistId}]:`, data);
+
+          if (data.isLive) {
+            newLiveStatus[artistId] = true;
+            console.log(`✅ [${(artist as any)?.name ?? artistId}] 방송 중 확인됨!`);
+          }
+        } catch (err) {
+          console.error(`❌ 치지직 체크 실패 [${(artist as any)?.name ?? artistId}]:`, err);
+        }
+      });
+
+      await Promise.all(promises);
+
+      if (Object.keys(newLiveStatus).length > 0) {
+        console.log('🔄 라이브 상태 일괄 업데이트:', newLiveStatus);
+        setChzzkLiveMap((prev) => ({ ...prev, ...newLiveStatus }));
       }
-    });
+    };
+
+    if (artists.length > 0) {
+      checkAllLives();
+    }
   }, [artists, getArtistId]);
 
   const getLiveStatus = useCallback(
     (artist: T) => {
       const artistId = getArtistId(artist);
-      const isChzzkLive = Number.isFinite(artistId) ? chzzkLiveMap[artistId] ?? false : false;
+      const isChzzkLive = Number.isFinite(artistId) ? !!chzzkLiveMap[artistId] : false;
       const liveVideos = (artist as any)?.liveVideos;
       const isYoutubeLive = Array.isArray(liveVideos) && liveVideos.length > 0;
       const artistName = (artist as any)?.name ?? '';
