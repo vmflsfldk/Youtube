@@ -193,14 +193,15 @@ const ArtistLibraryGrid = <T,>({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [containerWidth, setContainerWidth] = useState(0);
   const [measuredCardHeight, setMeasuredCardHeight] = useState<number | null>(null);
-  const [chzzkLiveMap, setChzzkLiveMap] = useState<Record<number, boolean>>({});
+  const [chzzkLiveMap, setChzzkLiveMap] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     const checkAllLives = async () => {
-      const newLiveStatus: Record<number, boolean> = {};
+      const newLiveStatus: Record<string, boolean> = {};
 
-      const promises = artists.map(async (artist: any) => {
-        if (!artist?.chzzkChannelId) {
+      const promises = artists.map(async (artist) => {
+        const chzzkChannelId = (artist as { chzzkChannelId?: string | null }).chzzkChannelId;
+        if (!chzzkChannelId) {
           return;
         }
 
@@ -210,16 +211,16 @@ const ArtistLibraryGrid = <T,>({
         }
 
         try {
-          const res = await fetch(`/api/chzzk/status?channelId=${artist.chzzkChannelId}`);
+          const res = await fetch(`/api/chzzk/status?channelId=${chzzkChannelId}`);
           const data = await res.json();
-          console.log(`📡 API 결과 [${(artist as any)?.name ?? artistId}]:`, data);
+          console.log(`📡 API 결과 [${(artist as { name?: string }).name ?? artistId}]:`, data);
 
           if (data.isLive) {
-            newLiveStatus[artistId] = true;
-            console.log(`✅ [${(artist as any)?.name ?? artistId}] 방송 중 확인됨!`);
+            newLiveStatus[String(artistId)] = true;
+            console.log(`✅ [${(artist as { name?: string }).name ?? artistId}] 방송 중 확인됨!`);
           }
         } catch (err) {
-          console.error(`❌ 치지직 체크 실패 [${(artist as any)?.name ?? artistId}]:`, err);
+          console.error(`❌ 치지직 체크 실패 [${(artist as { name?: string }).name ?? artistId}]:`, err);
         }
       });
 
@@ -239,17 +240,18 @@ const ArtistLibraryGrid = <T,>({
   const getLiveStatus = useCallback(
     (artist: T) => {
       const artistId = getArtistId(artist);
-      const isChzzkLive = Number.isFinite(artistId) ? !!chzzkLiveMap[artistId] : false;
-      const liveVideos = (artist as any)?.liveVideos;
+      const chzzkKey = Number.isFinite(artistId) ? String(artistId) : undefined;
+      const isChzzkLive = chzzkKey ? !!chzzkLiveMap[chzzkKey] : false;
+      const liveVideos = (artist as { liveVideos?: unknown }).liveVideos;
       const isYoutubeLive = Array.isArray(liveVideos) && liveVideos.length > 0;
-      const artistName = (artist as any)?.name ?? '';
+      const artistName = (artist as { name?: string }).name ?? '';
 
       if (artistName.includes('리제')) {
         console.log(`🔍 필터 검사 [${artistName}]:`, {
           isChzzkLive,
           isYoutubeLive,
           finalIsLive: isYoutubeLive || isChzzkLive,
-          chzzkMapValue: Number.isFinite(artistId) ? chzzkLiveMap[artistId] : undefined
+          chzzkMapValue: chzzkKey ? chzzkLiveMap[chzzkKey] : undefined
         });
       }
 
