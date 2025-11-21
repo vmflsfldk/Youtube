@@ -196,11 +196,17 @@ const ArtistLibraryGrid = <T,>({
   const [chzzkLiveMap, setChzzkLiveMap] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
+    let isMounted = true;
+
     const checkAllLives = async () => {
+      if (artists.length === 0) {
+        return;
+      }
+
       const newLiveStatus: Record<string, boolean> = {};
 
       const promises = artists.map(async (artist) => {
-        const chzzkChannelId = (artist as { chzzkChannelId?: string | null }).chzzkChannelId;
+        const chzzkChannelId = (artist as { chzzkChannelId?: string | null }).chzzkChannelId?.trim();
         if (!chzzkChannelId) {
           return;
         }
@@ -211,12 +217,13 @@ const ArtistLibraryGrid = <T,>({
         }
 
         try {
-          const res = await fetch(`/api/chzzk/status?channelId=${chzzkChannelId}`);
+          const res = await fetch(`/api/chzzk/status?channelId=${encodeURIComponent(chzzkChannelId)}`);
           const data = await res.json();
           console.log(`📡 API 결과 [${(artist as { name?: string }).name ?? artistId}]:`, data);
 
+          newLiveStatus[String(artistId)] = !!data.isLive;
+
           if (data.isLive) {
-            newLiveStatus[String(artistId)] = true;
             console.log(`✅ [${(artist as { name?: string }).name ?? artistId}] 방송 중 확인됨!`);
           }
         } catch (err) {
@@ -226,15 +233,19 @@ const ArtistLibraryGrid = <T,>({
 
       await Promise.all(promises);
 
-      if (Object.keys(newLiveStatus).length > 0) {
+      if (isMounted && Object.keys(newLiveStatus).length > 0) {
         console.log('🔄 라이브 상태 일괄 업데이트:', newLiveStatus);
         setChzzkLiveMap((prev) => ({ ...prev, ...newLiveStatus }));
       }
     };
 
-    if (artists.length > 0) {
-      checkAllLives();
-    }
+    const intervalId = window.setInterval(checkAllLives, 60_000);
+    checkAllLives();
+
+    return () => {
+      isMounted = false;
+      window.clearInterval(intervalId);
+    };
   }, [artists, getArtistId]);
 
   const getLiveStatus = useCallback(
