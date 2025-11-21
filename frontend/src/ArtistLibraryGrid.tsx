@@ -1,186 +1,15 @@
-import {
-  CSSProperties,
-  ReactNode,
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  forwardRef
-} from 'react';
-import { FixedSizeList, ListChildComponentProps } from 'react-window';
+import { memo, useState, useMemo, useEffect } from 'react';
+import ArtistLibraryCard, { type ArtistLibraryCardData } from './components/ArtistLibraryCard';
+import type { ArtistResponse } from './types/artists';
 
-const DESKTOP_ROW_GAP = 12;
-const MOBILE_ROW_GAP = 16;
-const getRowGap = (containerWidth: number): number => {
-  if (containerWidth > 0 && containerWidth <= 640) {
-    return MOBILE_ROW_GAP;
-  }
-  if (containerWidth <= 0 && typeof window !== 'undefined' && window.innerWidth <= 640) {
-    return MOBILE_ROW_GAP;
-  }
-  return DESKTOP_ROW_GAP;
-};
-const DEFAULT_CARD_HEIGHT = 320;
-const MOBILE_CARD_HEIGHT = 120;
-const MAX_VISIBLE_ROWS = 4;
-const MIN_CARD_HEIGHT = 96;
-
-const getMinCardWidth = (containerWidth: number): number => {
-  if (containerWidth <= 560) {
-    return 180;
-  }
-  if (containerWidth <= 768) {
-    return 200;
-  }
-  return 240;
-};
-
-const getEstimatedCardHeight = (containerWidth: number): number => {
-  if (containerWidth <= 560) {
-    return MOBILE_CARD_HEIGHT;
-  }
-  return DEFAULT_CARD_HEIGHT;
-};
-
-export interface ArtistLibraryGridRenderContext<T> {
-  index: number;
-  isActive: boolean;
-  onSelect: () => void;
-  artist: T;
-  isLive: boolean;
-  isChzzkLive: boolean;
-  isYoutubeLive: boolean;
+interface ArtistLibraryGridProps {
+  artists: ArtistResponse[];
+  filter: 'all' | 'live' | 'bookmark';
+  searchQuery: string;
+  onSelectArtist: (artist: ArtistResponse) => void;
 }
 
-interface ArtistLibraryGridProps<T> {
-  artists: readonly T[];
-  getArtistId: (artist: T) => number;
-  selectedArtistId: number | null;
-  onArtistClick: (artistId: number) => void;
-  renderCard: (artist: T, context: ArtistLibraryGridRenderContext<T>) => ReactNode;
-  role?: string;
-  ariaLabel?: string;
-  ariaLabelledby?: string;
-}
-
-interface ArtistGridItemData<T> {
-  rows: T[][];
-  columns: number;
-  rowGap: number;
-  getArtistId: (artist: T) => number;
-  selectedArtistId: number | null;
-  onArtistClick: (artistId: number) => void;
-  renderCard: (artist: T, context: ArtistLibraryGridRenderContext<T>) => ReactNode;
-  getLiveStatus: (artist: T) => {
-    isChzzkLive: boolean;
-    isYoutubeLive: boolean;
-    isLive: boolean;
-  };
-}
-
-const clampColumns = (columns: number): number => {
-  if (!Number.isFinite(columns) || columns <= 0) {
-    return 1;
-  }
-  return columns;
-};
-
-const createRows = <T,>(artists: readonly T[], columns: number): T[][] => {
-  const normalizedColumns = clampColumns(columns);
-  if (artists.length === 0) {
-    return [];
-  }
-  const rows: T[][] = [];
-  for (let index = 0; index < artists.length; index += normalizedColumns) {
-    rows.push(artists.slice(index, index + normalizedColumns));
-  }
-  return rows;
-};
-
-const ArtistGridRow = <T,>({ data, index, style }: ListChildComponentProps<ArtistGridItemData<T>>) => {
-  const {
-    rows,
-    columns,
-    rowGap,
-    getArtistId,
-    selectedArtistId,
-    onArtistClick,
-    renderCard,
-    getLiveStatus
-  } = data;
-  const rowArtists = rows[index] ?? ([] as T[]);
-  const adjustedStyle: CSSProperties = {
-    ...style,
-    height: Math.max((style.height as number) - rowGap, 0),
-    paddingBottom: rowGap
-  };
-
-  return (
-    <div style={adjustedStyle} role="presentation">
-      <div
-        className="artist-library__grid-row"
-        style={{
-          display: 'grid',
-          gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
-          gap: `${rowGap}px`
-        }}
-      >
-        {rowArtists.map((artist: T, columnIndex: number) => {
-          const artistId = getArtistId(artist);
-          const isValidId = Number.isFinite(artistId);
-          const isActive = isValidId && selectedArtistId === artistId;
-          const cardKey = isValidId ? String(artistId) : `${index}-${columnIndex}`;
-          const handleSelect = () => {
-            if (isValidId) {
-              onArtistClick(artistId);
-            }
-          };
-          const { isLive, isChzzkLive, isYoutubeLive } = getLiveStatus(artist);
-          return (
-            <div key={cardKey} role="listitem" className="artist-library__grid-item">
-              {renderCard(artist, {
-                index: index * columns + columnIndex,
-                isActive,
-                onSelect: handleSelect,
-                artist,
-                isLive,
-                isChzzkLive,
-                isYoutubeLive
-              })}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-};
-
-const createOuterElement = (
-  role: string | undefined,
-  ariaLabel: string | undefined,
-  ariaLabelledby: string | undefined
-) => {
-  const OuterElement = forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
-    (props, ref) => (
-      <div
-        {...props}
-        ref={ref}
-        role={role}
-        aria-label={ariaLabel}
-        aria-labelledby={ariaLabelledby}
-        className={['artist-library__grid', 'artist-library__grid--virtualized', props.className]
-          .filter(Boolean)
-          .join(' ')}
-      />
-    )
-  );
-  OuterElement.displayName = 'ArtistLibraryGridOuter';
-  return OuterElement;
-};
-
-const ArtistLibraryGrid = <T,>({
+const ArtistLibraryGrid = ({
   artists,
   getArtistId,
   selectedArtistId,
@@ -199,34 +28,23 @@ const ArtistLibraryGrid = <T,>({
     const checkAllLives = async () => {
       const newLiveStatus: Record<string, boolean> = {};
 
-      const promises = artists.map(async (artist: any) => {
-        if (!artist?.chzzkChannelId) {
-          return;
-        }
+      const targetArtists = artists.filter((a) => a.chzzkChannelId);
 
-        const artistId = getArtistId(artist);
-        if (!Number.isFinite(artistId)) {
-          return;
-        }
-
-        try {
-          const res = await fetch(`/api/chzzk/status?channelId=${artist.chzzkChannelId}`);
-          const data = await res.json();
-          console.log(`📡 API 결과 [${(artist as any)?.name ?? artistId}]:`, data);
+      await Promise.all(
+        targetArtists.map(async (artist) => {
+          try {
+            const res = await fetch(`/api/chzzk/status?channelId=${artist.chzzkChannelId}`);
+            const data = await res.json();
 
           if (data.isLive) {
             newLiveStatus[String(artistId)] = true;
             console.log(`✅ [${(artist as any)?.name ?? artistId}] 방송 중 확인됨!`);
           }
-        } catch (err) {
-          console.error(`❌ 치지직 체크 실패 [${(artist as any)?.name ?? artistId}]:`, err);
-        }
-      });
+        })
+      );
 
-      await Promise.all(promises);
-
-      if (Object.keys(newLiveStatus).length > 0) {
-        console.log('🔄 라이브 상태 일괄 업데이트:', newLiveStatus);
+      if (hasUpdates) {
+        console.log('🔄 상태 업데이트 적용:', newLiveStatus);
         setChzzkLiveMap((prev) => ({ ...prev, ...newLiveStatus }));
       }
     };
@@ -376,115 +194,46 @@ const ArtistLibraryGrid = <T,>({
         if (isWindowAvailable) {
           rafId = window.requestAnimationFrame(ensureMeasurementTarget);
         }
-        return;
       }
 
-      if (typeof ResizeObserver !== 'undefined') {
-        resizeObserver = new ResizeObserver((entries) => {
-          if (entries.length > 0) {
-            updateMeasuredHeight(entries[0].target);
-          } else {
-            updateMeasuredHeight();
-          }
-        });
-        resizeObserver.observe(element);
-        return;
+      const isChzzkLive = !!chzzkLiveMap[String(artist.id)];
+      const isYoutubeLive = artist.liveVideos && artist.liveVideos.length > 0;
+      const isLive = isYoutubeLive || isChzzkLive;
+
+      if (filter === 'live' && !isLive) {
+        return false;
       }
 
-      if (!isWindowAvailable) {
-        return;
-      }
+      return true;
+    });
+  }, [artists, filter, searchQuery, chzzkLiveMap]);
 
-      const handleResize = () => {
-        updateMeasuredHeight(element);
-      };
-      resizeListener = handleResize;
-      window.addEventListener('resize', handleResize);
-      intervalId = window.setInterval(() => updateMeasuredHeight(element), 1000);
-    };
-
-    ensureMeasurementTarget();
-
-    return () => {
-      if (rafId !== null && isWindowAvailable) {
-        window.cancelAnimationFrame(rafId);
-      }
-      if (resizeObserver) {
-        resizeObserver.disconnect();
-      }
-      if (resizeListener && isWindowAvailable) {
-        window.removeEventListener('resize', resizeListener);
-      }
-      if (intervalId !== null && isWindowAvailable) {
-        window.clearInterval(intervalId);
-      }
-    };
-  }, [artists, containerWidth]);
-
-  if (rowCount === 0) {
-    return (
-      <div
-        ref={containerRef}
-        className="artist-library__grid artist-library__grid--empty"
-        role={role}
-        aria-label={ariaLabel}
-        aria-labelledby={ariaLabelledby}
-      />
-    );
-  }
-
-  if (containerWidth === 0) {
-    return (
-      <div
-        ref={containerRef}
-        className="artist-library__grid"
-        style={{ gap: `${rowGap}px` }}
-        role={role}
-        aria-label={ariaLabel}
-        aria-labelledby={ariaLabelledby}
-      >
-        {artists.map((artist: T, index: number) => {
-          const artistId = getArtistId(artist);
-          const key = Number.isFinite(artistId) ? String(artistId) : `artist-${index}`;
-          const handleSelect = () => {
-            if (Number.isFinite(artistId)) {
-              onArtistClick(artistId);
-            }
-          };
-          const { isLive, isChzzkLive, isYoutubeLive } = getLiveStatus(artist);
-          return (
-            <div key={key} role="listitem" className="artist-library__grid-item">
-              {renderCard(artist, {
-                index,
-                isActive: Number.isFinite(artistId) && selectedArtistId === artistId,
-                onSelect: handleSelect,
-                artist,
-                isLive,
-                isChzzkLive,
-                isYoutubeLive
-              })}
-            </div>
-          );
-        })}
-      </div>
-    );
+  if (filteredArtists.length === 0) {
+    return <div className="text-center p-8 text-gray-500">표시할 아티스트가 없습니다.</div>;
   }
 
   return (
-    <div ref={containerRef} className="artist-library__grid-wrapper">
-      <FixedSizeList<ArtistGridItemData<T>>
-        height={listHeight}
-        width={containerWidth}
-        itemCount={rowCount}
-        itemSize={itemSize}
-        itemData={itemData}
-        outerElementType={outerElementType}
-        innerElementType="div"
-      >
-        {renderRow}
-      </FixedSizeList>
+    <div className="artist-library__grid">
+      {filteredArtists.map((artist) => {
+        const cardData: ArtistLibraryCardData = {
+          fallbackAvatarUrl: '/default-profile.png',
+          countryBadges: [],
+          agency: artist.agency || '',
+          tags: artist.tags || [],
+          displayName: artist.displayName || artist.name
+        };
+
+        return (
+          <ArtistLibraryCard
+            key={artist.id}
+            artist={artist}
+            cardData={cardData}
+            onSelect={() => onSelectArtist(artist)}
+          />
+        );
+      })}
     </div>
   );
 };
 
-export default ArtistLibraryGrid;
+export default memo(ArtistLibraryGrid);
