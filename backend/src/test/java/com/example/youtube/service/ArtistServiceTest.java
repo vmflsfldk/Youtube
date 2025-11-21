@@ -51,6 +51,7 @@ class ArtistServiceTest {
                         new LocalizedTextRequest("en", "Different Value"),
                         new LocalizedTextRequest("zh", "测试艺术家")),
                 "channel-123",
+                "chzzk-123",
                 true,
                 false,
                 true,
@@ -89,6 +90,7 @@ class ArtistServiceTest {
         assertThat(response.nameEn()).isEqualTo("Test Artist");
         assertThat(response.nameJp()).isEqualTo("テストアーティスト");
         assertThat(response.names()).hasSize(4);
+        assertThat(response.chzzkChannelId()).isEqualTo("chzzk-123");
     }
 
     @Test
@@ -115,6 +117,7 @@ class ArtistServiceTest {
                 "New Name",
                 "新しい名前",
                 List.of(new LocalizedTextRequest("zh", "새로운 예술가")),
+                " chzzk-123 ",
                 creator);
 
         assertThat(existing.getAgency()).isEqualTo("Agency");
@@ -127,6 +130,7 @@ class ArtistServiceTest {
                 .containsExactlyInAnyOrder("ko", "en", "ja", "zh");
         assertThat(existing.getName()).isEqualTo("새 이름");
         assertThat(existing.getDisplayName()).isEqualTo("새 이름");
+        assertThat(existing.getChzzkChannelId()).isEqualTo("chzzk-123");
 
         assertThat(response.nameKo()).isEqualTo("새 이름");
         assertThat(response.nameEn()).isEqualTo("New Name");

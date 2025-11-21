@@ -44,6 +44,9 @@ public class Artist {
     @Column(name = "youtube_channel_title")
     private String youtubeChannelTitle;
 
+    @Column(name = "chzzk_channel_id")
+    private String chzzkChannelId;
+
     @Column(name = "profile_image_url")
     private String profileImageUrl;
 
@@ -148,6 +151,14 @@ public class Artist {
 
     public void setYoutubeChannelTitle(String youtubeChannelTitle) {
         this.youtubeChannelTitle = youtubeChannelTitle;
+    }
+
+    public String getChzzkChannelId() {
+        return chzzkChannelId;
+    }
+
+    public void setChzzkChannelId(String chzzkChannelId) {
+        this.chzzkChannelId = chzzkChannelId;
     }
 
     public UserAccount getCreatedBy() {

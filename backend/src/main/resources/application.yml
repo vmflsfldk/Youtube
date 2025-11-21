@@ -23,3 +23,7 @@ app:
       - https://youtube-timecapsule.pages.dev
   youtube:
     api-key: ${YOUTUBE_API_KEY:}
+chzzk:
+  api:
+    client-id: ${CHZZK_CLIENT_ID:}
+    client-secret: ${CHZZK_CLIENT_SECRET:}

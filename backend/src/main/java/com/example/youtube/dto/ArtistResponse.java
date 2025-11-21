@@ -11,6 +11,7 @@ public record ArtistResponse(
         String nameJp,
         String youtubeChannelId,
         String youtubeChannelTitle,
+        String chzzkChannelId,
         String profileImageUrl,
         boolean availableKo,
         boolean availableEn,

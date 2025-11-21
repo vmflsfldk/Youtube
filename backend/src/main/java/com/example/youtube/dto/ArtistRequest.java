@@ -14,6 +14,7 @@ public record ArtistRequest(
         String nameJp,
         List<@Valid LocalizedTextRequest> names,
         @NotBlank String youtubeChannelId,
+        @Size(max = 255) String chzzkChannelId,
         boolean availableKo,
         boolean availableEn,
         boolean availableJp,

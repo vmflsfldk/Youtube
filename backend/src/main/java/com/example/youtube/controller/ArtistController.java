@@ -60,6 +60,7 @@ public class ArtistController {
                 request.nameEn(),
                 request.nameJp(),
                 request.names(),
+                request.chzzkChannelId(),
                 user);
     }
 
