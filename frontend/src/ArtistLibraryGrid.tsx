@@ -205,11 +205,13 @@ const ArtistLibraryGrid = <T,>({
         fetch(`/api/chzzk/status?channelId=${artist.chzzkChannelId}`)
           .then((res) => res.json())
           .then((data) => {
+            console.log(`📡 API 결과 [${(artist as any)?.name ?? artistId}]:`, data);
+
             if (data.isLive) {
               setChzzkLiveMap((prev) => ({ ...prev, [artistId]: true }));
             }
           })
-          .catch((err) => console.error('Chzzk check failed', err));
+          .catch((err) => console.error('❌ 치지직 체크 실패:', err));
       }
     });
   }, [artists, getArtistId]);
@@ -220,6 +222,17 @@ const ArtistLibraryGrid = <T,>({
       const isChzzkLive = Number.isFinite(artistId) ? chzzkLiveMap[artistId] ?? false : false;
       const liveVideos = (artist as any)?.liveVideos;
       const isYoutubeLive = Array.isArray(liveVideos) && liveVideos.length > 0;
+      const artistName = (artist as any)?.name ?? '';
+
+      if (artistName.includes('리제')) {
+        console.log(`🔍 필터 검사 [${artistName}]:`, {
+          isChzzkLive,
+          isYoutubeLive,
+          finalIsLive: isYoutubeLive || isChzzkLive,
+          chzzkMapValue: Number.isFinite(artistId) ? chzzkLiveMap[artistId] : undefined
+        });
+      }
+
       return {
         isChzzkLive,
         isYoutubeLive,
