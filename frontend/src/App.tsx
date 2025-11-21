@@ -36,6 +36,7 @@ import type {
 } from './types/media';
 import type { ArtistResponse, LiveArtistResponse, LiveBroadcastResponse } from './types/artists';
 import {
+  extractYouTubeVideoId,
   isClipSourceVideo,
   mergeVideoIntoCollections,
   normalizeVideo
@@ -43,6 +44,7 @@ import {
 import { useTranslations } from './locales/translations';
 import { createReloadArtistVideos } from './library/reloadArtistVideos';
 import { mediaMatchesArtist } from './library/mediaMatchesArtist';
+import VideoLinkInput from './components/VideoLinkInput';
 
 const ClipPlayer = lazy(() => import('./components/ClipPlayer'));
 
@@ -1187,21 +1189,6 @@ const resolveApiBaseUrl = () => {
   }
 
   return normalized;
-};
-
-const extractYoutubeVideoId = (input: string): string | null => {
-  const trimmed = input.trim();
-  if (!trimmed) {
-    return null;
-  }
-
-  const directIdMatch = trimmed.match(/^[a-zA-Z0-9_-]{11}$/);
-  if (directIdMatch) {
-    return directIdMatch[0];
-  }
-
-  const urlMatch = trimmed.match(/(?:v=|\.be\/|embed\/)([a-zA-Z0-9_-]{11})/);
-  return urlMatch ? urlMatch[1] : null;
 };
 
 const http = axios.create({
@@ -3956,8 +3943,8 @@ export default function App() {
   );
 
   const handleMagicInputSubmit = useCallback(
-    async (event: FormEvent<HTMLFormElement>) => {
-      event.preventDefault();
+    async (event?: FormEvent<HTMLFormElement>) => {
+      event?.preventDefault();
       const trimmedUrl = videoForm.url.trim();
       if (!trimmedUrl) {
         setVideoChannelResolutionError('YouTube 링크를 붙여넣어 주세요.');
@@ -3967,7 +3954,7 @@ export default function App() {
       handleMediaUrlChange(trimmedUrl);
       setMagicInputMessage(null);
 
-      const videoId = extractYoutubeVideoId(trimmedUrl);
+      const videoId = extractYouTubeVideoId(trimmedUrl);
       if (videoId) {
         const existingVideo = libraryVideos.find((video) => video.youtubeVideoId === videoId);
         if (existingVideo) {
@@ -7329,33 +7316,21 @@ export default function App() {
                       </button>
                     )}
                     <section className="magic-input">
-                      <form className="magic-input__form" onSubmit={handleMagicInputSubmit}>
-                        <label className="sr-only" htmlFor="magicInputUrl">
-                          YouTube 링크 붙여넣기
-                        </label>
-                        <div className="magic-input__row">
-                          <input
-                            id="magicInputUrl"
-                            type="url"
-                            inputMode="url"
-                            placeholder="YouTube 링크 붙여넣기"
-                            value={videoForm.url}
-                            onChange={(event) => handleMediaUrlChange(event.target.value)}
-                            disabled={creationDisabled && !isAuthenticated}
-                          />
-                          <button type="submit" disabled={isResolvingVideoChannel}>
-                            {isResolvingVideoChannel ? '분석 중...' : '링크로 이동'}
-                          </button>
-                        </div>
-                      </form>
-                      {(magicInputMessage || videoChannelResolutionError) && (
-                        <p
-                          className={`form-hint${videoChannelResolutionError ? ' form-hint--error' : ''}`}
-                          role="status"
-                        >
-                          {magicInputMessage || videoChannelResolutionError}
-                        </p>
-                      )}
+                      <VideoLinkInput
+                        id="magicInputUrl"
+                        label="YouTube 링크 붙여넣기"
+                        placeholder="YouTube 링크 붙여넣기"
+                        value={videoForm.url}
+                        onChange={handleMediaUrlChange}
+                        onSubmit={handleMagicInputSubmit}
+                        submitLabel={isResolvingVideoChannel ? '분석 중...' : '링크로 이동'}
+                        submitButtonType="submit"
+                        isSubmitting={isResolvingVideoChannel}
+                        disabled={creationDisabled && !isAuthenticated}
+                        existingVideoIds={libraryVideos.map((video) => video.youtubeVideoId)}
+                        helperText={magicInputMessage || videoChannelResolutionError}
+                        helperTone={videoChannelResolutionError ? 'error' : magicInputMessage ? 'success' : 'info'}
+                      />
                     </section>
                     {isArtistRegistrationOpen && (
                       <section className="artist-library__detail-section artist-library__form-section">
@@ -7768,6 +7743,18 @@ export default function App() {
                                 </span>
                               </div>
                               <form onSubmit={handleMediaSubmit} className="stacked-form artist-library__form">
+                                <VideoLinkInput
+                                  asForm={false}
+                                  id="libraryMediaUrl"
+                                  label={isClipRegistration ? '라이브 영상 URL' : '영상 URL'}
+                                  placeholder="https://www.youtube.com/watch?v=..."
+                                  value={videoForm.url}
+                                  onChange={handleMediaUrlChange}
+                                  existingVideoIds={libraryVideos.map((video) => video.youtubeVideoId)}
+                                  disabled={creationDisabled}
+                                  showSubmitButton={false}
+                                  helperText="링크를 붙여넣으면 썸네일과 상태를 즉시 확인할 수 있습니다."
+                                />
                                 {videoSubmissionStatus && (
                                   <p
                                     className={`login-status__message${
