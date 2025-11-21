@@ -2917,10 +2917,31 @@ input:focus {
   gap: 6px;
 }
 
+.artist-library__name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .artist-library__name {
   font-weight: 600;
   font-size: 1.12rem;
   color: var(--color-text-primary);
+}
+
+.artist-library__live-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(248, 113, 113, 0.16), rgba(248, 113, 113, 0.32));
+  border: 1px solid rgba(248, 113, 113, 0.45);
+  color: #fecdd3;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
 }
 
 .artist-library__channel {

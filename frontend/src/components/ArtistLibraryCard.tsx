@@ -1,4 +1,4 @@
-import { memo, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { memo, useEffect, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 
 export interface ArtistCountryBadge {
   code: string;
@@ -19,6 +19,7 @@ interface ArtistLibraryCardArtist {
   youtubeChannelTitle?: string | null;
   youtubeChannelId: string;
   profileImageUrl?: string | null;
+  chzzkChannelId?: string | null;
 }
 
 interface ArtistLibraryCardProps {
@@ -76,6 +77,44 @@ const ArtistLibraryCardComponent = ({
 
   const resolvedName = displayName || artist.displayName || artist.name;
 
+  const [isChzzkLive, setIsChzzkLive] = useState(false);
+
+  useEffect(() => {
+    const channelId = artist.chzzkChannelId?.trim();
+
+    if (!channelId) {
+      setIsChzzkLive(false);
+      return;
+    }
+
+    const controller = new AbortController();
+
+    const checkChzzkLive = async () => {
+      try {
+        const response = await fetch(`/api/chzzk/status?channelId=${encodeURIComponent(channelId)}`, {
+          signal: controller.signal
+        });
+
+        if (!response.ok) {
+          return;
+        }
+
+        const data = (await response.json()) as { isLive?: boolean };
+        setIsChzzkLive(Boolean(data?.isLive));
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          console.error('치지직 확인 실패', error);
+        }
+      }
+    };
+
+    void checkChzzkLive();
+
+    return () => {
+      controller.abort();
+    };
+  }, [artist.chzzkChannelId]);
+
   return (
     <div
       className={classNames.join(' ')}
@@ -109,7 +148,10 @@ const ArtistLibraryCardComponent = ({
         )}
       </div>
       <div className="artist-library__info">
-        <span className="artist-library__name">{artist.displayName || artist.name}</span>
+        <div className="artist-library__name-row">
+          <span className="artist-library__name">{artist.displayName || artist.name}</span>
+          {isChzzkLive && <span className="artist-library__live-badge">ON AIR</span>}
+        </div>
         <span className="artist-library__channel">
           {artist.youtubeChannelTitle || artist.youtubeChannelId}
         </span>
