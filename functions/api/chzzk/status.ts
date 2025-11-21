@@ -10,20 +10,11 @@ export const onRequestGet: PagesFunction = async (context) => {
     });
   }
 
-  // ✅ 사용자님이 확인하신 '치지직 웹 API' 주소 사용
-  const chzzkApiUrl = `https://api.chzzk.naver.com/service/v1/channels/${channelId}`;
+  // utahub 프록시를 사용해 치지직 라이브 여부를 확인한다.
+  const chzzkApiUrl = `https://utahub.com/api/chzzk/status?channelId=${encodeURIComponent(channelId)}`;
 
   try {
-    const response = await fetch(chzzkApiUrl, {
-      method: "GET",
-      headers: {
-        // ⚠️ 중요: 봇 차단을 피하기 위해 브라우저(User-Agent)인 척 해야 합니다.
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Content-Type": "application/json",
-        "Referer": "https://chzzk.naver.com/",
-        "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7"
-      },
-    });
+    const response = await fetch(chzzkApiUrl, { method: "GET" });
 
     if (!response.ok) {
       return new Response(JSON.stringify({ error: `Chzzk API Error: ${response.status}` }), {
@@ -33,22 +24,12 @@ export const onRequestGet: PagesFunction = async (context) => {
     }
 
     const data: any = await response.json();
-    const content = data.content;
-
-    if (!content) {
-      return new Response(JSON.stringify({ isLive: false }), { 
-        headers: { "Content-Type": "application/json" } 
-      });
-    }
-
-    // ✅ 확인하신 'openLive' 필드 사용
-    const isLive = content.openLive === true;
 
     const result = {
-      isLive: isLive,
-      title: content.liveTitle || "", // 방송 중이 아니면 null일 수 있음
-      thumbnail: content.liveImageUrl ? content.liveImageUrl.replace('{type}', '1080') : "",
-      viewerCount: content.concurrentUserCount || 0,
+      isLive: Boolean(data.isLive),
+      title: data.title ?? "",
+      thumbnail: data.thumbnail ?? "",
+      viewerCount: data.viewerCount ?? 0,
     };
 
     return new Response(JSON.stringify(result), {
