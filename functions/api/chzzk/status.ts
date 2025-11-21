@@ -14,10 +14,11 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
   const channelId = url.searchParams.get("channelId");
 
   if (!channelId) {
-    return new Response("Channel ID is required", { status: 400 });
+    return new Response(JSON.stringify({ error: "Channel ID required" }), { status: 400 });
   }
 
-  const chzzkApiUrl = `https://api.chzzk.naver.com/service/v1/channels/${channelId}`;
+  // ✅ 공식 Open API 주소 사용
+  const chzzkApiUrl = `https://openapi.chzzk.naver.com/open/v1/channels?channelIds=${channelId}`;
 
   try {
     const response = await fetch(chzzkApiUrl, {
@@ -30,21 +31,29 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     });
 
     if (!response.ok) {
-      return new Response(`Chzzk API Error: ${response.status}`, { status: response.status });
+      return new Response(JSON.stringify({ error: "Chzzk API Error" }), { status: response.status });
     }
 
     const data: any = await response.json();
+    const channelData = data.content?.data?.[0]; // ✅ 응답 구조에 맞춰 데이터 추출
+
+    // 방송 중이 아니거나 데이터가 없으면 기본값 반환
+    if (!channelData) {
+      return new Response(JSON.stringify({ isLive: false }), { headers: { "Content-Type": "application/json" } });
+    }
 
     const result = {
-      isLive: data.content?.openLive || false,
-      title: data.content?.liveTitle || "",
-      thumbnail: data.content?.liveImageUrl || "",
+      isLive: channelData.openLive || false,
+      title: channelData.liveTitle || "",
+      thumbnail: channelData.liveImageUrl ? channelData.liveImageUrl.replace('{type}', '1080') : "",
+      viewerCount: channelData.concurrentUserCount || 0
     };
 
     return new Response(JSON.stringify(result), {
       headers: { "Content-Type": "application/json" },
     });
+
   } catch (error) {
-    return new Response(JSON.stringify({ error: "Failed to fetch Chzzk status" }), { status: 500 });
+    return new Response(JSON.stringify({ error: "Internal Server Error" }), { status: 500 });
   }
 };

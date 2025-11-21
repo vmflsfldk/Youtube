@@ -124,7 +124,26 @@ const ArtistLibraryCardComponent = ({
       onClick={handleClick}
       onKeyDown={handleKeyDown}
     >
-      <div className="artist-library__avatar">
+      <div className="artist-library__avatar" style={{ position: 'relative' }}>
+        {isChzzkLive && (
+          <div
+            className="artist-library__live-badge"
+            style={{
+              position: 'absolute',
+              top: 0,
+              right: 0,
+              backgroundColor: '#22c55e',
+              color: '#fff',
+              fontSize: '0.75rem',
+              fontWeight: 700,
+              padding: '4px 6px',
+              borderBottomLeftRadius: '8px',
+              zIndex: 10
+            }}
+          >
+            CHZZK LIVE
+          </div>
+        )}
         {artist.profileImageUrl ? (
           <img
             src={artist.profileImageUrl}
@@ -150,7 +169,6 @@ const ArtistLibraryCardComponent = ({
       <div className="artist-library__info">
         <div className="artist-library__name-row">
           <span className="artist-library__name">{artist.displayName || artist.name}</span>
-          {isChzzkLive && <span className="artist-library__live-badge">ON AIR</span>}
         </div>
         <span className="artist-library__channel">
           {artist.youtubeChannelTitle || artist.youtubeChannelId}
@@ -207,7 +225,7 @@ const ArtistLibraryCardComponent = ({
 
           {artist.chzzkChannelId && (
             <a
-              className="artist-library__link chzzk"
+              className={`artist-library__link chzzk${isChzzkLive ? ' artist-library__link--live' : ''}`}
               href={`https://chzzk.naver.com/${artist.chzzkChannelId}`}
               target="_blank"
               rel="noreferrer"
@@ -216,9 +234,13 @@ const ArtistLibraryCardComponent = ({
                   event.stopPropagation();
                 }
               }}
-              style={{ backgroundColor: '#00FFA3', color: '#000', border: 'none' }}
+              style={{
+                backgroundColor: isChzzkLive ? '#22c55e' : '#00FFA3',
+                color: isChzzkLive ? '#fff' : '#000',
+                border: isChzzkLive ? '1px solid transparent' : 'none'
+              }}
             >
-              Chzzk
+              {isChzzkLive ? '● ON AIR' : 'Chzzk'}
             </a>
           )}
         </div>
