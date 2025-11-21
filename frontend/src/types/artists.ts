@@ -4,6 +4,7 @@ export interface ArtistResponse {
   displayName: string;
   youtubeChannelId: string;
   youtubeChannelTitle?: string | null;
+  chzzkChannelId?: string | null;
   profileImageUrl?: string | null;
   availableKo: boolean;
   availableEn: boolean;
