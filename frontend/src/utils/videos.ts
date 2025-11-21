@@ -1,5 +1,24 @@
 import type { VideoResponse } from '../types/media';
 
+export const extractYouTubeVideoId = (url: string): string | null => {
+  const trimmed = url.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const directIdMatch = trimmed.match(/^[a-zA-Z0-9_-]{11}$/);
+  if (directIdMatch) {
+    return directIdMatch[0];
+  }
+
+  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|watch\?.*v=|&v=)([^#&?]*).*/;
+  const match = trimmed.match(regExp);
+  return match && match[2].length === 11 ? match[2] : null;
+};
+
+export const getThumbnailUrl = (videoId: string): string =>
+  `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
+
 export const isClipSourceVideo = (video: VideoResponse): boolean =>
   (video.contentType ?? '').toUpperCase() === 'CLIP_SOURCE';
 
