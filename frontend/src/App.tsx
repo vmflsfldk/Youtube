@@ -7334,23 +7334,27 @@ export default function App() {
                         <span aria-hidden="true">+</span>
                       </button>
                     )}
-                    <section className="magic-input">
-                      <VideoLinkInput
-                        id="magicInputUrl"
-                        label="YouTube 링크 붙여넣기"
-                        placeholder="YouTube 링크 붙여넣기"
-                        value={videoForm.url}
-                        onChange={handleMediaUrlChange}
-                        onSubmit={handleMagicInputSubmit}
-                        submitLabel={isResolvingVideoChannel ? '분석 중...' : '링크로 이동'}
-                        submitButtonType="submit"
-                        isSubmitting={isResolvingVideoChannel}
-                        disabled={creationDisabled && !isAuthenticated}
-                        existingVideoIds={libraryVideos.map((video) => video.youtubeVideoId)}
-                        helperText={magicInputMessage || videoChannelResolutionError}
-                        helperTone={videoChannelResolutionError ? 'error' : magicInputMessage ? 'success' : 'info'}
-                      />
-                    </section>
+                    {!isArtistRegistrationOpen && !isLibraryMediaFormOpen && (
+                      <section className="magic-input">
+                        <VideoLinkInput
+                          id="magicInputUrl"
+                          label="YouTube 링크 붙여넣기"
+                          placeholder="YouTube 링크 붙여넣기"
+                          value={videoForm.url}
+                          onChange={handleMediaUrlChange}
+                          onSubmit={handleMagicInputSubmit}
+                          submitLabel={isResolvingVideoChannel ? '분석 중...' : '링크로 이동'}
+                          submitButtonType="submit"
+                          isSubmitting={isResolvingVideoChannel}
+                          disabled={creationDisabled && !isAuthenticated}
+                          existingVideoIds={libraryVideos.map((video) => video.youtubeVideoId)}
+                          helperText={magicInputMessage || videoChannelResolutionError}
+                          helperTone={
+                            videoChannelResolutionError ? 'error' : magicInputMessage ? 'success' : 'info'
+                          }
+                        />
+                      </section>
+                    )}
                     {isArtistRegistrationOpen && (
                       <section className="artist-library__detail-section artist-library__form-section">
                         <div className="artist-library__section-header">
