@@ -6946,10 +6946,13 @@ export default function App() {
                   hidden={activeSection !== 'latest'}
                 >
           <div className="panel latest-panel">
-              <div className="latest-panel__header">
-                <h2>{translate('latest.panel.heading')}</h2>
-                <p>{translate('latest.panel.description')}</p>
-              </div>
+              {/* ✅ [수정] 모바일에서만 내부 제목 표시 (PC는 상단 헤더 사용) */}
+              {isMobileViewport && (
+                <div className="latest-panel__header">
+                  <h2>{translate('latest.panel.heading')}</h2>
+                  <p>{translate('latest.panel.description')}</p>
+                </div>
+              )}
               <div className="latest-panel__grid">
                 <article className="latest-block latest-block--videos">
                   <div className="latest-block__header">
@@ -7222,10 +7225,13 @@ export default function App() {
             hidden={activeSection !== 'live'}
           >
             <div className="panel live-panel">
-              <div className="live-panel__header">
-                <h2>{translate('live.panel.heading')}</h2>
-                <p>{translate('live.panel.description')}</p>
-              </div>
+              {/* ✅ [수정] 모바일에서만 내부 제목 표시 */}
+              {isMobileViewport && (
+                <div className="live-panel__header">
+                  <h2>{translate('live.panel.heading')}</h2>
+                  <p>{translate('live.panel.description')}</p>
+                </div>
+              )}
               <div className="live-panel__content" aria-live="polite">
                 {isLiveArtistsLoading ? (
                   <p className="live-panel__status" role="status">
@@ -8663,11 +8669,8 @@ export default function App() {
 
                   return (
                     <>
-                      <div className="artist-library__header">
-                        <div>
-                          <h3 id="artist-library-heading">{translate('artistDirectory.heading')}</h3>
-                          <p className="artist-directory__subtitle">{translate('artistDirectory.subtitle')}</p>
-                        </div>
+                      {/* ✅ [수정] 중복되는 제목 텍스트 제거하고 버튼만 우측 정렬 */}
+                      <div className="artist-library__header" style={{ justifyContent: 'flex-end' }}>
                         <button
                           type="button"
                           className="artist-library__register"
