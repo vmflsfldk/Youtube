@@ -5333,6 +5333,29 @@ input:focus {
   border-color: #fff;
 }
 
+/* 볼륨 컨트롤 스타일 추가 */
+.volume-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 120px;
+}
+
+.volume-slider {
+  width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  background: #4d4d4d;
+  accent-color: #fff;
+  cursor: pointer;
+}
+
+@media (max-width: 768px) {
+  .volume-control {
+    display: none;
+  }
+}
+
 /* --- 🚨 우측 사이드바 (재생목록 Drawer) --- */
 .playlist-drawer {
   position: fixed;
