@@ -3023,6 +3023,7 @@ input:focus {
   flex-direction: column;
   gap: 28px;
   box-shadow: var(--shadow-soft);
+  max-height: 88vh;  /* 기존 80vh -> 88vh로 화면 꽉 차게 확장 */
 }
 
 .artist-library__actions {
@@ -3191,8 +3192,7 @@ input:focus {
   font-size: 0.9rem;
 }
 
-.artist-library__video-list,
-.artist-library__clip-list {
+.artist-library__video-list {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -3202,6 +3202,12 @@ input:focus {
 }
 
 .artist-library__clip-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;             /* Grid 대신 Flex 사용 */
+  flex-direction: column;    /* 세로로 길게 나열 */
+  gap: 16px;                 /* 간격 넓힘 (12px -> 16px) */
   padding-bottom: 140px;
 }
 
@@ -3551,19 +3557,15 @@ input:focus {
 }
 
 .artist-library__clip-card-button {
-  background: transparent;
+  width: 100%;
+  text-align: left;
+  background: none;
   border: none;
-  color: inherit;
-  font: inherit;
-  padding: 0;
-  margin: 0;
+  padding: 20px;             /* 내부 여백 대폭 확대 (12px -> 20px) */
+  cursor: pointer;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  text-align: left;
-  align-items: flex-start;
-  width: 100%;
-  cursor: pointer;
+  gap: 8px;                  /* 제목과 시간 사이 간격 확대 */
 }
 
 .artist-library__clip-card-button:focus-visible {
@@ -3633,14 +3635,16 @@ input:focus {
 }
 
 .artist-library__clip-title {
-  font-weight: 600;
-  font-size: 1rem;
+  font-weight: 700;          /* 폰트 더 굵게 */
+  font-size: 1.15rem;        /* 폰트 크기 확대 (0.95rem -> 1.15rem) */
+  color: var(--text-primary);
+  line-height: 1.5;          /* 줄 간격 확보 */
 }
 
 .artist-library__clip-time {
-  font-size: 0.85rem;
-  color: var(--accent-secondary);
-  letter-spacing: 0.02em;
+  font-size: 0.95rem;        /* (0.85rem -> 0.95rem) */
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
 }
 
 .artist-library__clip-tags {
@@ -5731,4 +5735,78 @@ input:focus {
     -webkit-box-orient: vertical;
     overflow: hidden;
   }
+}
+
+/* ==============================================
+   클립 리스트 & 카드 강제 확장 (UI 개선)
+   ============================================== */
+
+/* 1. 목록을 무조건 세로 리스트로 변경 (격자 해제) */
+.artist-library__clip-list {
+  display: flex !important;
+  flex-direction: column !important;
+  grid-template-columns: none !important; /* 기존 그리드 설정 무력화 */
+  gap: 12px !important;
+  width: 100% !important;
+  padding-bottom: 40px; /* 하단 여백 확보 */
+}
+
+/* 2. 카드 너비를 꽉 채우고 높이를 키움 */
+.artist-library__clip-card {
+  width: 100% !important;
+  max-width: none !important; /* 너비 제한 해제 */
+  min-height: auto !important;
+  margin: 0 !important;
+  border: 1px solid #e5e7eb; /* 테두리 추가로 구분감 향상 */
+  background-color: #fff;
+  border-radius: 12px; /* 둥근 모서리 */
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05); /* 살짝 그림자 */
+}
+
+/* 3. 버튼 내부 레이아웃: 제목과 시간을 시원하게 배치 */
+.artist-library__clip-card-button {
+  width: 100% !important;
+  display: flex !important;
+  flex-direction: row !important; /* 가로 배치 (좌:제목, 우:시간) */
+  align-items: center !important;
+  justify-content: space-between !important;
+  padding: 20px 24px !important; /* 내부 여백 대폭 확대 */
+  text-align: left !important;
+}
+
+/* 모바일에서는 세로로 배치 (공간 부족 시) */
+@media (max-width: 640px) {
+  .artist-library__clip-card-button {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 8px;
+  }
+}
+
+/* 4. 제목 폰트 크기 확대 */
+.artist-library__clip-title {
+  font-size: 1.2rem !important; /* 폰트 크기 키움 (약 19px) */
+  font-weight: 600 !important;
+  color: #111827 !important; /* 진한 검정 */
+  line-height: 1.4 !important;
+  margin-bottom: 0 !important;
+  flex: 1; /* 남은 공간 모두 차지 */
+}
+
+/* 5. 시간 표시 폰트 조정 */
+.artist-library__clip-time {
+  font-size: 1rem !important;
+  color: #4b5563 !important; /* 회색 */
+  font-weight: 500;
+  white-space: nowrap; /* 줄바꿈 방지 */
+  margin-left: 16px; /* 제목과의 간격 */
+  background: #f3f4f6;
+  padding: 4px 12px;
+  border-radius: 20px;
+}
+
+/* 6. 태그 스타일 개선 */
+.artist-library__clip-tags {
+  margin-top: 12px !important;
+  padding: 0 24px 20px 24px !important; /* 하단 패딩 */
 }
