@@ -5810,3 +5810,93 @@ input:focus {
   margin-top: 12px !important;
   padding: 0 24px 20px 24px !important; /* 하단 패딩 */
 }
+
+/* ==============================================
+   최신 클립 (Latest Clips) 강제 확장 및 리스트화
+   ============================================== */
+
+/* 1. 목록을 가로로 꽉 찬 세로 리스트로 변경 */
+.latest-clip-list {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 16px !important;
+  padding-bottom: 20px !important;
+}
+
+/* 2. 카드 스타일: 전체 너비 사용, 테두리 및 여백 추가 */
+.latest-clip {
+  width: 100% !important;
+}
+
+.latest-clip__main {
+  width: 100% !important;
+  display: flex !important;
+  flex-direction: row !important; /* 썸네일 왼쪽, 텍스트 오른쪽 배치 */
+  align-items: center !important;
+  gap: 20px !important;
+  padding: 16px !important;
+  background: #fff !important;
+  border: 1px solid #e5e7eb !important;
+  border-radius: 12px !important;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important;
+  text-align: left !important; /* 텍스트 왼쪽 정렬 강제 */
+}
+
+/* 3. 썸네일 크기 확대 및 고정 */
+.latest-clip__media {
+  width: 200px !important;        /* 썸네일 너비 큼직하게 고정 */
+  flex-shrink: 0 !important;      /* 줄어들지 않도록 설정 */
+  aspect-ratio: 16 / 9 !important;
+  border-radius: 8px !important;
+  overflow: hidden !important;
+  background-color: #000 !important;
+  margin-bottom: 0 !important;    /* 기존 마진 제거 */
+}
+
+.latest-clip__media img,
+.latest-clip__thumbnail--placeholder {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+}
+
+/* 4. 텍스트 영역 스타일: 폰트 키움 */
+.latest-clip__body {
+  flex: 1 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: center !important;
+  gap: 8px !important;
+}
+
+.latest-clip__title {
+  font-size: 1.25rem !important;  /* 제목 폰트 대폭 확대 (약 20px) */
+  font-weight: 700 !important;
+  color: #111827 !important;
+  line-height: 1.4 !important;
+  margin: 0 !important;
+  white-space: normal !important; /* 긴 제목도 다 보여주기 */
+}
+
+.latest-clip__artist {
+  font-size: 1rem !important;     /* 아티스트명도 잘 보이게 */
+  color: #4b5563 !important;
+  margin: 0 !important;
+}
+
+/* 모바일 화면 대응 (화면이 좁을 때) */
+@media (max-width: 640px) {
+  .latest-clip__main {
+    flex-direction: column !important; /* 모바일에서는 위아래 배치 */
+    align-items: flex-start !important;
+    gap: 12px !important;
+  }
+  
+  .latest-clip__media {
+    width: 100% !important; /* 썸네일 가로 꽉 채우기 */
+  }
+  
+  .latest-clip__title {
+    font-size: 1.1rem !important;
+  }
+}
