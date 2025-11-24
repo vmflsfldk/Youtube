@@ -7453,17 +7453,21 @@ export default function App() {
                       <section className="magic-input">
                         <VideoLinkInput
                           id="magicInputUrl"
-                          label="YouTube 링크 붙여넣기"
-                          placeholder="YouTube 링크 붙여넣기"
+                          label="영상/채널 링크로 시작하기"
+                          placeholder="YouTube 영상 또는 채널 URL을 붙여넣으세요"
                           value={videoForm.url}
                           onChange={handleMediaUrlChange}
                           onSubmit={handleMagicInputSubmit}
-                          submitLabel={isResolvingVideoChannel ? '분석 중...' : '링크로 이동'}
+                          submitLabel={isResolvingVideoChannel ? '분석 중...' : '등록/이동'}
                           submitButtonType="submit"
                           isSubmitting={isResolvingVideoChannel}
                           disabled={creationDisabled && !isAuthenticated}
                           existingVideoIds={libraryVideos.map((video) => video.youtubeVideoId)}
-                          helperText={magicInputMessage || videoChannelResolutionError}
+                          helperText={
+                            magicInputMessage ||
+                            videoChannelResolutionError ||
+                            '영상 링크를 넣으면 등록 폼이 열리고, 채널 링크를 넣으면 아티스트를 찾습니다.'
+                          }
                           helperTone={
                             videoChannelResolutionError ? 'error' : magicInputMessage ? 'success' : 'info'
                           }
@@ -7683,52 +7687,6 @@ export default function App() {
                           </select>
                         </div>
                       </div>
-                    </div>
-                    <div className="artist-library__link-panel">
-                      <form className="artist-library__link-form" onSubmit={handleVideoChannelResolveSubmit}>
-                        <label htmlFor="libraryMediaUrl">YouTube URL</label>
-                        <div className="artist-library__link-input">
-                          <input
-                            id="libraryMediaUrl"
-                            placeholder="https://www.youtube.com/watch?v=..."
-                            value={videoForm.url}
-                            onChange={(event) => handleMediaUrlChange(event.target.value)}
-                            disabled={creationDisabled}
-                          />
-                          <button
-                            type="submit"
-                            disabled={creationDisabled || isResolvingVideoChannel}
-                          >
-                            {isResolvingVideoChannel ? '확인 중...' : '채널 확인'}
-                          </button>
-                        </div>
-                        <p className="form-hint">
-                          YouTube URL에 live가 포함되면 자동으로 클립 등록으로 전환됩니다.
-                        </p>
-                        {videoChannelResolutionError && (
-                          <p className="form-hint form-hint--error" role="alert">
-                            {videoChannelResolutionError}
-                          </p>
-                        )}
-                        {videoChannelResolution && (
-                          <p
-                            className={`form-hint${
-                              videoChannelResolution.artist ? ' form-hint--success' : ''
-                            }`}
-                            role="status"
-                          >
-                            {videoChannelResolution.channelTitle || videoChannelResolution.channelId
-                              ? `${videoChannelResolution.channelTitle || videoChannelResolution.channelId} 채널을 확인했습니다.`
-                              : '채널 정보를 확인했습니다.'}{' '}
-                            {videoChannelResolution.artist
-                              ? `${
-                                  videoChannelResolution.artist.displayName ||
-                                  videoChannelResolution.artist.name
-                                } 아티스트가 자동으로 선택되었습니다.`
-                              : '등록된 아티스트를 찾지 못했습니다. 목록에서 선택하거나 새로 등록해 주세요.'}
-                          </p>
-                        )}
-                      </form>
                     </div>
                     {noArtistsRegistered ? (
                       <div className="artist-empty">{translate('artistDirectory.empty')}</div>
