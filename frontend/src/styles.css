@@ -1494,6 +1494,10 @@ button.primary:hover {
   gap: 12px;
 }
 
+.live-panel__video-skeleton--desktop {
+  display: none;
+}
+
 .live-panel__video {
   display: flex;
   flex-direction: column;
@@ -1557,6 +1561,12 @@ button.primary:hover {
 
   .live-panel__item {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (min-width: 768px) {
+  .live-panel__video-skeleton--desktop {
+    display: block;
   }
 }
 

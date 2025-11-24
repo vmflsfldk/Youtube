@@ -7327,7 +7327,10 @@ export default function App() {
                         </div>
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
                           <div className="skeleton" style={{ width: '100%', paddingTop: '56.25%', borderRadius: '10px' }} />
-                          <div className="skeleton" style={{ width: '100%', paddingTop: '56.25%', borderRadius: '10px', display: 'none', '@media (min-width: 768px)': { display: 'block' } }} />
+                          <div
+                            className="skeleton live-panel__video-skeleton--desktop"
+                            style={{ width: '100%', paddingTop: '56.25%', borderRadius: '10px' }}
+                          />
                         </div>
                       </li>
                     ))}
