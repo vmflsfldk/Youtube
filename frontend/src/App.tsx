@@ -128,6 +128,7 @@ type ClipFormState = {
   endMinutes: string;
   endSeconds: string;
   tags: string;
+  tagInput: string;
   videoUrl: string;
   originalComposer: string;
 };
@@ -141,6 +142,7 @@ const createInitialClipFormState = (): ClipFormState => ({
   endMinutes: '00',
   endSeconds: '00',
   tags: '',
+  tagInput: '',
   videoUrl: '',
   originalComposer: ''
 });
@@ -1818,6 +1820,84 @@ export default function App() {
     setArtistForm((previous) => ({
       ...previous,
       tags: previous.tags.filter((existing) => existing !== tag)
+    }));
+  }, []);
+
+  const addClipTags = useCallback((rawTags: string[]) => {
+    setClipForm((previous) => {
+      const existingTags = parseTags(previous.tags);
+      const normalizedExisting = new Set(existingTags.map((tag) => tag.toLowerCase()));
+      const nextTags = [...existingTags];
+
+      rawTags.forEach((tag) => {
+        const normalized = normalizeTagValue(tag);
+        if (!normalized) {
+          return;
+        }
+        const lowerCaseTag = normalized.toLowerCase();
+        if (normalizedExisting.has(lowerCaseTag)) {
+          return;
+        }
+        normalizedExisting.add(lowerCaseTag);
+        nextTags.push(normalized);
+      });
+
+      return { ...previous, tags: nextTags.join(', ') };
+    });
+  }, []);
+
+  const handleClipTagInputChange = useCallback(
+    (value: string) => {
+      const segments = value.split(',');
+      const trailingInput = segments.pop() ?? '';
+      addClipTags(segments);
+      setClipForm((previous) => ({ ...previous, tagInput: trailingInput }));
+    },
+    [addClipTags]
+  );
+
+  const commitClipTagInput = useCallback(() => {
+    setClipForm((previous) => {
+      const normalized = normalizeTagValue(previous.tagInput);
+      if (!normalized) {
+        return previous.tagInput ? { ...previous, tagInput: '' } : previous;
+      }
+      const existing = parseTags(previous.tags);
+      if (existing.some((tag) => tag.toLowerCase() === normalized.toLowerCase())) {
+        return { ...previous, tagInput: '' };
+      }
+      const nextTags = [...existing, normalized];
+      return { ...previous, tags: nextTags.join(', '), tagInput: '' };
+    });
+  }, []);
+
+  const handleClipTagKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLInputElement>) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        commitClipTagInput();
+        return;
+      }
+      if (event.key === ',' && clipForm.tagInput.trim()) {
+        event.preventDefault();
+        handleClipTagInputChange(`${clipForm.tagInput},`);
+        return;
+      }
+      if (event.key === 'Backspace' && !clipForm.tagInput && parseTags(clipForm.tags).length > 0) {
+        event.preventDefault();
+        setClipForm((previous) => {
+          const existing = parseTags(previous.tags);
+          return { ...previous, tags: existing.slice(0, -1).join(', ') };
+        });
+      }
+    },
+    [clipForm.tagInput, clipForm.tags, commitClipTagInput, handleClipTagInputChange]
+  );
+
+  const handleClipTagRemove = useCallback((tag: string) => {
+    setClipForm((previous) => ({
+      ...previous,
+      tags: parseTags(previous.tags).filter((existing) => existing !== tag).join(', ')
     }));
   }, []);
 
@@ -7827,24 +7907,26 @@ export default function App() {
                                     />
                                   </>
                                 )}
-                                <label htmlFor="libraryVideoCategory">영상 분류</label>
-                                <select
-                                  id="libraryVideoCategory"
-                                  value={videoForm.category}
-                                  onChange={(event) =>
-                                    setVideoForm((prev) => ({
-                                      ...prev,
-                                      category: event.target.value as VideoCategorySelection
-                                    }))
-                                  }
-                                  disabled={creationDisabled}
-                                >
-                                  {VIDEO_CATEGORY_OPTIONS.map(({ value, label }) => (
-                                    <option key={value || 'auto'} value={value}>
-                                      {label}
-                                    </option>
+                                <label>영상 분류</label>
+                                <div className="category-selector">
+                                  {VIDEO_CATEGORY_OPTIONS.filter((option) => option.value !== '').map((option) => (
+                                    <button
+                                      key={option.value}
+                                      type="button"
+                                      className={`category-option${
+                                        videoForm.category === option.value ? ' active' : ''
+                                      }`}
+                                      onClick={() => {
+                                        const nextCategory =
+                                          videoForm.category === option.value ? '' : (option.value as VideoCategorySelection);
+                                        setVideoForm((prev) => ({ ...prev, category: nextCategory }));
+                                      }}
+                                      disabled={creationDisabled}
+                                    >
+                                      {option.label}
+                                    </button>
                                   ))}
-                                </select>
+                                </div>
                                 <p className="form-hint">선택하지 않으면 제목을 기준으로 자동 분류합니다.</p>
                                 {!isClipRegistration && (
                                   <p className="artist-preview__hint">
@@ -8291,16 +8373,36 @@ export default function App() {
                                         )}
                                       </fieldset>
                                     </div>
-                                    <label htmlFor="libraryClipTags">태그 (쉼표로 구분)</label>
-                                    <input
-                                      id="libraryClipTags"
-                                      placeholder="예: 하이라이트, 라이브"
-                                      value={clipForm.tags}
-                                      onChange={(event) =>
-                                        setClipForm((prev) => ({ ...prev, tags: event.target.value }))
-                                      }
-                                      disabled={creationDisabled}
-                                    />
+                                    <label htmlFor="libraryClipTags">태그</label>
+                                    <div className="chip-input">
+                                      <div className="chip-input__list" aria-live="polite">
+                                        {parseTags(clipForm.tags).map((tag) => (
+                                          <span key={tag} className="chip-input__chip">
+                                            <span className="chip-input__chip-label">{tag}</span>
+                                            <button
+                                              type="button"
+                                              className="chip-input__remove"
+                                              onClick={() => handleClipTagRemove(tag)}
+                                              aria-label={`${tag} 태그 제거`}
+                                              disabled={creationDisabled}
+                                            >
+                                              ×
+                                            </button>
+                                          </span>
+                                        ))}
+                                        <input
+                                          id="libraryClipTags"
+                                          className="chip-input__input"
+                                          placeholder="태그 입력 (콤마나 엔터)"
+                                          value={clipForm.tagInput}
+                                          onChange={(event) => handleClipTagInputChange(event.target.value)}
+                                          onKeyDown={handleClipTagKeyDown}
+                                          onBlur={commitClipTagInput}
+                                          disabled={creationDisabled}
+                                        />
+                                      </div>
+                                    </div>
+                                    <p className="form-hint">엔터(Enter) 또는 콤마(,)로 태그를 추가하세요.</p>
                                     <label htmlFor="libraryClipOriginalComposer">원곡자</label>
                                     <input
                                       id="libraryClipOriginalComposer"
