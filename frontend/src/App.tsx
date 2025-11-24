@@ -8700,13 +8700,14 @@ export default function App() {
                         selectedArtistId={selectedArtistId}
                         onArtistClick={handleArtistClick}
                         ariaLabelledby="artist-library-heading"
-                        renderCard={(artist, { isActive, onSelect }) => (
+                        renderCard={(artist, { isActive, onSelect, isChzzkLive }) => (
                           <ArtistLibraryCard
                             artist={artist}
                             isActive={isActive}
                             onSelect={onSelect}
                             cardData={artist.cardData}
                             showTags={false}
+                            isChzzkLive={isChzzkLive}
                           />
                         )}
                       />

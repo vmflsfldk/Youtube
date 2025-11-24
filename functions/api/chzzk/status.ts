@@ -63,6 +63,7 @@ export const onRequestGet: PagesFunction = async (context) => {
       headers: {
         "Content-Type": "application/json",
         "Access-Control-Allow-Origin": "*",
+        "Cache-Control": "no-store, max-age=0",
       },
     });
 

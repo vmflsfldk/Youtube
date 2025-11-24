@@ -30,6 +30,7 @@ interface ArtistLibraryCardProps {
   onSelect?: () => void;
   cardData: ArtistLibraryCardData;
   showTags?: boolean;
+  isChzzkLive?: boolean;
 }
 
 const ArtistLibraryCardComponent = ({
@@ -39,7 +40,8 @@ const ArtistLibraryCardComponent = ({
   focusMode = false,
   onSelect,
   cardData,
-  showTags = true
+  showTags = true,
+  isChzzkLive: externalIsChzzkLive
 }: ArtistLibraryCardProps) => {
   const classNames = ['artist-library__card'];
   if (isActive) {
@@ -77,13 +79,20 @@ const ArtistLibraryCardComponent = ({
 
   const resolvedName = displayName || artist.displayName || artist.name;
 
-  const [isChzzkLive, setIsChzzkLive] = useState(false);
+  const [internalIsChzzkLive, setInternalIsChzzkLive] = useState(false);
+
+  const isChzzkLive =
+    typeof externalIsChzzkLive === 'boolean' ? externalIsChzzkLive : internalIsChzzkLive;
 
   useEffect(() => {
+    if (typeof externalIsChzzkLive === 'boolean') {
+      return;
+    }
+
     const channelId = artist.chzzkChannelId?.trim();
 
     if (!channelId) {
-      setIsChzzkLive(false);
+      setInternalIsChzzkLive(false);
       return;
     }
 
@@ -100,7 +109,7 @@ const ArtistLibraryCardComponent = ({
         }
 
         const data = (await response.json()) as { isLive?: boolean };
-        setIsChzzkLive(Boolean(data?.isLive));
+        setInternalIsChzzkLive(Boolean(data?.isLive));
       } catch (error) {
         if (!controller.signal.aborted) {
           console.error('치지직 확인 실패', error);
@@ -113,7 +122,7 @@ const ArtistLibraryCardComponent = ({
     return () => {
       controller.abort();
     };
-  }, [artist.chzzkChannelId]);
+  }, [artist.chzzkChannelId, externalIsChzzkLive]);
 
   return (
     <div
