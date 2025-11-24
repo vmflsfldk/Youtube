@@ -5973,32 +5973,6 @@ export default function App() {
     }
     updateClipEndFromSlider(currentSeconds);
   }, [getCurrentPlaybackSeconds, updateClipEndFromSlider]);
-  useEffect(() => {
-    if (!isLibraryClipFormOpen) {
-      return;
-    }
-
-    const handleHotkeys = (event: globalThis.KeyboardEvent) => {
-      const activeTag = (event.target as HTMLElement | null)?.tagName;
-      if (activeTag && ['INPUT', 'TEXTAREA', 'SELECT'].includes(activeTag)) {
-        return;
-      }
-      if (event.metaKey || event.ctrlKey || event.altKey) {
-        return;
-      }
-      if (event.key.toLowerCase() === 'i') {
-        event.preventDefault();
-        applyPlaybackPositionToClipStart();
-      }
-      if (event.key.toLowerCase() === 'o') {
-        event.preventDefault();
-        applyPlaybackPositionToClipEnd();
-      }
-    };
-
-    window.addEventListener('keydown', handleHotkeys);
-    return () => window.removeEventListener('keydown', handleHotkeys);
-  }, [applyPlaybackPositionToClipEnd, applyPlaybackPositionToClipStart, isLibraryClipFormOpen]);
   const applyPlaybackPositionToClipEditForm = useCallback(
     (prefix: ClipTimePrefix) => {
       const currentSeconds = getCurrentPlaybackSeconds();
@@ -6031,6 +6005,43 @@ export default function App() {
     },
     [getCurrentPlaybackSeconds]
   );
+  // ✅ [추가] 클립 등록/수정 시 키보드 단축키(i, o) 지원
+  useEffect(() => {
+    // 폼이 열려있지 않으면 무시
+    if (!isLibraryClipFormOpen && !clipEditForm.clipId) return;
+
+    const handleHotkeys = (event: globalThis.KeyboardEvent) => {
+      const activeTag = (event.target as HTMLElement | null)?.tagName;
+      // 입력창에 타이핑 중일 때는 무시
+      if (activeTag && ['INPUT', 'TEXTAREA', 'SELECT'].includes(activeTag)) return;
+
+      // I키: 시작 시간 설정 (In-point)
+      if (event.key.toLowerCase() === 'i') {
+        event.preventDefault();
+        if (isLibraryClipFormOpen) applyPlaybackPositionToClipStart(); // 등록 폼용
+        if (clipEditForm.clipId) applyPlaybackPositionToClipEditForm('start'); // 수정 폼용
+        enqueueToast('시작 시간이 설정되었습니다.', 'info');
+      }
+
+      // O키: 종료 시간 설정 (Out-point)
+      if (event.key.toLowerCase() === 'o') {
+        event.preventDefault();
+        if (isLibraryClipFormOpen) applyPlaybackPositionToClipEnd();
+        if (clipEditForm.clipId) applyPlaybackPositionToClipEditForm('end');
+        enqueueToast('종료 시간이 설정되었습니다.', 'info');
+      }
+    };
+
+    window.addEventListener('keydown', handleHotkeys);
+    return () => window.removeEventListener('keydown', handleHotkeys);
+  }, [
+    isLibraryClipFormOpen,
+    clipEditForm.clipId,
+    applyPlaybackPositionToClipStart,
+    applyPlaybackPositionToClipEnd,
+    applyPlaybackPositionToClipEditForm,
+    enqueueToast
+  ]);
   const handleClipCompactTimeChange = useCallback(
     (prefix: ClipTimePrefix) => (event: ChangeEvent<HTMLInputElement>) => {
       const sanitized = sanitizeSecondsInput(event.target.value);
