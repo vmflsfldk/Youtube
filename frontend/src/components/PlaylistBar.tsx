@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { YouTubePlayer } from 'react-youtube';
 
 const ClipPlayer = lazy(() => import('./ClipPlayer'));
@@ -78,6 +78,9 @@ export default function PlaylistBar({
   onPlayerInstanceChange
 }: PlaylistBarProps) {
   const [hasActivatedPlayback, setHasActivatedPlayback] = useState(false);
+  const internalPlayerRef = useRef<YouTubePlayer | null>(null);
+  const [progress, setProgress] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
 
   const currentItem = useMemo(
     () => items.find((item) => item.key === currentItemKey) ?? null,
@@ -104,6 +107,51 @@ export default function PlaylistBar({
     const nextMode: PlaybackRepeatMode = repeatMode === 'off' ? 'all' : repeatMode === 'all' ? 'one' : 'off';
     onRepeatModeChange(nextMode);
   }, [hasPlayableItems, onRepeatModeChange, repeatMode]);
+
+  const handlePlayerReady = useCallback(
+    (player: YouTubePlayer | null) => {
+      internalPlayerRef.current = player;
+      onPlayerInstanceChange?.(player);
+    },
+    [onPlayerInstanceChange]
+  );
+
+  useEffect(() => {
+    if (!isPlaying || isDragging) return;
+
+    const timer = window.setInterval(() => {
+      const player = internalPlayerRef.current;
+      if (player && typeof player.getCurrentTime === 'function') {
+        const current = player.getCurrentTime();
+        const total = player.getDuration();
+        if (total > 0) {
+          setProgress((current / total) * 100);
+        }
+      }
+    }, 500);
+
+    return () => window.clearInterval(timer);
+  }, [isPlaying, isDragging]);
+
+  useEffect(() => {
+    setProgress(0);
+  }, [currentItemKey]);
+
+  const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
+    const player = internalPlayerRef.current;
+    if (!player) return;
+
+    const bar = e.currentTarget;
+    const rect = bar.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const percentage = Math.min(Math.max(x / rect.width, 0), 1);
+
+    const duration = player.getDuration();
+    if (duration > 0) {
+      player.seekTo(duration * percentage, true);
+      setProgress(percentage * 100);
+    }
+  };
 
   const clipPlayerContent = useMemo(() => {
     if (!currentItem || !currentItem.isPlayable || !currentItem.youtubeVideoId) {
@@ -132,7 +180,7 @@ export default function PlaylistBar({
           shouldLoop={repeatMode === 'one'}
           onEnded={onTrackEnded}
           activationNonce={playbackActivationNonce}
-          onPlayerInstanceChange={onPlayerInstanceChange}
+          onPlayerInstanceChange={handlePlayerReady}
         />
       </Suspense>
     );
@@ -143,7 +191,7 @@ export default function PlaylistBar({
     onTrackEnded,
     playbackActivationNonce,
     repeatMode,
-    onPlayerInstanceChange
+    handlePlayerReady
   ]);
 
   if (!currentItem) {
@@ -160,8 +208,22 @@ export default function PlaylistBar({
       </div>
 
       <div className={playlistBarClassName} role="contentinfo" aria-label="재생 컨트롤">
-        <div className="progress-container-wrapper" aria-hidden>
-          <div className="progress-bar" style={{ width: '0%' }} />
+        <div
+          className="progress-container-wrapper"
+          onClick={handleSeek}
+          onMouseDown={() => setIsDragging(true)}
+          onMouseUp={() => setIsDragging(false)}
+          onMouseLeave={() => setIsDragging(false)}
+          role="slider"
+          aria-valuenow={progress}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label="재생 위치 변경"
+        >
+          <div
+            className="progress-bar"
+            style={{ width: `${progress}%`, transition: isDragging ? 'none' : 'width 0.2s linear' }}
+          />
         </div>
 
         <div className="playlist-bar-content">
@@ -211,6 +273,16 @@ export default function PlaylistBar({
           </div>
 
           <div className="pb-right">
+            <div className="volume-control">
+              <span style={{ fontSize: '18px' }}>🔊</span>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                className="volume-slider"
+                onChange={(e) => internalPlayerRef.current?.setVolume(Number(e.target.value))}
+              />
+            </div>
             {showQueueToggle && (
               <button
                 className="queue-toggle-btn"
