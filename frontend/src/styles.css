@@ -6197,3 +6197,90 @@ input:focus {
   font-size: 0.9rem !important;
   color: var(--color-text-secondary) !important;
 }
+
+/* ==============================================
+   Empty State 디자인 개선 (아이콘 + 텍스트)
+   ============================================== */
+.empty-state-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  text-align: center;
+  color: var(--color-text-secondary);
+  border: 1px dashed var(--color-border);
+  border-radius: 16px;
+  background: var(--color-surface-muted);
+  margin: 16px 0;
+}
+
+.empty-state-icon {
+  font-size: 3rem;
+  margin-bottom: 16px;
+  opacity: 0.5;
+  filter: grayscale(1);
+}
+
+.empty-state-text {
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--color-text-primary);
+  margin-bottom: 8px;
+}
+
+.empty-state-subtext {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
+/* 기존 empty 클래스들에 적용 (선택 사항) */
+.artist-empty, .latest-empty, .catalog-panel__empty-state {
+  background: transparent !important;
+  border: none !important;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+/* 가상 아이콘 추가 */
+.artist-empty::before { content: '\1F469\1F3A4'; font-size: 48px; opacity: 0.7; }
+.latest-empty::before { content: '\1F3AC'; font-size: 48px; opacity: 0.7; }
+
+/* ==============================================
+   모바일 하단 내비게이션 개선
+   ============================================== */
+.mobile-bottom-nav {
+  padding-bottom: calc(env(safe-area-inset-bottom) + 4px) !important; /* 하단 여백 확보 */
+  box-shadow: 0 -1px 0 rgba(255,255,255,0.1); /* 상단 경계선 */
+}
+
+.mobile-bottom-nav .nav-item {
+  position: relative;
+  transition: color 0.2s ease, transform 0.1s ease;
+  opacity: 0.6;
+}
+
+.mobile-bottom-nav .nav-item.active {
+  color: #fff !important;
+  opacity: 1;
+  transform: translateY(-2px); /* 활성화 시 살짝 위로 */
+}
+
+/* 활성 탭 상단에 빛나는 표시선 추가 */
+.mobile-bottom-nav .nav-item.active::after {
+  content: '';
+  position: absolute;
+  top: -10px; /* 탭바 최상단에 위치 */
+  left: 50%;
+  transform: translateX(-50%);
+  width: 24px;
+  height: 3px;
+  background: var(--accent-primary); /* 테마 강조색 사용 */
+  border-radius: 0 0 4px 4px;
+  box-shadow: 0 2px 8px var(--accent-primary);
+}
+
+.mobile-bottom-nav .nav-item:active {
+  transform: scale(0.95); /* 터치 시 눌리는 효과 */
+}

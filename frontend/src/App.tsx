@@ -7234,9 +7234,24 @@ export default function App() {
               )}
               <div className="live-panel__content" aria-live="polite">
                 {isLiveArtistsLoading ? (
-                  <p className="live-panel__status" role="status">
-                    {translate('live.panel.loading')}
-                  </p>
+                  /* ✅ [개선] 라이브 패널 스켈레톤 로딩 UI */
+                  <ul className="live-panel__list">
+                    {Array.from({ length: 3 }).map((_, i) => (
+                      <li key={`skeleton-live-${i}`} className="live-panel__item">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                          <div className="skeleton" style={{ width: '48px', height: '48px', borderRadius: '50%' }} />
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            <div className="skeleton skeleton--text" style={{ width: '120px' }} />
+                            <div className="skeleton skeleton--text" style={{ width: '80px', height: '12px' }} />
+                          </div>
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
+                          <div className="skeleton" style={{ width: '100%', paddingTop: '56.25%', borderRadius: '10px' }} />
+                          <div className="skeleton" style={{ width: '100%', paddingTop: '56.25%', borderRadius: '10px', display: 'none', '@media (min-width: 768px)': { display: 'block' } }} />
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
                 ) : liveArtistsError ? (
                   <div className="live-panel__error" role="alert">
                     <p>{liveArtistsError}</p>
