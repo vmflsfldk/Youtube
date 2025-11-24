@@ -1467,7 +1467,6 @@ export default function App() {
   const [playbackRepeatMode, setPlaybackRepeatMode] = useState<PlaybackRepeatMode>('off');
   const [activePlaybackKey, setActivePlaybackKey] = useState<string | null>(null);
   const [playbackActivationNonce, setPlaybackActivationNonce] = useState(0);
-  const [playingLiveId, setPlayingLiveId] = useState<string | null>(null);
   const renderInlineLivePlayer = (video: any) => {
     const isChzzk = video.url?.includes('chzzk') || video.url?.includes('naver');
 
