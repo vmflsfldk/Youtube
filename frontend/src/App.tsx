@@ -1430,6 +1430,7 @@ export default function App() {
   const [isLiveArtistsLoading, setLiveArtistsLoading] = useState(false);
   const [liveArtistsError, setLiveArtistsError] = useState<string | null>(null);
   const [hasLoadedLiveArtists, setHasLoadedLiveArtists] = useState(false);
+  const [playingLiveId, setPlayingLiveId] = useState<string | null>(null);
   const [videos, setVideos] = useState<VideoResponse[]>([]);
   const [publicVideos, setPublicVideos] = useState<VideoResponse[]>([]);
   const [songVideos, setSongVideos] = useState<VideoResponse[]>([]);
@@ -1466,6 +1467,32 @@ export default function App() {
   const [playbackRepeatMode, setPlaybackRepeatMode] = useState<PlaybackRepeatMode>('off');
   const [activePlaybackKey, setActivePlaybackKey] = useState<string | null>(null);
   const [playbackActivationNonce, setPlaybackActivationNonce] = useState(0);
+  const renderInlineLivePlayer = (video: any) => {
+    const isChzzk = video.url?.includes('chzzk') || video.url?.includes('naver');
+
+    if (isChzzk) {
+      return (
+        <div className="live-player-wrapper">
+          <iframe
+            src={`https://chzzk.naver.com/embed/channel/${video.videoId}`}
+            title="Chzzk Live"
+            frameBorder="0"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+            style={{ width: '100%', height: '100%' }}
+          />
+        </div>
+      );
+    }
+
+    return (
+      <div className="live-player-wrapper">
+        <Suspense fallback={<div className="skeleton" style={{ width: '100%', height: '100%' }} />}>
+          <ClipPlayer youtubeVideoId={video.videoId} autoplay={true} />
+        </Suspense>
+      </div>
+    );
+  };
   const resolveIsMobileViewport = () =>
     typeof window !== 'undefined' ? window.innerWidth <= 768 : false;
   const [isMobileViewport, setIsMobileViewport] = useState(resolveIsMobileViewport);
@@ -6733,12 +6760,24 @@ export default function App() {
             현재 진행 중인 라이브가 없습니다.
           </p>
         ) : (
-          liveWidgetEntries.map((entry) => (
-            <div key={entry.key} className="live-mini-item">
-              <strong>{entry.artistName}</strong>
-              <span>{entry.title}</span>
-            </div>
-          ))
+          <div className="live-mini-list" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {liveWidgetEntries.map((entry) => (
+              <div
+                key={entry.key}
+                className="live-mini-item"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'flex-start',
+                  gap: '8px',
+                  padding: '6px 0'
+                }}
+              >
+                <span style={{ width: '8px', height: '8px', background: '#ef4444', borderRadius: '50%' }} />
+                <strong style={{ fontSize: '0.95rem' }}>{entry.artistName}</strong>
+              </div>
+            ))}
+          </div>
         )}
       </div>
 
@@ -7383,32 +7422,40 @@ export default function App() {
                               : video.scheduledStartAt
                               ? `${translate('live.panel.scheduledLabel')} ${formatTimestamp(video.scheduledStartAt)}`
                               : translate('live.panel.noTiming');
-                            const videoUrl =
-                              video.url && video.url.trim().length > 0
-                                ? video.url
-                                : `https://www.youtube.com/watch?v=${video.videoId}`;
+                            const uniqueKey = `live-${artist.id}-${video.videoId}`;
+                            const isPlaying = playingLiveId === uniqueKey;
                             return (
-                              <li key={`live-video-${artist.id}-${video.videoId}`} className="live-panel__video">
-                                <div className="live-panel__video-thumb">
-                                  {video.thumbnailUrl ? (
-                                    <img
-                                      src={video.thumbnailUrl}
-                                      alt={`${title} ${translate('latest.panel.thumbnailAltSuffix')}`}
-                                      loading="lazy"
-                                      decoding="async"
-                                    />
-                                  ) : (
-                                    <div className="live-panel__video-thumb-placeholder" aria-hidden="true">
-                                      {translate('latest.panel.thumbnailPlaceholder')}
-                                    </div>
-                                  )}
-                                </div>
+                              <li key={uniqueKey} className="live-panel__video">
+                                {isPlaying ? (
+                                  renderInlineLivePlayer(video)
+                                ) : (
+                                  <div
+                                    className="live-panel__video-thumb"
+                                    role="button"
+                                    onClick={() => setPlayingLiveId(uniqueKey)}
+                                  >
+                                    {video.thumbnailUrl ? (
+                                      <img
+                                        src={video.thumbnailUrl}
+                                        alt={`${title} 썸네일`}
+                                        loading="lazy"
+                                      />
+                                    ) : (
+                                      <div className="live-panel__video-thumb-placeholder">
+                                        {translate('latest.panel.thumbnailPlaceholder')}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
                                 <div className="live-panel__video-body">
-                                  <h4 className="live-panel__video-title">{title}</h4>
+                                  <h4
+                                    className="live-panel__video-title"
+                                    style={{ fontSize: '0.9rem', marginTop: '8px', cursor: 'pointer' }}
+                                    onClick={() => setPlayingLiveId(uniqueKey)}
+                                  >
+                                    {title}
+                                  </h4>
                                   <p className="live-panel__video-time">{timeLabel}</p>
-                                  <a className="live-panel__video-link" href={videoUrl} target="_blank" rel="noreferrer">
-                                    {translate('live.panel.watch')}
-                                  </a>
                                 </div>
                               </li>
                             );
