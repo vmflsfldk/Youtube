@@ -3023,6 +3023,7 @@ input:focus {
   flex-direction: column;
   gap: 28px;
   box-shadow: var(--shadow-soft);
+  max-height: 88vh;  /* 기존 80vh -> 88vh로 화면 꽉 차게 확장 */
 }
 
 .artist-library__actions {
@@ -3191,8 +3192,7 @@ input:focus {
   font-size: 0.9rem;
 }
 
-.artist-library__video-list,
-.artist-library__clip-list {
+.artist-library__video-list {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -3202,6 +3202,12 @@ input:focus {
 }
 
 .artist-library__clip-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;             /* Grid 대신 Flex 사용 */
+  flex-direction: column;    /* 세로로 길게 나열 */
+  gap: 16px;                 /* 간격 넓힘 (12px -> 16px) */
   padding-bottom: 140px;
 }
 
@@ -3551,19 +3557,15 @@ input:focus {
 }
 
 .artist-library__clip-card-button {
-  background: transparent;
+  width: 100%;
+  text-align: left;
+  background: none;
   border: none;
-  color: inherit;
-  font: inherit;
-  padding: 0;
-  margin: 0;
+  padding: 20px;             /* 내부 여백 대폭 확대 (12px -> 20px) */
+  cursor: pointer;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  text-align: left;
-  align-items: flex-start;
-  width: 100%;
-  cursor: pointer;
+  gap: 8px;                  /* 제목과 시간 사이 간격 확대 */
 }
 
 .artist-library__clip-card-button:focus-visible {
@@ -3633,14 +3635,16 @@ input:focus {
 }
 
 .artist-library__clip-title {
-  font-weight: 600;
-  font-size: 1rem;
+  font-weight: 700;          /* 폰트 더 굵게 */
+  font-size: 1.15rem;        /* 폰트 크기 확대 (0.95rem -> 1.15rem) */
+  color: var(--text-primary);
+  line-height: 1.5;          /* 줄 간격 확보 */
 }
 
 .artist-library__clip-time {
-  font-size: 0.85rem;
-  color: var(--accent-secondary);
-  letter-spacing: 0.02em;
+  font-size: 0.95rem;        /* (0.85rem -> 0.95rem) */
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
 }
 
 .artist-library__clip-tags {
