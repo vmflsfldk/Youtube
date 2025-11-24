@@ -1467,6 +1467,7 @@ export default function App() {
   const [playbackRepeatMode, setPlaybackRepeatMode] = useState<PlaybackRepeatMode>('off');
   const [activePlaybackKey, setActivePlaybackKey] = useState<string | null>(null);
   const [playbackActivationNonce, setPlaybackActivationNonce] = useState(0);
+  const [playingLiveId, setPlayingLiveId] = useState<string | null>(null);
   const renderInlineLivePlayer = (video: any) => {
     const isChzzk = video.url?.includes('chzzk') || video.url?.includes('naver');
 
@@ -1476,10 +1477,8 @@ export default function App() {
           <iframe
             src={`https://chzzk.naver.com/embed/channel/${video.videoId}`}
             title="Chzzk Live"
-            frameBorder="0"
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
             allowFullScreen
-            style={{ width: '100%', height: '100%' }}
           />
         </div>
       );
@@ -1488,7 +1487,7 @@ export default function App() {
     return (
       <div className="live-player-wrapper">
         <Suspense fallback={<div className="skeleton" style={{ width: '100%', height: '100%' }} />}>
-          <ClipPlayer youtubeVideoId={video.videoId} startSec={0} autoplay={true} />
+          <ClipPlayer youtubeVideoId={video.videoId} autoplay={true} startSec={0} />
         </Suspense>
       </div>
     );
@@ -6752,15 +6751,11 @@ export default function App() {
       <div className="widget-box">
         <h3>라이브</h3>
         {isLiveArtistsLoading ? (
-          <p className="live-mini-item" aria-live="polite">
-            방송 정보를 불러오는 중...
-          </p>
+          <p className="live-mini-item">로딩 중...</p>
         ) : liveWidgetEntries.length === 0 ? (
-          <p className="live-mini-item" aria-live="polite">
-            현재 진행 중인 라이브가 없습니다.
-          </p>
+          <p className="live-mini-item">진행 중인 방송 없음</p>
         ) : (
-          <div className="live-mini-list" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             {liveWidgetEntries.map((entry) => (
               <div
                 key={entry.key}
@@ -6768,13 +6763,23 @@ export default function App() {
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'flex-start',
-                  gap: '8px',
-                  padding: '6px 0'
+                  gap: '12px',
+                  padding: '4px 0'
                 }}
               >
-                <span style={{ width: '8px', height: '8px', background: '#ef4444', borderRadius: '50%' }} />
-                <strong style={{ fontSize: '0.95rem' }}>{entry.artistName}</strong>
+                {/* 🔴 빨간 점 + 아티스트 이름 */}
+                <span
+                  style={{
+                    width: '10px',
+                    height: '10px',
+                    background: '#ef4444',
+                    borderRadius: '50%',
+                    boxShadow: '0 0 8px rgba(239, 68, 68, 0.6)'
+                  }}
+                />
+                <strong style={{ fontSize: '0.95rem', color: '#fff' }}>
+                  {entry.artistName}
+                </strong>
               </div>
             ))}
           </div>
@@ -7348,129 +7353,113 @@ export default function App() {
             <Route
               path={SECTION_PATHS.live}
               element={
-          <section
-            className={`content-panel${activeSection === 'live' ? ' active' : ''}`}
-            role="tabpanel"
-            aria-labelledby="sidebar-tab-live"
-            hidden={activeSection !== 'live'}
-          >
-            <div className="panel live-panel">
-              {/* ✅ [수정] 모바일에서만 내부 제목 표시 */}
-              {isMobileViewport && (
-                <div className="live-panel__header">
-                  <h2>{translate('live.panel.heading')}</h2>
-                  <p>{translate('live.panel.description')}</p>
-                </div>
-              )}
-              <div className="live-panel__content" aria-live="polite">
-                {isLiveArtistsLoading ? (
-                  /* ✅ [개선] 라이브 패널 스켈레톤 로딩 UI */
-                  <ul className="live-panel__list">
-                    {Array.from({ length: 3 }).map((_, i) => (
-                      <li key={`skeleton-live-${i}`} className="live-panel__item">
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                          <div className="skeleton" style={{ width: '48px', height: '48px', borderRadius: '50%' }} />
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                            <div className="skeleton skeleton--text" style={{ width: '120px' }} />
-                            <div className="skeleton skeleton--text" style={{ width: '80px', height: '12px' }} />
-                          </div>
-                        </div>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
-                          <div className="skeleton" style={{ width: '100%', paddingTop: '56.25%', borderRadius: '10px' }} />
-                          <div
-                            className="skeleton live-panel__video-skeleton--desktop"
-                            style={{ width: '100%', paddingTop: '56.25%', borderRadius: '10px' }}
-                          />
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                ) : liveArtistsError ? (
-                  <div className="live-panel__error" role="alert">
-                    <p>{liveArtistsError}</p>
-                    <button
-                      type="button"
-                      className="live-panel__retry"
-                      onClick={handleLiveArtistsRetry}
-                      disabled={isLiveArtistsLoading}
-                    >
-                      {translate('live.panel.retry')}
-                    </button>
-                  </div>
-                ) : liveArtistEntries.length === 0 ? (
-                  <p className="live-panel__status">{translate('live.panel.empty')}</p>
-                ) : (
-                  <ul className="live-panel__list">
-                    {liveArtistEntries.map(({ artist, liveVideos }) => (
-                      <li key={`live-artist-${artist.id}`} className="live-panel__item">
-                        <div className="live-panel__artist">
-                          <ArtistLibraryCard
-                            artist={artist}
-                            cardData={artist.cardData}
-                            interactive={false}
-                            showTags={false}
-                          />
-                        </div>
-                        <ul className="live-panel__videos">
-                          {liveVideos.map((video) => {
-                            const title =
-                              (video.title && video.title.trim().length > 0
-                                ? video.title.trim()
-                                : translate('live.panel.untitledStream')) || translate('live.panel.untitledStream');
-                            const timeLabel = video.startedAt
-                              ? `${translate('live.panel.startedLabel')} ${formatTimestamp(video.startedAt)}`
-                              : video.scheduledStartAt
-                              ? `${translate('live.panel.scheduledLabel')} ${formatTimestamp(video.scheduledStartAt)}`
-                              : translate('live.panel.noTiming');
-                            const uniqueKey = `live-${artist.id}-${video.videoId}`;
-                            const isPlaying = playingLiveId === uniqueKey;
-                            return (
-                              <li key={uniqueKey} className="live-panel__video">
-                                {isPlaying ? (
-                                  renderInlineLivePlayer(video)
-                                ) : (
-                                  <div
-                                    className="live-panel__video-thumb"
-                                    role="button"
-                                    onClick={() => setPlayingLiveId(uniqueKey)}
-                                  >
-                                    {video.thumbnailUrl ? (
-                                      <img
-                                        src={video.thumbnailUrl}
-                                        alt={`${title} 썸네일`}
-                                        loading="lazy"
-                                      />
-                                    ) : (
-                                      <div className="live-panel__video-thumb-placeholder">
-                                        {translate('latest.panel.thumbnailPlaceholder')}
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
-                                <div className="live-panel__video-body">
-                                  <h4
-                                    className="live-panel__video-title"
-                                    style={{ fontSize: '0.9rem', marginTop: '8px', cursor: 'pointer' }}
-                                    onClick={() => setPlayingLiveId(uniqueKey)}
-                                  >
-                                    {title}
-                                  </h4>
-                                  <p className="live-panel__video-time">{timeLabel}</p>
-                                </div>
-                              </li>
-                            );
-                          })}
+                <section
+                  className={`content-panel${activeSection === 'live' ? ' active' : ''}`}
+                  role="tabpanel"
+                  aria-labelledby="sidebar-tab-live"
+                  hidden={activeSection !== 'live'}
+                >
+                  <div className="panel live-panel">
+                    {isMobileViewport && (
+                      <div className="live-panel__header">
+                        <h2>{translate('live.panel.heading')}</h2>
+                        <p>{translate('live.panel.description')}</p>
+                      </div>
+                    )}
+                    <div className="live-panel__content" aria-live="polite">
+                      {isLiveArtistsLoading ? (
+                        <ul className="live-panel__list">
+                          {Array.from({ length: 3 }).map((_, i) => (
+                            <li key={`skeleton-live-${i}`} className="live-panel__item">
+                              <div className="skeleton" style={{ height: '40px', width: '200px', marginBottom: '12px' }} />
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
+                                <div className="skeleton" style={{ width: '100%', aspectRatio: '16/9', borderRadius: '16px' }} />
+                              </div>
+                            </li>
+                          ))}
                         </ul>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            </div>
-          </section>
+                      ) : liveArtistsError ? (
+                        <div className="live-panel__error" role="alert">
+                          <p>{liveArtistsError}</p>
+                          <button className="live-panel__retry" onClick={handleLiveArtistsRetry}>
+                            {translate('live.panel.retry')}
+                          </button>
+                        </div>
+                      ) : liveArtistEntries.length === 0 ? (
+                        <p className="live-panel__status">{translate('live.panel.empty')}</p>
+                      ) : (
+                        <ul className="live-panel__list">
+                          {liveArtistEntries.map(({ artist, liveVideos }) => (
+                            <li key={`live-artist-${artist.id}`} className="live-panel__item">
+                              <div className="live-panel__artist">
+                                <ArtistLibraryCard
+                                  artist={artist}
+                                  cardData={artist.cardData}
+                                  interactive={false}
+                                  showTags={false}
+                                />
+                              </div>
+                              <ul className="live-panel__videos">
+                                {liveVideos.map((video) => {
+                                  const title = (video.title || translate('live.panel.untitledStream')).trim();
+                                  const timeLabel = video.startedAt
+                                    ? `${translate('live.panel.startedLabel')} ${formatTimestamp(video.startedAt)}`
+                                    : video.scheduledStartAt
+                                    ? `${translate('live.panel.scheduledLabel')} ${formatTimestamp(video.scheduledStartAt)}`
+                                    : '';
+                                  
+                                  // 고유 ID 생성
+                                  const uniqueKey = `live-${artist.id}-${video.videoId}`;
+                                  const isPlaying = playingLiveId === uniqueKey;
+
+                                  return (
+                                    <li key={uniqueKey} className="live-panel__video">
+                                      {isPlaying ? (
+                                        renderInlineLivePlayer(video)
+                                      ) : (
+                                        <div 
+                                          className="live-panel__video-thumb"
+                                          role="button"
+                                          tabIndex={0}
+                                          onClick={() => setPlayingLiveId(uniqueKey)}
+                                          onKeyDown={(e) => e.key === 'Enter' && setPlayingLiveId(uniqueKey)}
+                                        >
+                                          {video.thumbnailUrl ? (
+                                            <img
+                                              src={video.thumbnailUrl}
+                                              alt={`${title} 썸네일`}
+                                              loading="lazy"
+                                            />
+                                          ) : (
+                                            <div className="live-panel__video-thumb-placeholder">
+                                              {translate('latest.panel.thumbnailPlaceholder')}
+                                            </div>
+                                          )}
+                                        </div>
+                                      )}
+                                      <div className="live-panel__video-body">
+                                        <h4 
+                                          className="live-panel__video-title"
+                                          style={{ cursor: 'pointer' }}
+                                          onClick={() => setPlayingLiveId(uniqueKey)}
+                                        >
+                                          {title}
+                                        </h4>
+                                        <p className="live-panel__video-time">{timeLabel}</p>
+                                      </div>
+                                    </li>
+                                  );
+                                })}
+                              </ul>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  </div>
+                </section>
               }
             />
-
             <Route
               path={SECTION_PATHS.library}
               element={
