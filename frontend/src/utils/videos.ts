@@ -1,5 +1,10 @@
 import type { VideoResponse } from '../types/media';
 
+const isYouTubeHost = (host: string): boolean => {
+  const lower = host.toLowerCase();
+  return lower === 'youtube.com' || lower === 'youtu.be' || lower.endsWith('.youtube.com');
+};
+
 export const extractYouTubeVideoId = (url: string): string | null => {
   const trimmed = url.trim();
   if (!trimmed) {
@@ -11,9 +16,36 @@ export const extractYouTubeVideoId = (url: string): string | null => {
     return directIdMatch[0];
   }
 
-  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|watch\?.*v=|&v=)([^#&?]*).*/;
-  const match = trimmed.match(regExp);
-  return match && match[2].length === 11 ? match[2] : null;
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    try {
+      parsed = new URL(`https://${trimmed}`);
+    } catch {
+      return null;
+    }
+  }
+
+  if (!isYouTubeHost(parsed.hostname)) {
+    return null;
+  }
+
+  const pathname = parsed.pathname.split('/').filter(Boolean);
+  const candidateSources = [
+    parsed.searchParams.get('v'),
+    parsed.searchParams.get('vi'),
+    pathname[0] === 'watch' ? parsed.searchParams.get('v') : null,
+    pathname[0] === 'embed' && pathname[1] ? pathname[1] : null,
+    pathname[0] === 'v' && pathname[1] ? pathname[1] : null,
+    pathname[0] === 'shorts' && pathname[1] ? pathname[1] : null,
+    parsed.hostname.includes('youtu.be') && pathname[0] ? pathname[0] : null
+  ];
+
+  const candidate = candidateSources.find(
+    (value): value is string => typeof value === 'string' && /^[a-zA-Z0-9_-]{11}$/.test(value)
+  );
+  return candidate ?? null;
 };
 
 export const getThumbnailUrl = (videoId: string): string =>
