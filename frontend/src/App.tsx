@@ -4575,6 +4575,14 @@ export default function App() {
   const noFilteredArtists = !noArtistsRegistered && filteredArtists.length === 0 && !selectedArtist;
   const artistList = filteredArtists;
   const selectedArtistId = selectedArtist?.id ?? null;
+  const selectedArtistLiveVideos = useMemo(() => {
+    if (selectedArtistId === null) {
+      return [] as LiveBroadcastResponse[];
+    }
+
+    const liveEntry = liveArtists.find((entry) => entry.artist.id === selectedArtistId);
+    return liveEntry?.liveVideos ?? [];
+  }, [liveArtists, selectedArtistId]);
   const artistLibraryVideos = useMemo(() => {
     if (selectedArtistId === null) {
       return libraryVideos;
@@ -7740,8 +7748,8 @@ export default function App() {
                             interactive={false}
                             cardData={selectedArtist.cardData}
                             showTags
-                            isLive={Boolean(selectedArtist.liveVideos?.length)}
-                            isYoutubeLive={Boolean(selectedArtist.liveVideos?.length)}
+                            isLive={selectedArtistLiveVideos.length > 0}
+                            isYoutubeLive={selectedArtistLiveVideos.length > 0}
                           />
                         </div>
                         <div className="artist-library__detail-panel">
