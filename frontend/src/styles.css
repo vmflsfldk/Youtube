@@ -6123,8 +6123,77 @@ input:focus {
     grid-template-columns: repeat(2, 1fr) !important; /* 모바일에서 한 줄에 2개 */
     gap: 16px !important;
   }
-  
+
   .latest-clip__title {
     font-size: 0.95rem !important;
   }
+}
+
+/* ==============================================
+   최신 클립 (Latest Clips) 카드형 디자인
+   ============================================== */
+.latest-clip-list {
+  display: grid !important;
+  /* 반응형 그리드: 화면 크기에 따라 자동 배치 (최소 240px) */
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)) !important;
+  gap: 24px !important;
+  padding: 8px 0 40px 0 !important;
+}
+
+.latest-clip__main {
+  display: flex !important;
+  flex-direction: column !important;
+  width: 100% !important;
+  padding: 0 !important;
+  gap: 12px !important;
+  background: transparent !important;
+  border: none !important;
+  text-align: left !important;
+}
+
+/* 썸네일: 16:9 비율 고정 및 꽉 채우기 */
+.latest-clip__media {
+  width: 100% !important;
+  height: auto !important;
+  aspect-ratio: 16 / 9 !important;
+  border-radius: 12px !important;
+  overflow: hidden !important;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1) !important;
+}
+
+.latest-clip__media img {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  transition: transform 0.3s ease;
+}
+
+.latest-clip__main:hover .latest-clip__media img {
+  transform: scale(1.05); /* 호버 시 확대 효과 */
+}
+
+/* 텍스트 영역 */
+.latest-clip__body {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 4px !important;
+}
+
+.latest-clip__title {
+  font-size: 1.1rem !important; /* 제목 키움 */
+  font-weight: 700 !important;
+  color: var(--color-text-primary) !important;
+  line-height: 1.4 !important;
+  
+  /* 두 줄 말줄임표 */
+  display: -webkit-box !important;
+  -webkit-line-clamp: 2 !important;
+  -webkit-box-orient: vertical !important;
+  overflow: hidden !important;
+  white-space: normal !important;
+}
+
+.latest-clip__artist {
+  font-size: 0.9rem !important;
+  color: var(--color-text-secondary) !important;
 }

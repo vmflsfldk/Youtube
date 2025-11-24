@@ -8739,6 +8739,11 @@ export default function App() {
             aria-modal="true"
             aria-hidden={isFullPlayerOpen ? undefined : true}
             aria-label="전체 화면 플레이어"
+            onClick={(event) => {
+              if (event.target === event.currentTarget) {
+                setIsFullPlayerOpen(false);
+              }
+            }}
           >
             <div className="player-header-controls">
               <button
@@ -8768,6 +8773,8 @@ export default function App() {
                 }
                 className="big-album-art"
                 alt="Album Art"
+                onClick={() => setIsFullPlayerOpen(false)}
+                style={{ cursor: 'pointer', boxShadow: '0 10px 30px rgba(0,0,0,0.5)' }}
               />
 
               <div className="player-track-info">

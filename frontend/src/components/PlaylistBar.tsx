@@ -214,6 +214,7 @@ export default function PlaylistBar({
           onMouseDown={() => setIsDragging(true)}
           onMouseUp={() => setIsDragging(false)}
           onMouseLeave={() => setIsDragging(false)}
+          style={{ cursor: 'pointer', height: '6px' }}
           role="slider"
           aria-valuenow={progress}
           aria-valuemin={0}
