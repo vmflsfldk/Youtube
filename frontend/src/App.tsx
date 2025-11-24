@@ -1488,7 +1488,7 @@ export default function App() {
     return (
       <div className="live-player-wrapper">
         <Suspense fallback={<div className="skeleton" style={{ width: '100%', height: '100%' }} />}>
-          <ClipPlayer youtubeVideoId={video.videoId} autoplay={true} />
+          <ClipPlayer youtubeVideoId={video.videoId} startSec={0} autoplay={true} />
         </Suspense>
       </div>
     );
