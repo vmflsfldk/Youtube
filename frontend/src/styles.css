@@ -6284,3 +6284,91 @@ input:focus {
 .mobile-bottom-nav .nav-item:active {
   transform: scale(0.95); /* 터치 시 눌리는 효과 */
 }
+
+/* ==============================================
+   아티스트 라이브러리 UX 개선
+   ============================================== */
+
+/* 1. 라이브 상태 Pulse 애니메이션 정의 */
+@keyframes live-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); /* 치지직 그린 */
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(34, 197, 94, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0);
+  }
+}
+
+/* 라이브 중일 때 프로필 이미지에 적용할 클래스 */
+.artist-library__avatar--live {
+  animation: live-pulse 2s infinite;
+  border: 2px solid #22c55e !important; /* 테두리 색상 강조 */
+}
+
+/* 2. 채널 이동 버튼 스타일 강화 */
+.artist-library__links {
+  margin-top: auto;
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+
+.artist-library__link {
+  flex: 1; /* 버튼이 공간을 균등하게 꽉 채움 */
+  text-align: center;
+  padding: 10px 0;
+  border-radius: 12px;
+  font-weight: 700;
+  font-size: 0.9rem;
+  transition: transform 0.2s ease, filter 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none !important;
+}
+
+.artist-library__link:hover {
+  transform: translateY(-2px);
+  filter: brightness(1.1);
+  text-decoration: none;
+}
+
+/* 유튜브 버튼 테마 */
+.artist-library__link.youtube {
+  background-color: rgba(255, 0, 0, 0.15);
+  color: #ff4e45 !important;
+  border: 1px solid rgba(255, 0, 0, 0.3);
+}
+
+/* 치지직 버튼 테마 */
+.artist-library__link.chzzk {
+  background-color: rgba(0, 255, 163, 0.15);
+  color: #00ffa3 !important;
+  border: 1px solid rgba(0, 255, 163, 0.3);
+}
+
+/* 라이브 중인 치지직 버튼 강조 */
+.artist-library__link.chzzk.artist-library__link--live {
+  background-color: #00ffa3 !important;
+  color: #000 !important;
+  box-shadow: 0 4px 12px rgba(0, 255, 163, 0.4);
+}
+
+/* 3. 태그 영역 높이 제한 및 스크롤 */
+.artist-library__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 60px; /* 약 2줄 높이로 제한 */
+  overflow: hidden; /* 넘치면 숨김 (또는 overflow-y: auto 로 스크롤 가능하게) */
+  mask-image: linear-gradient(to bottom, black 60%, transparent 100%); /* 아래쪽 자연스럽게 흐리기 */
+  -webkit-mask-image: linear-gradient(to bottom, black 60%, transparent 100%);
+}
+
+.artist-tag {
+  font-size: 0.75rem;
+  padding: 4px 10px;
+}
