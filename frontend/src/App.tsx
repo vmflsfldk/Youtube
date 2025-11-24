@@ -7396,6 +7396,8 @@ export default function App() {
                                   cardData={artist.cardData}
                                   interactive={false}
                                   showTags={false}
+                                  isLive={liveVideos.length > 0}
+                                  isYoutubeLive={liveVideos.length > 0}
                                 />
                               </div>
                               <ul className="live-panel__videos">
@@ -7738,6 +7740,8 @@ export default function App() {
                             interactive={false}
                             cardData={selectedArtist.cardData}
                             showTags
+                            isLive={Boolean(selectedArtist.liveVideos?.length)}
+                            isYoutubeLive={Boolean(selectedArtist.liveVideos?.length)}
                           />
                         </div>
                         <div className="artist-library__detail-panel">
@@ -8700,7 +8704,7 @@ export default function App() {
                         selectedArtistId={selectedArtistId}
                         onArtistClick={handleArtistClick}
                         ariaLabelledby="artist-library-heading"
-                        renderCard={(artist, { isActive, onSelect, isChzzkLive }) => (
+                        renderCard={(artist, { isActive, onSelect, isChzzkLive, isLive, isYoutubeLive }) => (
                           <ArtistLibraryCard
                             artist={artist}
                             isActive={isActive}
@@ -8708,6 +8712,8 @@ export default function App() {
                             cardData={artist.cardData}
                             showTags={false}
                             isChzzkLive={isChzzkLive}
+                            isYoutubeLive={isYoutubeLive}
+                            isLive={isLive}
                           />
                         )}
                       />

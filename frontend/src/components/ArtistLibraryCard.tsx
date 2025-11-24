@@ -31,6 +31,8 @@ interface ArtistLibraryCardProps {
   cardData: ArtistLibraryCardData;
   showTags?: boolean;
   isChzzkLive?: boolean;
+  isYoutubeLive?: boolean;
+  isLive?: boolean;
 }
 
 const ArtistLibraryCardComponent = ({
@@ -41,7 +43,9 @@ const ArtistLibraryCardComponent = ({
   onSelect,
   cardData,
   showTags = true,
-  isChzzkLive: externalIsChzzkLive
+  isChzzkLive: externalIsChzzkLive,
+  isYoutubeLive: externalIsYoutubeLive,
+  isLive: externalIsLive
 }: ArtistLibraryCardProps) => {
   const classNames = ['artist-library__card'];
   if (isActive) {
@@ -83,6 +87,8 @@ const ArtistLibraryCardComponent = ({
 
   const isChzzkLive =
     typeof externalIsChzzkLive === 'boolean' ? externalIsChzzkLive : internalIsChzzkLive;
+  const isYoutubeLive = Boolean(externalIsYoutubeLive);
+  const isLive = typeof externalIsLive === 'boolean' ? externalIsLive : isChzzkLive || isYoutubeLive;
 
   useEffect(() => {
     if (typeof externalIsChzzkLive === 'boolean') {
@@ -134,17 +140,17 @@ const ArtistLibraryCardComponent = ({
       onKeyDown={handleKeyDown}
     >
       <div
-        className={`artist-library__avatar${isChzzkLive ? ' artist-library__avatar--live' : ''}`}
+        className={`artist-library__avatar${isLive ? ' artist-library__avatar--live' : ''}`}
         style={{ position: 'relative' }}
       >
-        {isChzzkLive && (
+        {isLive && (
           <div
             className="artist-library__live-badge"
             style={{
               position: 'absolute',
               top: 0,
               right: 0,
-              backgroundColor: '#22c55e',
+              backgroundColor: isChzzkLive ? '#22c55e' : '#ef4444',
               color: '#fff',
               fontSize: '0.75rem',
               fontWeight: 700,
@@ -153,7 +159,7 @@ const ArtistLibraryCardComponent = ({
               zIndex: 10
             }}
           >
-            CHZZK LIVE
+            {isChzzkLive ? 'CHZZK LIVE' : 'YOUTUBE LIVE'}
           </div>
         )}
         {artist.profileImageUrl ? (
@@ -214,7 +220,7 @@ const ArtistLibraryCardComponent = ({
         <div className="artist-library__links">
           {artist.youtubeChannelId && (
             <a
-              className="artist-library__link youtube"
+              className={`artist-library__link youtube${isYoutubeLive ? ' artist-library__link--live' : ''}`}
               href={
                 artist.youtubeChannelId.startsWith('@')
                   ? `https://www.youtube.com/${artist.youtubeChannelId}`
@@ -228,7 +234,7 @@ const ArtistLibraryCardComponent = ({
                 }
               }}
             >
-              YouTube
+              {isYoutubeLive ? '● LIVE' : 'YouTube'}
             </a>
           )}
 
