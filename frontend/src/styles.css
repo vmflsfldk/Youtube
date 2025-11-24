@@ -5900,3 +5900,106 @@ input:focus {
     font-size: 1.1rem !important;
   }
 }
+
+/* ==========================================================================
+   최신 클립 모음 (Latest Clips) 디자인 전면 수정
+   ========================================================================== */
+
+/* 1. 리스트 컨테이너: 세로로 넓게 배치 */
+.latest-clip-list {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 16px !important;      /* 카드 간 간격 넓힘 */
+  padding: 4px 0 !important;
+}
+
+/* 2. 카드 스타일: 전체 너비 사용 및 박스 디자인 강화 */
+.latest-clip {
+  width: 100% !important;
+}
+
+.latest-clip__main {
+  width: 100% !important;
+  display: flex !important;
+  flex-direction: row !important;  /* 썸네일-텍스트 가로 배치 */
+  align-items: center !important;
+  padding: 16px !important;        /* 내부 여백 확대 */
+  background-color: #ffffff !important;
+  border: 1px solid #e5e7eb !important;
+  border-radius: 12px !important;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05) !important;
+  text-align: left !important;
+  gap: 20px !important;            /* 썸네일과 텍스트 사이 간격 */
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+
+.latest-clip__main:hover {
+  background-color: #f9fafb !important;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 6px rgba(0,0,0,0.05) !important;
+}
+
+/* 3. 썸네일 크기 대폭 확대 (가독성 핵심) */
+.latest-clip__media {
+  width: 180px !important;         /* 썸네일 너비를 180px로 고정 (기존보다 2배 가량 확대) */
+  height: 101px !important;        /* 16:9 비율 유지 */
+  flex-shrink: 0 !important;       /* 찌그러짐 방지 */
+  border-radius: 8px !important;
+  overflow: hidden !important;
+  background-color: #f3f4f6 !important;
+  margin: 0 !important;
+}
+
+.latest-clip__media img,
+.latest-clip__thumbnail--placeholder {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+}
+
+/* 4. 텍스트 영역 및 폰트 크기 확대 */
+.latest-clip__body {
+  flex: 1 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 6px !important;
+  overflow: hidden; /* 텍스트 넘침 방지 */
+}
+
+.latest-clip__title {
+  font-size: 1.15rem !important;   /* 제목 폰트 키움 (약 18px) */
+  font-weight: 700 !important;
+  color: #111827 !important;
+  line-height: 1.4 !important;
+  margin: 0 !important;
+  
+  /* 긴 제목은 2줄까지만 표시 */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.latest-clip__artist {
+  font-size: 0.95rem !important;   /* 아티스트명도 키움 */
+  color: #4b5563 !important;
+  font-weight: 500 !important;
+  margin: 0 !important;
+}
+
+/* 모바일 화면(좁은 화면) 대응 */
+@media (max-width: 640px) {
+  .latest-clip__media {
+    width: 140px !important; /* 모바일에서는 썸네일 조금 줄임 */
+    height: 79px !important;
+  }
+  
+  .latest-clip__main {
+    padding: 12px !important;
+    gap: 14px !important;
+  }
+
+  .latest-clip__title {
+    font-size: 1.05rem !important;
+  }
+}
