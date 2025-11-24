@@ -6128,3 +6128,105 @@ input:focus {
     font-size: 0.95rem !important;
   }
 }
+
+/* ========================================================================== 
+   최신 클립 (Latest Clips) - 가독성 개선 및 카드 그리드 적용
+   ========================================================================== */
+
+/* 1. 목록 컨테이너: 반응형 그리드로 변경 (화면 크기에 따라 자동 조절) */
+.latest-clip-list {
+  display: grid !important;
+  /* 최소 너비 280px의 카드를 채울 수 있는 만큼 배치 */
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)) !important;
+  gap: 20px !important;
+  padding: 10px 0 30px 0 !important;
+}
+
+/* 2. 카드 버튼 스타일: 세로 배치 (썸네일 위, 텍스트 아래) */
+.latest-clip__main {
+  display: flex !important;
+  flex-direction: column !important; /* 썸네일과 텍스트를 위아래로 */
+  width: 100% !important;
+  height: 100% !important;
+  padding: 0 !important;
+  background: transparent !important;
+  border: none !important;
+  text-align: left !important;
+  gap: 12px !important;
+  transition: transform 0.2s ease;
+}
+
+.latest-clip__main:hover {
+  transform: translateY(-4px); /* 마우스 올리면 살짝 떠오름 */
+  background: transparent !important;
+}
+
+/* 3. 썸네일 영역: 16:9 비율 고정 및 꽉 채우기 */
+.latest-clip__media {
+  width: 100% !important;
+  aspect-ratio: 16 / 9 !important;
+  border-radius: 12px !important;
+  overflow: hidden !important;
+  background-color: #f3f4f6 !important;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important;
+}
+
+.latest-clip__media img {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  transition: transform 0.3s ease;
+}
+
+.latest-clip__main:hover .latest-clip__media img {
+  transform: scale(1.05); /* 썸네일 확대 효과 */
+}
+
+/* 4. 텍스트 영역: 제목과 아티스트 정보 */
+.latest-clip__body {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 4px !important;
+  padding: 0 4px !important;
+}
+
+/* 제목 스타일: 크고 굵게, 최대 2줄 표시 */
+.latest-clip__title {
+  font-size: 1.1rem !important;    /* 약 17.6px */
+  font-weight: 600 !important;
+  color: #111827 !important;       /* 진한 검정 */
+  line-height: 1.5 !important;
+  margin: 0 !important;
+  
+  /* 말줄임표(...) 처리 */
+  display: -webkit-box !important;
+  -webkit-line-clamp: 2 !important;
+  -webkit-box-orient: vertical !important;
+  overflow: hidden !important;
+  white-space: normal !important;
+}
+
+/* 아티스트명 스타일 */
+.latest-clip__artist {
+  font-size: 0.9rem !important;    /* 약 14.4px */
+  color: #6b7280 !important;       /* 회색 */
+  font-weight: 500 !important;
+  margin: 0 !important;
+}
+
+/* 5. 모바일 대응 (선택 사항) */
+@media (max-width: 640px) {
+  .latest-clip-list {
+    grid-template-columns: repeat(1, 1fr) !important; /* 모바일에서는 한 줄에 1개씩 크게 */
+    gap: 24px !important;
+  }
+  
+  /* 모바일에서 썸네일 더 강조 */
+  .latest-clip__media {
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1) !important;
+  }
+  
+  .latest-clip__title {
+    font-size: 1.15rem !important; /* 모바일에서 폰트 조금 더 키움 */
+  }
+}
