@@ -6762,29 +6762,19 @@ export default function App() {
         ) : (
           <div className="live-mini-list" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             {liveWidgetEntries.map((entry) => (
-              <div 
-                key={entry.key} 
+              <div
+                key={entry.key}
                 className="live-mini-item"
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '10px',
-                  padding: '8px 0'
+                  justifyContent: 'flex-start',
+                  gap: '8px',
+                  padding: '6px 0'
                 }}
               >
-                <span 
-                  style={{
-                    width: '8px',
-                    height: '8px',
-                    backgroundColor: '#ef4444', // 빨간색
-                    borderRadius: '50%',
-                    display: 'inline-block',
-                    boxShadow: '0 0 6px rgba(239, 68, 68, 0.6)'
-                  }} 
-                />
-                <strong style={{ fontSize: '0.95rem', color: 'var(--color-text-primary)' }}>
-                  {entry.artistName}
-                </strong>
+                <span style={{ width: '8px', height: '8px', background: '#ef4444', borderRadius: '50%' }} />
+                <strong style={{ fontSize: '0.95rem' }}>{entry.artistName}</strong>
               </div>
             ))}
           </div>

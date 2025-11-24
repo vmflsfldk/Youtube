@@ -6515,15 +6515,15 @@ input:focus {
 }
 
 /* ==============================================
-   라이브 패널 개선 (썸네일/플레이어 크기 확대)
+   라이브 패널 개선 (썸네일 축소 & 인라인 재생)
    ============================================== */
 
-/* 1. 썸네일 그리드: 시청하기 좋은 크기로 확대 (150px -> 280px) */
+/* 1. 썸네일 그리드: 크기 축소 (200px -> 150px) */
 .live-panel__videos {
   display: grid !important;
-  /* 최소 280px 확보 (일반적인 유튜브 썸네일 크기) */
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)) !important;
-  gap: 20px !important; /* 간격도 조금 넓게 */
+  /* 화면 크기에 따라 자동으로 채우되, 최소 크기를 150px로 줄임 */
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)) !important;
+  gap: 12px !important;
 }
 
 /* 2. 비디오 카드 스타일 조정 */
