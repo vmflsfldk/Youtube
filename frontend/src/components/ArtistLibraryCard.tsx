@@ -124,7 +124,10 @@ const ArtistLibraryCardComponent = ({
       onClick={handleClick}
       onKeyDown={handleKeyDown}
     >
-      <div className="artist-library__avatar" style={{ position: 'relative' }}>
+      <div
+        className={`artist-library__avatar${isChzzkLive ? ' artist-library__avatar--live' : ''}`}
+        style={{ position: 'relative' }}
+      >
         {isChzzkLive && (
           <div
             className="artist-library__live-badge"
@@ -199,10 +202,7 @@ const ArtistLibraryCardComponent = ({
         </div>
       )}
       {(artist.youtubeChannelId || artist.chzzkChannelId) && (
-        <div
-          className="artist-library__links"
-          style={{ marginTop: 'auto', display: 'flex', gap: '8px' }}
-        >
+        <div className="artist-library__links">
           {artist.youtubeChannelId && (
             <a
               className="artist-library__link youtube"
@@ -233,11 +233,6 @@ const ArtistLibraryCardComponent = ({
                 if (interactive) {
                   event.stopPropagation();
                 }
-              }}
-              style={{
-                backgroundColor: isChzzkLive ? '#22c55e' : '#00FFA3',
-                color: isChzzkLive ? '#fff' : '#000',
-                border: isChzzkLive ? '1px solid transparent' : 'none'
               }}
             >
               {isChzzkLive ? '● ON AIR' : 'Chzzk'}
