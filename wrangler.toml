@@ -5,5 +5,5 @@ compatibility_date = "2025-10-14"
 [[d1_databases]]
 binding = "DB"
 database_name = "ytclipdb"
-database_id": "849d3d66-df7e-4f39-b03b-72dd11ee266d"
+database_id = "849d3d66-df7e-4f39-b03b-72dd11ee266d"
 migrations_dir = "migrations"
