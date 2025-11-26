@@ -30,6 +30,9 @@ interface ArtistLibraryCardProps {
   onSelect?: () => void;
   cardData: ArtistLibraryCardData;
   showTags?: boolean;
+  isChzzkLive?: boolean;
+  isYoutubeLive?: boolean;
+  isLive?: boolean;
 }
 
 const ArtistLibraryCardComponent = ({
@@ -39,7 +42,10 @@ const ArtistLibraryCardComponent = ({
   focusMode = false,
   onSelect,
   cardData,
-  showTags = true
+  showTags = true,
+  isChzzkLive: externalIsChzzkLive,
+  isYoutubeLive: externalIsYoutubeLive,
+  isLive: externalIsLive
 }: ArtistLibraryCardProps) => {
   const classNames = ['artist-library__card'];
   if (isActive) {
@@ -77,13 +83,22 @@ const ArtistLibraryCardComponent = ({
 
   const resolvedName = displayName || artist.displayName || artist.name;
 
-  const [isChzzkLive, setIsChzzkLive] = useState(false);
+  const [internalIsChzzkLive, setInternalIsChzzkLive] = useState(false);
+
+  const isChzzkLive =
+    typeof externalIsChzzkLive === 'boolean' ? externalIsChzzkLive : internalIsChzzkLive;
+  const isYoutubeLive = Boolean(externalIsYoutubeLive);
+  const isLive = typeof externalIsLive === 'boolean' ? externalIsLive : isChzzkLive || isYoutubeLive;
 
   useEffect(() => {
+    if (typeof externalIsChzzkLive === 'boolean') {
+      return;
+    }
+
     const channelId = artist.chzzkChannelId?.trim();
 
     if (!channelId) {
-      setIsChzzkLive(false);
+      setInternalIsChzzkLive(false);
       return;
     }
 
@@ -100,7 +115,7 @@ const ArtistLibraryCardComponent = ({
         }
 
         const data = (await response.json()) as { isLive?: boolean };
-        setIsChzzkLive(Boolean(data?.isLive));
+        setInternalIsChzzkLive(Boolean(data?.isLive));
       } catch (error) {
         if (!controller.signal.aborted) {
           console.error('치지직 확인 실패', error);
@@ -113,7 +128,7 @@ const ArtistLibraryCardComponent = ({
     return () => {
       controller.abort();
     };
-  }, [artist.chzzkChannelId]);
+  }, [artist.chzzkChannelId, externalIsChzzkLive]);
 
   return (
     <div
@@ -125,17 +140,17 @@ const ArtistLibraryCardComponent = ({
       onKeyDown={handleKeyDown}
     >
       <div
-        className={`artist-library__avatar${isChzzkLive ? ' artist-library__avatar--live' : ''}`}
+        className={`artist-library__avatar${isLive ? ' artist-library__avatar--live' : ''}`}
         style={{ position: 'relative' }}
       >
-        {isChzzkLive && (
+        {isLive && (
           <div
             className="artist-library__live-badge"
             style={{
               position: 'absolute',
               top: 0,
               right: 0,
-              backgroundColor: '#22c55e',
+              backgroundColor: isChzzkLive ? '#22c55e' : '#ef4444',
               color: '#fff',
               fontSize: '0.75rem',
               fontWeight: 700,
@@ -144,7 +159,7 @@ const ArtistLibraryCardComponent = ({
               zIndex: 10
             }}
           >
-            CHZZK LIVE
+            {isChzzkLive ? 'CHZZK LIVE' : 'YOUTUBE LIVE'}
           </div>
         )}
         {artist.profileImageUrl ? (
@@ -205,7 +220,7 @@ const ArtistLibraryCardComponent = ({
         <div className="artist-library__links">
           {artist.youtubeChannelId && (
             <a
-              className="artist-library__link youtube"
+              className={`artist-library__link youtube${isYoutubeLive ? ' artist-library__link--live' : ''}`}
               href={
                 artist.youtubeChannelId.startsWith('@')
                   ? `https://www.youtube.com/${artist.youtubeChannelId}`
@@ -219,7 +234,7 @@ const ArtistLibraryCardComponent = ({
                 }
               }}
             >
-              YouTube
+              {isYoutubeLive ? '● LIVE' : 'YouTube'}
             </a>
           )}
 

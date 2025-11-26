@@ -4575,6 +4575,14 @@ export default function App() {
   const noFilteredArtists = !noArtistsRegistered && filteredArtists.length === 0 && !selectedArtist;
   const artistList = filteredArtists;
   const selectedArtistId = selectedArtist?.id ?? null;
+  const selectedArtistLiveVideos = useMemo(() => {
+    if (selectedArtistId === null) {
+      return [] as LiveBroadcastResponse[];
+    }
+
+    const liveEntry = liveArtists.find((entry) => entry.artist.id === selectedArtistId);
+    return liveEntry?.liveVideos ?? [];
+  }, [liveArtists, selectedArtistId]);
   const artistLibraryVideos = useMemo(() => {
     if (selectedArtistId === null) {
       return libraryVideos;
@@ -7396,6 +7404,8 @@ export default function App() {
                                   cardData={artist.cardData}
                                   interactive={false}
                                   showTags={false}
+                                  isLive={liveVideos.length > 0}
+                                  isYoutubeLive={liveVideos.length > 0}
                                 />
                               </div>
                               <ul className="live-panel__videos">
@@ -7738,6 +7748,8 @@ export default function App() {
                             interactive={false}
                             cardData={selectedArtist.cardData}
                             showTags
+                            isLive={selectedArtistLiveVideos.length > 0}
+                            isYoutubeLive={selectedArtistLiveVideos.length > 0}
                           />
                         </div>
                         <div className="artist-library__detail-panel">
@@ -8700,13 +8712,16 @@ export default function App() {
                         selectedArtistId={selectedArtistId}
                         onArtistClick={handleArtistClick}
                         ariaLabelledby="artist-library-heading"
-                        renderCard={(artist, { isActive, onSelect }) => (
+                        renderCard={(artist, { isActive, onSelect, isChzzkLive, isLive, isYoutubeLive }) => (
                           <ArtistLibraryCard
                             artist={artist}
                             isActive={isActive}
                             onSelect={onSelect}
                             cardData={artist.cardData}
                             showTags={false}
+                            isChzzkLive={isChzzkLive}
+                            isYoutubeLive={isYoutubeLive}
+                            isLive={isLive}
                           />
                         )}
                       />
