@@ -6747,113 +6747,101 @@ export default function App() {
         </div>
       </div>
 
-      <div className="widget-box">
-        <h3>라이브</h3>
-        {isLiveArtistsLoading ? (
-          <p className="live-mini-item">로딩 중...</p>
-        ) : liveWidgetEntries.length === 0 ? (
-          <p className="live-mini-item">진행 중인 방송 없음</p>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {liveWidgetEntries.map((entry) => (
-              <div
-                key={entry.key}
-                className="live-mini-item"
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '12px',
-                  padding: '4px 0'
-                }}
-              >
-                {/* 🔴 빨간 점 + 아티스트 이름 */}
-                <span
-                  style={{
-                    width: '10px',
-                    height: '10px',
-                    background: '#ef4444',
-                    borderRadius: '50%',
-                    boxShadow: '0 0 8px rgba(239, 68, 68, 0.6)'
-                  }}
-                />
-                <strong style={{ fontSize: '0.95rem', color: '#fff' }}>
-                  {entry.artistName}
-                </strong>
-              </div>
-            ))}
+      <div className="right-panel-card">
+        <section className="right-panel__section">
+          <div className="right-panel__section-header">
+            <h3 className="right-panel__title">라이브</h3>
           </div>
-        )}
-      </div>
+          <div className="right-panel__scroll live-list" role="presentation">
+            {isLiveArtistsLoading ? (
+              <p className="right-panel__muted">로딩 중...</p>
+            ) : liveWidgetEntries.length === 0 ? (
+              <p className="right-panel__muted">진행 중인 방송 없음</p>
+            ) : (
+              <ul className="right-panel__list" aria-label="라이브 아티스트 목록">
+                {liveWidgetEntries.map((entry) => (
+                  <li key={entry.key} className="right-panel__list-row live-row">
+                    <span className="live-row__dot" aria-hidden="true" />
+                    <span className="live-row__name">{entry.artistName}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </section>
 
-      <div className="widget-box playlist-widget">
-        <div className="playlist-widget__header">
-          <div>
-            <h3>재생목록</h3>
-            <p className="playlist-widget__subtitle">{playlistSubtitle}</p>
-          </div>
-        </div>
-        <div className="playlist-widget__selector">
-          <label className="playlist-selector__label" htmlFor="playlistWidgetSelector">
-            {playlistSelectorLabel}
-          </label>
-          {availablePlaylists.length > 0 ? (
-            <select
-              id="playlistWidgetSelector"
-              className="playlist-selector__dropdown"
-              value={playlistSelectionValue}
-              onChange={handlePlaylistSelectionChange}
-            >
-              {!activePlaylist && (
-                <option value="" disabled>
-                  재생목록을 선택하세요
-                </option>
-              )}
-              {availablePlaylists.map((playlist) => {
-                const trimmedTitle = playlist.title.trim();
-                const optionLabel = trimmedTitle.length > 0 ? trimmedTitle : `재생목록 ${playlist.id}`;
-                return (
-                  <option key={playlist.id} value={playlist.id}>
-                    {optionLabel}
-                  </option>
-                );
-              })}
-            </select>
-          ) : (
-            <div className="playlist-selector__empty" role="status" aria-live="polite">
-              표시할 재생목록이 없습니다.
+        <div className="right-panel__divider" aria-hidden="true" />
+
+        <section className="right-panel__section">
+          <div className="right-panel__section-header playlist-widget__header">
+            <div>
+              <h3 className="right-panel__title">재생목록</h3>
+              <p className="right-panel__subtitle playlist-widget__subtitle">{playlistSubtitle}</p>
             </div>
-          )}
-        </div>
-        <div className="playlist-widget__search">
-          <label className="playlist-search__label" htmlFor="playlistWidgetSearch">
-            검색
-          </label>
-          <div className="playlist-search__input">
-            <SearchIcon />
-            <input
-              id="playlistWidgetSearch"
-              type="search"
-              value={playlistSearchQuery}
-              onChange={(event) => setPlaylistSearchQuery(event.target.value)}
-              placeholder="영상 또는 클립 검색"
-              aria-label="영상 또는 클립 검색"
-            />
           </div>
-        </div>
-        <div className="playlist-widget__entries">
-          {!playlistHasResults ? (
-            <p className="empty-state">{playlistEmptyMessage}</p>
-          ) : (
-            <PlaylistEntriesList
-              entries={filteredPlaylistEntries}
-              expandedPlaylistEntryId={expandedPlaylistEntryId}
-              handlePlaylistEntryRemove={handlePlaylistEntryRemove}
-              setExpandedPlaylistEntryId={setExpandedPlaylistEntryId}
-              resolvePlaylistEntryKey={resolvePlaylistEntryKey}
-              isRemovalDisabled={isPlaylistEntryRemovalDisabled}
-            />
-          )}
-        </div>
+          <div className="right-panel__controls playlist-widget__selector">
+            <label className="playlist-selector__label" htmlFor="playlistWidgetSelector">
+              {playlistSelectorLabel}
+            </label>
+            {availablePlaylists.length > 0 ? (
+              <select
+                id="playlistWidgetSelector"
+                className="playlist-selector__dropdown"
+                value={playlistSelectionValue}
+                onChange={handlePlaylistSelectionChange}
+              >
+                {!activePlaylist && (
+                  <option value="" disabled>
+                    재생목록을 선택하세요
+                  </option>
+                )}
+                {availablePlaylists.map((playlist) => {
+                  const trimmedTitle = playlist.title.trim();
+                  const optionLabel = trimmedTitle.length > 0 ? trimmedTitle : `재생목록 ${playlist.id}`;
+                  return (
+                    <option key={playlist.id} value={playlist.id}>
+                      {optionLabel}
+                    </option>
+                  );
+                })}
+              </select>
+            ) : (
+              <div className="playlist-selector__empty" role="status" aria-live="polite">
+                표시할 재생목록이 없습니다.
+              </div>
+            )}
+          </div>
+          <div className="right-panel__controls playlist-widget__search">
+            <label className="playlist-search__label" htmlFor="playlistWidgetSearch">
+              검색
+            </label>
+            <div className="playlist-search__input">
+              <SearchIcon />
+              <input
+                id="playlistWidgetSearch"
+                type="search"
+                value={playlistSearchQuery}
+                onChange={(event) => setPlaylistSearchQuery(event.target.value)}
+                placeholder="영상 또는 클립 검색"
+                aria-label="영상 또는 클립 검색"
+              />
+            </div>
+          </div>
+          <div className="right-panel__scroll playlist-widget__entries">
+            {!playlistHasResults ? (
+              <p className="empty-state">{playlistEmptyMessage}</p>
+            ) : (
+              <PlaylistEntriesList
+                entries={filteredPlaylistEntries}
+                expandedPlaylistEntryId={expandedPlaylistEntryId}
+                handlePlaylistEntryRemove={handlePlaylistEntryRemove}
+                setExpandedPlaylistEntryId={setExpandedPlaylistEntryId}
+                resolvePlaylistEntryKey={resolvePlaylistEntryKey}
+                isRemovalDisabled={isPlaylistEntryRemovalDisabled}
+              />
+            )}
+          </div>
+        </section>
       </div>
     </aside>
   );

@@ -737,6 +737,112 @@ body {
   max-width: 70%;
 }
 
+.right-panel-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 18px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+}
+
+.right-panel__section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.right-panel__section-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.right-panel__title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--color-text-primary);
+}
+
+.right-panel__subtitle {
+  margin: 4px 0 0;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+}
+
+.right-panel__controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.right-panel__scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.right-panel__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.right-panel__list-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
+}
+
+.right-panel__list-row:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.live-row__dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #ef4444;
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.6);
+  flex-shrink: 0;
+}
+
+.live-row__name {
+  font-weight: 700;
+  color: var(--color-text-primary);
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.right-panel__muted {
+  color: var(--color-text-secondary);
+  margin: 0;
+  padding: 8px 4px;
+}
+
+.right-panel__divider {
+  height: 1px;
+  background: var(--color-border);
+  margin: 0 -8px;
+  opacity: 0.8;
+}
+
 /* --- Feed Styles --- */
 .latest-video-grid, .live-panel__list, .artist-library__video-list {
   list-style: none;
@@ -1730,12 +1836,16 @@ button.primary:hover {
 }
 
 .playlist-widget__entries {
-  max-height: 520px;
+  max-height: 420px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding-bottom: calc(var(--playback-bar-height) + env(safe-area-inset-bottom));
+  padding: 10px 6px;
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .playlist-widget__player {
