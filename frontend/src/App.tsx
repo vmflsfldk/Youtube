@@ -6860,6 +6860,12 @@ export default function App() {
 
   return (
     <>
+      <div className="app-ambient" aria-hidden="true">
+        <span className="app-ambient__blob app-ambient__blob--one" />
+        <span className="app-ambient__blob app-ambient__blob--two" />
+        <span className="app-ambient__grid" />
+      </div>
+
       <div className="toast-stack" aria-live="polite" aria-atomic="true">
         {toasts.map((toast) => (
           <div key={toast.id} className={`toast toast--${toast.tone}`} role="status">
@@ -7067,7 +7073,8 @@ export default function App() {
               </div>
             )}
 
-            <div className="content-panels">
+            <div className="content-shell">
+              <div className="content-panels">
             <Routes>
 
             <Route
@@ -8849,10 +8856,10 @@ export default function App() {
             <Route path="*" element={<Navigate to={SECTION_PATHS.library} replace />} />
 
           </Routes>
-
-        </div>
           </div>
-      </main>
+        </div>
+      </div>
+    </main>
 
         {!isMobileViewport && rightSidebarContent}
 
